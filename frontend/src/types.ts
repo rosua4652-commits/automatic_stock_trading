@@ -70,10 +70,12 @@ export interface Position {
   auto_quantity: number;
   manual_quantity: number;
   avg_price: number;
+  auto_avg_price?: number;
   current_price: number;
   stop_loss: number;
   take_profit: number;
   pnl_pct: number;
+  auto_pnl_pct?: number;
   cost_basis_krw: number;
   current_value_krw: number;
   pnl_krw: number;

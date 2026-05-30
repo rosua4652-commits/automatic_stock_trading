@@ -93,6 +93,13 @@ export default function CoinDetailBar({
           </div>
         )}
 
+        {in_portfolio && position && position.auto_quantity > 0 && !position.excluded_from_auto && (
+          <p className="coin-detail-mini">
+            AI 수익률 {fmtPct(position.auto_pnl_pct)} / 익절 목표 +
+            {config.take_profit_pct}% · 손절 -{config.stop_loss_pct}%
+          </p>
+        )}
+
         {tpSl && (
           <div className="coin-detail-tpsl">
             <span className="tpsl-tag">
