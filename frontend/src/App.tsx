@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  applyRecommendations,
   connectWs,
   fetchChart,
   fetchStatus,
@@ -11,6 +12,7 @@ import {
   startBot,
   stopBot,
 } from "./api";
+import RecommendationsPanel from "./components/RecommendationsPanel";
 import ChartPanel from "./components/ChartPanel";
 import CoinDetailBar from "./components/CoinDetailBar";
 import CoinTabs from "./components/CoinTabs";
@@ -132,11 +134,11 @@ export default function App() {
         const s = await stopBot();
         botLockVersionRef.current = s.status_version ?? botLockVersionRef.current;
         setData(s);
-        showToast("자동투자가 중지되었습니다");
+        showToast("분석을 중지했습니다");
       } else {
         setData({
           ...data,
-          bot: { ...data.bot, status: "running", message: "시작 중..." },
+          bot: { ...data.bot, status: "running", message: "분석 중..." },
         });
         const s = await startBot();
         botLockVersionRef.current = s.status_version ?? botLockVersionRef.current;
@@ -144,7 +146,7 @@ export default function App() {
         if (s.ok === false) {
           showToast(s.message || "시작할 수 없습니다");
         } else {
-          showToast("자동투자를 시작했습니다");
+          showToast("시장 분석을 시작했습니다 · 제안 확인 후 승인 매수");
         }
       }
     } catch (e) {
@@ -229,7 +231,7 @@ export default function App() {
   const running = isRunning(data.bot.status);
   const stopping = data.bot.status === "stopping";
   const isPaper = data.config.trade_mode === "paper";
-  const canTrade = data.bot.manual_mode && !running;
+  const canTrade = data.bot.manual_mode !== false && !stopping;
   const tabs =
     data.tabs?.length > 0
       ? data.tabs
@@ -329,7 +331,7 @@ export default function App() {
             onClick={toggleBot}
             disabled={botBusy || stopping}
           >
-            {stopping ? "중지 중..." : running ? "자동투자 중지" : "자동투자 시작"}
+            {stopping ? "중지 중..." : running ? "분석 중지" : "분석 시작"}
           </button>
         </div>
       </header>
@@ -348,6 +350,25 @@ export default function App() {
           <span className="m-value">{fmtKrw(data.portfolio.total_value_krw)}원</span>
         </div>
       </div>
+
+      <RecommendationsPanel
+        recommendations={data.bot.recommendations ?? []}
+        botStatus={data.bot.status}
+        cashKrw={data.portfolio.cash_krw}
+        busy={tradeBusy}
+        onApply={async (symbols) => {
+          setTradeBusy(true);
+          try {
+            const s = await applyRecommendations(symbols);
+            applyPayload(s);
+            showToast(s.message || "매수 완료");
+          } catch (e) {
+            showToast(e instanceof Error ? e.message : "매수 실패");
+          } finally {
+            setTradeBusy(false);
+          }
+        }}
+      />
 
       <nav className="main-nav">
         <button

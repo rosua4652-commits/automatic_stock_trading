@@ -14,6 +14,7 @@ from app.market.binance import binance
 from app.models import (
     AccountLinkInfo,
     AppConfig,
+    ApplyRecommendationsRequest,
     ManualBuyRequest,
     ManualSellRequest,
     PositionExcludeRequest,
@@ -196,6 +197,15 @@ async def bot_stop():
     engine._persist()
     status = await _build_status()
     status["ok"] = True
+    return status
+
+
+@api.post("/recommendations/apply")
+async def apply_recommendations(body: ApplyRecommendationsRequest):
+    ok, msg = await engine.apply_recommendations(body.symbols)
+    status = await _build_status()
+    status["ok"] = ok
+    status["message"] = msg
     return status
 
 

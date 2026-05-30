@@ -127,7 +127,7 @@ async def _analyze_one(
 
 
 async def scan_market(
-    limit: int = 12,
+    limit: int = 40,
     is_running: Callable[[], bool] | None = None,
 ) -> list[CoinCandidate]:
     running = is_running or (lambda: True)
@@ -154,9 +154,9 @@ async def scan_market(
         candidates.append((symbol, base, quote_vol, change))
 
     candidates.sort(key=lambda x: x[2], reverse=True)
-    top = candidates[:24]
+    top = candidates[:80]
 
-    sem = asyncio.Semaphore(6)
+    sem = asyncio.Semaphore(10)
 
     async def run_one(item: tuple[str, str, float, float]) -> CoinCandidate | None:
         if not running():

@@ -41,7 +41,7 @@ export default function CoinTradeBar({
 
       {running && (
         <p className="trade-hint warn subtle">
-          자동투자 실행 중 — AI가 조건 맞는 코인에 모의/실거래 진입합니다. 수동 매매는 중지 후 가능합니다.
+          분석 실행 중 — 위 「AI 투자 제안」에서 선택 후 「승인 매수」하세요. 개별 매수도 가능합니다.
         </p>
       )}
 

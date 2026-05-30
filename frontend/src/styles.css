@@ -343,6 +343,80 @@ body {
   cursor: not-allowed;
 }
 
+.rec-panel {
+  margin: 0 1.5rem 0.75rem;
+  padding: 1rem 1.25rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.rec-panel.empty .empty {
+  color: var(--muted);
+  font-size: 0.85rem;
+  margin-top: 0.5rem;
+}
+
+.rec-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.rec-head h3 {
+  font-size: 1rem;
+}
+
+.rec-meta {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.rec-actions-top {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 0.75rem;
+}
+
+.rec-table-wrap {
+  overflow-x: auto;
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.rec-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.78rem;
+}
+
+.rec-table th,
+.rec-table td {
+  padding: 0.45rem 0.5rem;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+
+.rec-table tr.dim {
+  opacity: 0.45;
+}
+
+.rec-table .amount {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.rec-reason {
+  max-width: 280px;
+  line-height: 1.35;
+  color: var(--muted);
+}
+
 .bot-status-text.on {
   color: var(--green);
   background: rgba(34, 211, 165, 0.1);

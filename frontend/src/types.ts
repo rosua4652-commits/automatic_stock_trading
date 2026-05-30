@@ -133,11 +133,28 @@ export interface CoinView {
   candidate: CoinCandidate | null;
 }
 
+export interface InvestmentRecommendation {
+  symbol: string;
+  base: string;
+  name_ko: string;
+  display: string;
+  pair_label: string;
+  market_score: number;
+  entry_score: number;
+  weight_pct: number;
+  amount_krw: number;
+  entry_detail: string;
+  change_24h: number;
+  trend: string;
+  selected?: boolean;
+}
+
 export interface BotState {
   status: BotStatus;
   view_symbol: string;
   message: string;
   candidates: CoinCandidate[];
+  recommendations?: InvestmentRecommendation[];
   recent_trades: TradeEvent[];
   manual_mode: boolean;
 }

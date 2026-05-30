@@ -5,6 +5,7 @@ from typing import Callable, Optional
 from app.engine.live_orders import live_market_buy, live_market_sell
 from app.engine.portfolio import PortfolioManager
 from app.engine.portfolio_store import store
+from app.engine.recommendations import build_recommendations
 from app.market.binance import binance
 from app.market.coin_registry import coin_meta
 from app.market.entry_analyzer import analyze_entry, format_entry_detail
@@ -46,7 +47,7 @@ class TradingEngine:
         return self.bot.status == BotStatus.RUNNING
 
     def can_manual_trade(self) -> bool:
-        return self.bot.status == BotStatus.STOPPED
+        return self.bot.status != BotStatus.STOPPING
 
     def subscribe(self, cb: Callable[[], None]) -> None:
         self._listeners.append(cb)
@@ -80,33 +81,12 @@ class TradingEngine:
         self.bind_portfolio()
         self._bump_version()
         self.bot.status = BotStatus.RUNNING
-        self.bot.manual_mode = False
-        self.bot.message = "시장·차트 분석 후 진입합니다..."
+        self.bot.manual_mode = True
+        self.bot.message = "시장 스캔·차트 분석 중... (승인 후 매수)"
         self._task = asyncio.create_task(self._loop())
-        await self._resume_existing_positions()
+        await self._tick()
         self._notify()
         return True, self.bot.message
-
-    async def _resume_existing_positions(self) -> None:
-        """재시작 시 보유 AI 포지션 재분석·익절 타이밍 점검."""
-        tickers = await binance.tickers_24h()
-        n = 0
-        for symbol, pos in list(self.portfolio.positions.items()):
-            if pos.auto_quantity <= 0:
-                continue
-            signal = await analyze_entry(symbol, self.config.min_entry_score)
-            pos.entry_outlook = signal.outlook
-            pos.entry_reason = (
-                f"재개·{signal.outlook} · " + ", ".join(signal.reasons[:3])
-            )
-            pos.entry_score = signal.score
-            t = tickers.get(symbol)
-            if t:
-                price = float(t["lastPrice"])
-                await self._manage_position(symbol, price)
-                n += 1
-        if n:
-            self.bot.message = f"보유 {n}개 코인 재분석·익절 감시 시작"
 
     async def stop(self) -> None:
         if self.bot.status == BotStatus.STOPPED:
@@ -114,7 +94,7 @@ class TradingEngine:
 
         self._bump_version()
         self.bot.status = BotStatus.STOPPING
-        self.bot.message = "자동투자 중지 중... (보유 코인은 유지)"
+        self.bot.message = "분석 중지 중..."
         self._notify()
 
         if self._task and not self._task.done():
@@ -127,7 +107,7 @@ class TradingEngine:
 
         self.bot.status = BotStatus.STOPPED
         self.bot.manual_mode = True
-        self.bot.message = "자동투자 중지됨 · 자금 탭에서 수동 관리 가능"
+        self.bot.message = "분석 중지됨 · 제안 목록에서 승인 매수 또는 수동 매매"
         self._bump_version()
         self._notify()
 
@@ -154,9 +134,10 @@ class TradingEngine:
 
     async def manual_buy(self, req: ManualBuyRequest) -> tuple[bool, str]:
         if not self.can_manual_trade():
-            return False, "자동투자 중에는 수동 매매할 수 없습니다. 먼저 중지하세요."
+            return False, "잠시 후 다시 시도하세요."
 
         self.bind_portfolio()
+        self.portfolio.usdt_krw = await binance.usdt_krw_rate()
         symbol = req.symbol.upper()
 
         if self._is_live():
@@ -200,9 +181,10 @@ class TradingEngine:
 
     async def manual_sell(self, req: ManualSellRequest) -> tuple[bool, str]:
         if not self.can_manual_trade():
-            return False, "자동투자 중에는 수동 매매할 수 없습니다. 먼저 중지하세요."
+            return False, "잠시 후 다시 시도하세요."
 
         self.bind_portfolio()
+        self.portfolio.usdt_krw = await binance.usdt_krw_rate()
         symbol = req.symbol.upper()
         if symbol not in self.portfolio.positions:
             return False, "보유하지 않은 코인입니다"
@@ -257,7 +239,7 @@ class TradingEngine:
             if self.bot.status != BotStatus.STOPPED:
                 self.bot.status = BotStatus.STOPPED
                 self.bot.manual_mode = True
-                self.bot.message = "자동투자가 중지되었습니다 · 보유 유지"
+                self.bot.message = "분석이 중지되었습니다"
             self._task = None
             self._bump_version()
 
@@ -275,7 +257,7 @@ class TradingEngine:
                 return
 
         self.portfolio.usdt_krw = await binance.usdt_krw_rate()
-        candidates = await scan_market(limit=15, is_running=self.is_running)
+        candidates = await scan_market(limit=40, is_running=self.is_running)
         if not self.is_running():
             return
 
@@ -304,108 +286,110 @@ class TradingEngine:
             candidates,
             key=lambda c: (c.entry_ok, c.score),
             reverse=True,
-        )[:20]
+        )[:40]
         self.bot.last_scan = time.time()
+
+        held = {
+            s
+            for s, p in self.portfolio.positions.items()
+            if p.quantity > 1e-10
+        }
+        snap = self.portfolio.snapshot({}, self.config)
+        self.bot.recommendations = build_recommendations(
+            candidates,
+            snap.cash_krw,
+            self.config,
+            held,
+        )
         mode = "모의" if self.config.trade_mode == TradeMode.PAPER else "실거래"
-        self.bot.message = f"[{mode}] 차트 적합 {len(enriched)}개 / 분석 {len(candidates)}개"
+        total_rec = sum(r.amount_krw for r in self.bot.recommendations)
+        self.bot.message = (
+            f"[{mode}] 분석 {len(candidates)}종 · 진입가능 {len(enriched)}종 · "
+            f"제안 {len(self.bot.recommendations)}건 · 합계 {total_rec:,.0f}원"
+        )
         self._notify()
+
+    async def apply_recommendations(self, symbols: list[str]) -> tuple[bool, str]:
+        """사용자 승인 후 제안 매수 실행."""
+        self.bind_portfolio()
+        self.portfolio.usdt_krw = await binance.usdt_krw_rate()
+
+        if not self.bot.recommendations:
+            return False, "먼저 「분석 시작」으로 투자 제안을 받으세요"
+
+        want = {s.upper() for s in symbols} if symbols else None
+        to_apply = [
+            r
+            for r in self.bot.recommendations
+            if r.selected and (want is None or r.symbol.upper() in want)
+        ]
+        if not to_apply:
+            return False, "매수할 코인을 선택하세요"
 
         tickers = await binance.tickers_24h()
-        prices: dict[str, float] = {}
-
-        # 자동투자 중에만 익절·손절 (중지 시 절대 매도 안 함)
-        for symbol in list(self.portfolio.positions.keys()):
-            if not self.is_running():
-                return
-            pos = self.portfolio.positions[symbol]
-            t = tickers.get(symbol)
-            if t:
-                prices[symbol] = float(t["lastPrice"])
-            if pos.auto_quantity <= 0:
-                continue
-            if not t:
-                continue
-            price = float(t["lastPrice"])
-            await self._manage_position(symbol, price)
-
-        if not self.is_running():
-            return
-
-        auto_held = {
-            s for s, p in self.portfolio.positions.items() if p.auto_quantity > 0
-        }
-        if self.config.max_positions > 0:
-            slots = self.config.max_positions - len(auto_held)
-            if slots <= 0:
-                return
-        else:
-            slots = max(1, 20 - len(auto_held))
-
-        snap = self.portfolio.snapshot(prices, self.config)
-        slot_div = min(slots, 8) if self.config.max_positions == 0 else slots
-        per_slot = snap.cash_krw / max(slot_div, 1) * 0.85
         sl_pct = self.config.stop_loss_pct / 100
         tp_pct = self.config.take_profit_pct / 100
+        ok_n = 0
+        fail_msgs: list[str] = []
+        success_syms: set[str] = set()
 
-        for cand, signal in enriched:
-            if not self.is_running() or slots <= 0:
-                break
-            existing = self.portfolio.positions.get(cand.symbol)
-            if existing and existing.auto_quantity > 0:
-                continue
-            if existing and existing.excluded_from_auto and existing.manual_quantity > 0:
-                pass
-            elif existing and existing.excluded_from_auto:
-                continue
-            if cand.score < self.config.min_buy_score:
-                continue
-            if not signal.ok:
-                continue
-
-            t = tickers.get(cand.symbol)
+        for rec in to_apply:
+            sym = rec.symbol.upper()
+            t = tickers.get(sym)
             if not t:
+                fail_msgs.append(f"{rec.base}: 시세 없음")
                 continue
             price = float(t["lastPrice"])
-            entry_txt = f"{signal.outlook} ({signal.pattern}) · " + ", ".join(
-                signal.reasons[:4]
-            )
+            entry_txt = rec.entry_detail or "승인 매수"
 
             if self._is_live():
-                ok, _ = await live_market_buy(
+                ok, msg = await live_market_buy(
                     self.config,
-                    cand.symbol,
-                    per_slot,
-                    f"AI 진입 · {entry_txt}",
-                    as_auto=True,
+                    sym,
+                    rec.amount_krw,
+                    f"승인 매수 · {entry_txt}",
+                    as_auto=False,
                 )
                 if ok:
+                    ok_n += 1
+                    success_syms.add(sym)
                     self.bind_portfolio()
-                    auto_held.add(cand.symbol)
-                    slots -= 1
-                    self.bot.recent_trades = self.portfolio.trades[-30:]
+                else:
+                    fail_msgs.append(f"{rec.base}: {msg}")
             else:
                 pos = self.portfolio.buy(
-                    cand.symbol,
-                    cand.base,
+                    sym,
+                    rec.base,
                     price,
-                    per_slot,
+                    rec.amount_krw,
                     sl_pct,
                     tp_pct,
-                    score=cand.score,
-                    reason="AI 진입",
+                    score=rec.market_score,
+                    reason=f"승인 매수 · {int(rec.amount_krw):,}원",
                     entry_reason=entry_txt,
-                    entry_score=signal.score,
-                    entry_outlook=signal.outlook,
-                    auto_managed=True,
+                    entry_score=rec.entry_score,
+                    entry_outlook="승인 투자",
+                    auto_managed=False,
                 )
                 if pos:
-                    prices[cand.symbol] = price
-                    auto_held.add(cand.symbol)
-                    slots -= 1
-                    self._persist()
-                    self.bot.recent_trades = self.portfolio.trades[-30:]
+                    ok_n += 1
+                    success_syms.add(sym)
+                else:
+                    fail_msgs.append(f"{rec.base}: 잔고 부족")
 
+        if ok_n:
+            self._persist()
+            self.bot.recent_trades = self.portfolio.trades[-40:]
+            self.bot.recommendations = [
+                r for r in self.bot.recommendations if r.symbol.upper() not in success_syms
+            ]
+        self._bump_version()
         self._notify()
+
+        if ok_n == 0:
+            return False, fail_msgs[0] if fail_msgs else "매수 실패"
+        tail = f" ({fail_msgs[0]})" if fail_msgs else ""
+        return True, f"{ok_n}건 매수 체결{tail}"
 
     async def set_position_exclude(self, symbol: str, exclude: bool) -> tuple[bool, str]:
         self.bind_portfolio()

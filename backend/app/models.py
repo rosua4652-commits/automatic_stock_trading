@@ -199,12 +199,33 @@ class CoinView(BaseModel):
     candidate: Optional[CoinCandidate] = None
 
 
+class InvestmentRecommendation(BaseModel):
+    symbol: str
+    base: str
+    name_ko: str
+    display: str
+    pair_label: str
+    market_score: float = 0.0
+    entry_score: float = 0.0
+    weight_pct: float = 0.0
+    amount_krw: float = 0.0
+    entry_detail: str = ""
+    change_24h: float = 0.0
+    trend: str = ""
+    selected: bool = True
+
+
+class ApplyRecommendationsRequest(BaseModel):
+    symbols: list[str] = Field(default_factory=list, description="비우면 선택된 항목 전체")
+
+
 class BotState(BaseModel):
     status: BotStatus = BotStatus.STOPPED
     view_symbol: str = "BTCUSDT"
     last_scan: Optional[float] = None
     message: str = "대기 중"
     candidates: list[CoinCandidate] = Field(default_factory=list)
+    recommendations: list[InvestmentRecommendation] = Field(default_factory=list)
     recent_trades: list[TradeEvent] = Field(default_factory=list)
     manual_mode: bool = True
 

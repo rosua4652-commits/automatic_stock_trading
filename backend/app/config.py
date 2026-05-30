@@ -6,7 +6,7 @@ class Settings(BaseSettings):
     binance_api: str = "https://api.binance.com/api/v3"
     scan_interval_sec: int = 45
     max_positions: int = 6
-    min_quote_volume_usdt: float = 15_000_000.0
+    min_quote_volume_usdt: float = 5_000_000.0
     min_candles: int = 120
     default_stop_loss_pct: float = 0.06
     default_take_profit_pct: float = 0.12

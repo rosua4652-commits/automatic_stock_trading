@@ -177,7 +177,7 @@ export default function FundsTab({
     <div className="funds-tab">
       {running && (
         <div className="funds-notice warn">
-          자동투자 실행 중 — 보유 코인은 자동 매도되지 않도록 중지 후 자금 탭에서 관리하세요.
+          분석 실행 중 — 매수는 「AI 투자 제안」 승인 또는 아래 수동 매매를 이용하세요.
         </div>
       )}
       {canTrade && (
