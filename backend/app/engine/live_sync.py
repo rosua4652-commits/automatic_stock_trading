@@ -401,9 +401,11 @@ async def _sync_binance(
 
 def export_live_meta(portfolio, preserve: dict[str, Any] | None = None) -> dict[str, Any]:
     """포트폴리오 → AIDI 메타 저장 (잔고 제외). preserve: account_principal 등 유지."""
+    prev_map: dict = (preserve or {}).get("positions_meta") or {}
     positions_meta = {}
     for sym, pos in portfolio.positions.items():
-        positions_meta[sym] = {
+        prev = prev_map.get(sym, {}) if isinstance(prev_map.get(sym), dict) else {}
+        row = {
             "auto_quantity": pos.auto_quantity,
             "manual_quantity": pos.manual_quantity,
             "auto_avg_price": pos.auto_avg_price,
@@ -423,6 +425,9 @@ def export_live_meta(portfolio, preserve: dict[str, Any] | None = None) -> dict[
             "custom_stop_loss_pct": pos.custom_stop_loss_pct,
             "custom_take_profit_pct": pos.custom_take_profit_pct,
         }
+        if prev.get("pending_exit"):
+            row["pending_exit"] = prev["pending_exit"]
+        positions_meta[sym] = row
     out: dict[str, Any] = {
         "positions_meta": positions_meta,
         "trades": [t.model_dump() for t in portfolio.trades[-100:]],

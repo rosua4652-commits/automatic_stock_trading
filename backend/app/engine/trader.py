@@ -6,7 +6,11 @@ from app.engine.exit_rules import (
     config_exit_triggered,
     custom_exit_triggered,
 )
-from app.engine.live_orders import live_market_buy, live_market_sell
+from app.engine.live_orders import (
+    live_market_buy,
+    live_market_sell,
+    retry_pending_exit_sells,
+)
 from app.engine.portfolio import PortfolioManager
 from app.engine.portfolio_store import store
 from app.engine.recommendations import build_recommendations, cap_apply_amounts
@@ -125,6 +129,9 @@ class TradingEngine:
                     continue
                 try:
                     tickers = await market.tickers_24h()
+                    if self._is_live():
+                        await retry_pending_exit_sells(self.config)
+                        self.bind_portfolio()
                     await self._monitor_positions(tickers)
                     if not self._is_live():
                         self._persist()
@@ -592,10 +599,14 @@ class TradingEngine:
             self._persist()
 
         pos_after = self.portfolio.positions.get(sym)
+        note = (self.bot.message or "").strip()
+        if sold and note and ("소액 포지션" in note or "지정가 접수" in note):
+            self._bump_version()
+            self._notify()
+            return f"{pos.display} — {note}"
         if not sold or (pos_after and pos_after.quantity >= qty_before * 0.99):
-            fail = (self.bot.message or "").strip()
-            if fail:
-                return fail
+            if note:
+                return note
             return (
                 f"{pos.display} — 손익절 범위이나 매도 실패 "
                 "(API·잔고·지정가 미체결 확인)"
@@ -866,7 +877,7 @@ class TradingEngine:
             if ok:
                 self.bind_portfolio()
                 self.bot.recent_trades = self.portfolio.trades[-30:]
-                self.bot.message = f"{sym} {reason} 자동 매도 완료"
+                self.bot.message = msg or f"{sym} {reason} 자동 매도 완료"
                 self._bump_version()
                 self._notify()
                 return True

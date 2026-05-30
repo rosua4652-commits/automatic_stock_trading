@@ -1,21 +1,31 @@
-"""업비트 매도 — 시장가 5,000원 미만이면 지정가(최소 주문금액 충족)로 전환."""
+"""업비트 매도 — 5,000원 미만 소액: 지정가 대기 + 시장가 가능 시 자동 재시도."""
 
 from __future__ import annotations
 
 import math
-from typing import TYPE_CHECKING
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any
 
 from app.config import settings
 
 if TYPE_CHECKING:
     from app.market.upbit_client import UpbitClient
 
-# 업비트 시장가 매도: 수량 × 매수1호가 >= 5,000원 (under_min_total_market_ask)
+# 업비트 시장가 매도: 수량 × 매수1호가 >= 5,000원
 MIN_MARKET_ASK_KRW = float(getattr(settings, "min_market_ask_krw", 5_000.0))
 
 
+@dataclass
+class SellOutcome:
+    order: dict[str, Any]
+    mode: str
+    filled: bool
+    pending: bool = False
+    min_bid_for_market: float = 0.0
+    limit_price_krw: float = 0.0
+
+
 def price_tick_krw(price: float) -> float:
-    """업비트 KRW 마켓 호가 단위."""
     p = max(float(price), 1e-12)
     if p >= 2_000_000:
         return 1000.0
@@ -55,7 +65,6 @@ def format_upbit_price(price_krw: float) -> str:
 
 
 def min_limit_price_krw(volume: float, *, floor_bid: float = 0.0) -> float:
-    """주문 금액이 최소 5,000원이 되도록 하는 지정가(매도)."""
     vol = max(float(volume), 1e-12)
     need = MIN_MARKET_ASK_KRW / vol
     base = max(float(floor_bid), need)
@@ -63,22 +72,77 @@ def min_limit_price_krw(volume: float, *, floor_bid: float = 0.0) -> float:
     return ceil_to_tick(base, tick)
 
 
+def min_bid_for_market_sell(volume: float) -> float:
+    vol = max(float(volume), 1e-12)
+    return MIN_MARKET_ASK_KRW / vol
+
+
 def is_under_min_market_ask_error(exc: BaseException) -> bool:
-    text = str(exc).lower()
-    return "under_min_total_market_ask" in text
+    return "under_min_total_market_ask" in str(exc).lower()
 
 
-async def fetch_best_bid_krw(client: "UpbitClient", market: str) -> float:
+def order_executed_qty(order: dict[str, Any]) -> float:
+    try:
+        return float(order.get("executed_volume") or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def order_is_open(order: dict[str, Any]) -> bool:
+    return str(order.get("state") or "") in ("wait", "watch")
+
+
+async def fetch_orderbook_top(
+    client: "UpbitClient", market: str
+) -> tuple[float, float]:
+    """(best_bid, best_ask) KRW."""
     http = await client._ensure()
     resp = await http.get("/v1/orderbook", params={"markets": market})
     resp.raise_for_status()
     rows = resp.json()
     if not rows:
-        return 0.0
+        return 0.0, 0.0
     units = rows[0].get("orderbook_units") or []
     if not units:
-        return 0.0
-    return float(units[0].get("bid_price") or 0)
+        return 0.0, 0.0
+    u0 = units[0]
+    return float(u0.get("bid_price") or 0), float(u0.get("ask_price") or 0)
+
+
+async def _try_market_sell(
+    client: "UpbitClient", market: str, volume: float
+) -> SellOutcome | None:
+    try:
+        order = await client.market_sell(market, volume)
+        qty = order_executed_qty(order)
+        return SellOutcome(
+            order=order,
+            mode="시장가",
+            filled=qty > volume * 1e-6,
+        )
+    except RuntimeError as e:
+        if is_under_min_market_ask_error(e):
+            return None
+        raise
+
+
+async def _try_limit_ioc(
+    client: "UpbitClient",
+    market: str,
+    volume: float,
+    price_krw: float,
+    label: str,
+) -> SellOutcome | None:
+    try:
+        order = await client.limit_sell(
+            market, volume, price_krw, time_in_force="ioc"
+        )
+        qty = order_executed_qty(order)
+        if qty > volume * 1e-6:
+            return SellOutcome(order=order, mode=label, filled=True)
+    except RuntimeError:
+        pass
+    return None
 
 
 async def smart_sell(
@@ -87,31 +151,106 @@ async def smart_sell(
     volume: float,
     *,
     bid_hint_krw: float = 0.0,
-) -> tuple[dict, str]:
-    """
-    시장가 매도 시도 → 5천원 미만이면 지정가(IOC) 전량 매도.
-    반환: (order, mode_label)
-    """
+    cancel_existing_asks: bool = True,
+) -> SellOutcome:
     vol = max(float(volume), 0.0)
     if vol <= 0:
         raise RuntimeError("매도 수량 없음")
 
-    bid = bid_hint_krw if bid_hint_krw > 0 else await fetch_best_bid_krw(client, market)
-    notional = vol * bid if bid > 0 else 0.0
+    if cancel_existing_asks:
+        await client.cancel_open_orders(market, side="ask")
 
-    if notional >= MIN_MARKET_ASK_KRW - 0.5:
-        try:
-            return await client.market_sell(market, vol), "시장가"
-        except RuntimeError as e:
-            if not is_under_min_market_ask_error(e):
-                raise
+    bid, ask = await fetch_orderbook_top(client, market)
+    if bid_hint_krw > 0 and bid <= 0:
+        bid = bid_hint_krw
+    if bid_hint_krw > 0 and ask <= 0:
+        ask = bid_hint_krw
+
+    min_bid = min_bid_for_market_sell(vol)
+
+    if bid > 0 and vol * bid >= MIN_MARKET_ASK_KRW - 0.5:
+        got = await _try_market_sell(client, market, vol)
+        if got and got.filled:
+            return got
+
+    if ask > 0 and vol * ask >= MIN_MARKET_ASK_KRW - 0.5:
+        px = ceil_to_tick(ask, price_tick_krw(ask))
+        label = f"지정가 {format_upbit_price(px)}원 (매도호가·IOC)"
+        got = await _try_limit_ioc(client, market, vol, px, label)
+        if got:
+            return got
+
+    try:
+        order = await client.best_sell(market, vol)
+        qty = order_executed_qty(order)
+        if qty > vol * 1e-6:
+            return SellOutcome(order=order, mode="최유리", filled=True)
+    except RuntimeError as e:
+        if not is_under_min_market_ask_error(e):
+            pass
 
     limit_px = min_limit_price_krw(vol, floor_bid=bid)
-    try:
-        order = await client.limit_sell(
-            market, vol, limit_px, time_in_force="ioc"
+    got = await _try_limit_ioc(
+        client,
+        market,
+        vol,
+        limit_px,
+        f"지정가 {format_upbit_price(limit_px)}원 (최소금액·IOC)",
+    )
+    if got:
+        return got
+
+    order = await client.limit_sell(market, vol, limit_px, time_in_force="gtc")
+    qty = order_executed_qty(order)
+    mode = f"지정가 {format_upbit_price(limit_px)}원 (소액·대기)"
+    if qty > vol * 1e-6:
+        return SellOutcome(order=order, mode=mode, filled=True)
+    if order_is_open(order):
+        return SellOutcome(
+            order=order,
+            mode=mode,
+            filled=False,
+            pending=True,
+            min_bid_for_market=min_bid,
+            limit_price_krw=limit_px,
         )
-        return order, f"지정가 {format_upbit_price(limit_px)}원 (5천원 미만·IOC)"
-    except RuntimeError:
-        order = await client.limit_sell(market, vol, limit_px, time_in_force="gtc")
-        return order, f"지정가 {format_upbit_price(limit_px)}원 (5천원 미만)"
+    return SellOutcome(
+        order=order,
+        mode=mode,
+        filled=False,
+        pending=True,
+        min_bid_for_market=min_bid,
+        limit_price_krw=limit_px,
+    )
+
+
+def set_pending_exit(
+    live_meta: dict,
+    symbol: str,
+    *,
+    reason: str,
+    min_bid_krw: float,
+    limit_price_krw: float,
+) -> None:
+    sym = symbol.upper()
+    live_meta.setdefault("positions_meta", {}).setdefault(sym, {})[
+        "pending_exit"
+    ] = {
+        "reason": reason,
+        "min_bid_krw": round(min_bid_krw, 4),
+        "limit_price_krw": round(limit_price_krw, 4),
+    }
+
+
+def clear_pending_exit(live_meta: dict, symbol: str) -> None:
+    sym = symbol.upper()
+    pm = live_meta.get("positions_meta", {}).get(sym)
+    if isinstance(pm, dict):
+        pm.pop("pending_exit", None)
+
+
+def get_pending_exit(live_meta: dict, symbol: str) -> dict | None:
+    sym = symbol.upper()
+    pm = live_meta.get("positions_meta", {}).get(sym, {})
+    pe = pm.get("pending_exit") if isinstance(pm, dict) else None
+    return pe if isinstance(pe, dict) else None

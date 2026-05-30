@@ -1,6 +1,7 @@
 /** 서버 AIDI_BUILD 가 손익절 %·수동지정 API 를 포함하는지 */
 
 const NEW_ENOUGH_MARKERS = [
+  "small-sell-retry",
   "small-sell-limit",
   "sl-tp-apply-sell",
   "sl-tp-pct",

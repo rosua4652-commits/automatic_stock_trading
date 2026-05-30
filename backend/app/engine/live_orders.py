@@ -9,7 +9,16 @@ from app.engine.portfolio_store import store
 from app.market.upbit_data import market
 from app.market.coin_registry import coin_meta
 from app.market.upbit_client import symbol_to_upbit, upbit_client
-from app.market.upbit_sell import MIN_MARKET_ASK_KRW, smart_sell
+from app.market.upbit_sell import (
+    MIN_MARKET_ASK_KRW,
+    clear_pending_exit,
+    format_upbit_price,
+    get_pending_exit,
+    min_bid_for_market_sell,
+    order_executed_qty,
+    set_pending_exit,
+    smart_sell,
+)
 from app.models import AppConfig, Position, TradeEvent
 from app.storage.credentials import get_active_keys
 from app.config import settings
@@ -159,19 +168,36 @@ async def live_market_sell(
             bid_hint = pos.current_price_krw
         elif pos.current_price > 0 and portfolio.usdt_krw > 0:
             bid_hint = pos.current_price * portfolio.usdt_krw
-        order, sell_mode = await smart_sell(
+        outcome = await smart_sell(
             upbit_client, upbit_market, sell_qty, bid_hint_krw=bid_hint
         )
-        executed_qty = float(order.get("executed_volume") or 0)
-        state = str(order.get("state") or "")
-        if executed_qty <= sell_qty * 1e-6 and state in ("wait", "watch"):
+        order = outcome.order
+        sell_mode = outcome.mode
+        executed_qty = order_executed_qty(order)
+        if outcome.pending and executed_qty <= sell_qty * 1e-6:
+            meta = store._live_meta
+            need_bid = outcome.min_bid_for_market or min_bid_for_market_sell(
+                sell_qty
+            )
+            set_pending_exit(
+                meta,
+                sym,
+                reason=reason,
+                min_bid_krw=need_bid,
+                limit_price_krw=outcome.limit_price_krw,
+            )
+            save_live_meta(meta)
+            need_tick = format_upbit_price(need_bid)
+            lim = format_upbit_price(outcome.limit_price_krw)
             return (
-                False,
-                f"평가 {int(MIN_MARKET_ASK_KRW):,}원 미만 — {sell_mode} 접수(미체결). "
-                "업비트 앱·미체결 탭에서 확인하세요.",
+                True,
+                f"소액 포지션 — {lim}원 지정가 접수·감시 중 "
+                f"(매수호가 {need_tick}원↑ 시 시장가 자동 재시도). "
+                "업비트 앱 미체결에서도 확인 가능.",
             )
         if executed_qty <= sell_qty * 1e-6:
             return False, f"매도 체결 없음 ({sell_mode})"
+        clear_pending_exit(store._live_meta, sym)
         quote_krw = executed_qty * pos.current_price * portfolio.usdt_krw
         if order.get("trades"):
             quote_krw = sum(float(t.get("funds", 0)) for t in order["trades"])
@@ -211,3 +237,51 @@ async def live_market_sell(
     kind = "AI" if auto_only else "수동"
     tail = f" · {sell_mode}" if sell_mode != "시장가" else ""
     return True, f"[{label}] 실거래 {kind} 매도 · {executed_qty:.6f}{tail}"
+
+
+async def retry_pending_exit_sells(config: AppConfig) -> None:
+    """소액 pending_exit — 매수호가×수량이 5천원 이상이면 시장가 재시도."""
+    meta = store._live_meta
+    portfolio = store.live
+    pending_syms = []
+    for sym, pm in (meta.get("positions_meta") or {}).items():
+        if isinstance(pm, dict) and pm.get("pending_exit"):
+            pending_syms.append(sym.upper())
+    if not pending_syms:
+        return
+
+    ak, sk = get_active_keys(config)
+    if not ak or not sk:
+        return
+
+    from app.market.upbit_markets import get_upbit_krw_markets, resolve_upbit_market
+    from app.market.upbit_sell import fetch_orderbook_top
+
+    upbit_client.configure(ak, sk)
+    markets = await get_upbit_krw_markets()
+
+    for sym in pending_syms:
+        pos = portfolio.positions.get(sym)
+        pe = get_pending_exit(meta, sym)
+        if not pe or not pos or pos.quantity <= 1e-12:
+            clear_pending_exit(meta, sym)
+            continue
+        upbit_market = resolve_upbit_market(sym, markets)
+        if not upbit_market:
+            continue
+        qty = pos.exchange_quantity or pos.quantity
+        bid, _ = await fetch_orderbook_top(upbit_client, upbit_market)
+        if bid <= 0 or qty * bid < MIN_MARKET_ASK_KRW - 0.5:
+            continue
+        qty_before = pos.quantity
+        reason = str(pe.get("reason") or "대기 매도")
+        ok, _msg = await live_market_sell(
+            config, sym, 100.0, reason, auto_only=False
+        )
+        if not ok:
+            continue
+        await sync_live_portfolio(portfolio, config, meta)
+        pos_after = portfolio.positions.get(sym)
+        if not pos_after or pos_after.quantity < qty_before * 0.5:
+            clear_pending_exit(meta, sym)
+            save_live_meta(meta)

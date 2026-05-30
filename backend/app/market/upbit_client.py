@@ -157,6 +157,53 @@ class UpbitClient:
         }
         return await self._auth_post("/v1/orders", body)
 
+    async def open_orders(self, market: str | None = None) -> list[dict]:
+        params: dict[str, str] = {"state": "wait"}
+        if market:
+            params["market"] = market
+        rows = await self._auth_get("/v1/orders", params)
+        return rows if isinstance(rows, list) else []
+
+    async def cancel_order(self, uuid: str) -> dict:
+        return await self._auth_delete_order(uuid)
+
+    async def _auth_delete(self, path: str, params: dict) -> Any:
+        if not self.is_configured():
+            raise RuntimeError("Upbit API 키가 없습니다")
+        client = await self._ensure()
+        qs = build_query_string(params)
+        headers = self._headers(qs)
+        resp = await client.delete(f"{path}?{qs}", headers=headers)
+        if resp.status_code >= 400:
+            raise await parse_upbit_error(resp.text, mask_key(self._access, 4))
+        return resp.json()
+
+    async def _auth_delete_order(self, uuid: str) -> dict:
+        return await self._auth_delete("/v1/order", {"uuid": uuid})
+
+    async def cancel_open_orders(
+        self, market: str, *, side: str | None = None
+    ) -> int:
+        n = 0
+        for row in await self.open_orders(market):
+            if side and str(row.get("side") or "").lower() != side.lower():
+                continue
+            uid = row.get("uuid")
+            if uid:
+                await self.cancel_order(str(uid))
+                n += 1
+        return n
+
+    async def best_sell(self, market: str, volume: float) -> dict:
+        vol = f"{volume:.8f}".rstrip("0").rstrip(".")
+        body = {
+            "market": market,
+            "side": "ask",
+            "ord_type": "best",
+            "volume": vol,
+        }
+        return await self._auth_post("/v1/orders", body)
+
     async def limit_sell(
         self,
         market: str,
