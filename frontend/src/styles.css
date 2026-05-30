@@ -652,10 +652,9 @@ body {
 
 .coin-detail-wrap {
   flex-shrink: 0;
-  max-height: min(32vh, 240px);
-  overflow-y: auto;
   border-bottom: 1px solid var(--border);
   background: var(--surface);
+  /* 높이 제한·내부 스크롤 없음 — 매수 UI가 아래로 자연스럽게 늘어남 */
 }
 
 .coin-trade-bar {
@@ -1217,15 +1216,22 @@ body {
   min-height: 0;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 .chart-layout {
-  flex: 1;
-  min-height: 0;
+  flex: 1 1 auto;
+  min-height: min-content;
   display: grid;
-  grid-template-columns: minmax(200px, 240px) minmax(0, 1fr);
-  overflow: hidden;
+  grid-template-columns: minmax(200px, 260px) minmax(0, 1fr);
+  align-items: start;
+  overflow: visible;
+}
+
+main.layout.chart-layout {
+  min-height: min-content;
+  overflow: visible;
 }
 
 .chart-column {
@@ -1233,7 +1239,9 @@ body {
   flex-direction: column;
   min-height: 0;
   min-width: 0;
-  overflow: hidden;
+  overflow: visible;
+  /* 차트는 남은 높이를 쓰되, 상단 매매 패널은 내용만큼 아래로 확장 */
+  min-height: min(70vh, 720px);
 }
 
 .layout {
@@ -1251,15 +1259,13 @@ body {
   display: flex;
   flex-direction: column;
   gap: 0.4rem;
-  overflow: hidden;
+  overflow: visible;
   min-height: 0;
 }
 
 .side-panel-scroll {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  overflow-x: hidden;
+  flex: none;
+  overflow: visible;
 }
 
 .portfolio-panel {
@@ -1273,9 +1279,8 @@ body {
 }
 
 .panel-block.scroll {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
+  flex: none;
+  overflow: visible;
 }
 
 .panel-block h3 {
@@ -2187,11 +2192,11 @@ body {
   .side-panel {
     border-right: none;
     border-bottom: 1px solid var(--border);
-    max-height: 34%;
+    max-height: none;
   }
 
-  .coin-detail-wrap {
-    max-height: 28vh;
+  .chart-column {
+    min-height: 50vh;
   }
 
   .hero-inline {
