@@ -2,6 +2,10 @@ import asyncio
 import time
 from typing import Callable, Optional
 
+from app.engine.exit_rules import (
+    config_exit_triggered,
+    custom_exit_triggered,
+)
 from app.engine.live_orders import live_market_buy, live_market_sell
 from app.engine.portfolio import PortfolioManager
 from app.engine.portfolio_store import store
@@ -520,36 +524,87 @@ class TradingEngine:
                 continue
             await self._manage_exit(sym, price)
 
-    async def _manage_exit(self, symbol: str, price: float) -> None:
+    async def _manage_exit(self, symbol: str, price: float) -> bool:
+        """손익절 조건이면 매도 실행. True=매도 성공."""
         pos = self.portfolio.positions.get(symbol)
         if not pos:
-            return
-        pos.current_price = price
+            return False
+        if price > 0:
+            pos.current_price = price
+            rate = max(self.portfolio.usdt_krw, 1.0)
+            if getattr(pos, "data_source", "") == "upbit":
+                pos.current_price_krw = price * rate
+
+        rate = max(self.portfolio.usdt_krw, 1.0)
 
         if pos.custom_sl_tp:
-            if pos.stop_loss > 0 and price <= pos.stop_loss * 1.0001:
-                await self._auto_sell(symbol, "손절(지정가)", full=True)
-                return
-            if pos.take_profit > 0 and price >= pos.take_profit * 0.9999:
-                await self._auto_sell(symbol, "익절(지정가)", full=True)
-            return
+            hit, reason = custom_exit_triggered(
+                pos, price, rate, self.config
+            )
+            if hit:
+                return await self._auto_sell(symbol, reason, full=True)
+            return False
 
         if pos.auto_quantity > 1e-10 and not pos.excluded_from_auto:
             await self._manage_position(symbol, price)
-            return
+            return False
 
-        entry = pos.avg_price or pos.current_price
-        if entry <= 0:
-            return
-        sl_ratio = self.config.stop_loss_pct / 100
-        tp_ratio = self.config.take_profit_pct / 100
-        pos.stop_loss = entry * (1 - sl_ratio)
-        pos.take_profit = entry * (1 + tp_ratio)
-        pnl = (price - entry) / entry
-        if pnl <= -sl_ratio:
-            await self._auto_sell(symbol, "손절", full=True)
-        elif pnl >= tp_ratio:
-            await self._auto_sell(symbol, "익절", full=True)
+        hit, reason = config_exit_triggered(pos, price, rate, self.config)
+        if hit:
+            return await self._auto_sell(symbol, reason, full=True)
+        return False
+
+    async def _try_immediate_exit_on_apply(self, symbol: str) -> str | None:
+        """손익절 적용 직후 — 이미 범위 안이면 즉시 매도."""
+        sym = symbol.upper()
+        pos = self.portfolio.positions.get(sym)
+        if not pos or pos.quantity <= 1e-12:
+            return None
+
+        if self.portfolio.usdt_krw <= 0:
+            self.portfolio.usdt_krw = await market.usdt_krw_rate()
+
+        tickers = await market.tickers_for_symbols([sym])
+        price = await self._price_for_symbol(sym, tickers)
+        if price <= 0 and pos.current_price > 0:
+            price = pos.current_price
+        if price <= 0 and pos.current_price_krw > 0 and self.portfolio.usdt_krw > 0:
+            price = pos.current_price_krw / self.portfolio.usdt_krw
+        if price <= 0:
+            return None
+
+        rate = max(self.portfolio.usdt_krw, 1.0)
+        if pos.custom_sl_tp:
+            hit, reason = custom_exit_triggered(pos, price, rate, self.config)
+        else:
+            hit, reason = config_exit_triggered(pos, price, rate, self.config)
+        if not hit:
+            return None
+
+        qty_before = pos.quantity
+        sold = await self._auto_sell(sym, reason, full=True)
+        self.bind_portfolio()
+
+        if self._is_live():
+            await store.sync_live(self.config)
+            self.bind_portfolio()
+        else:
+            self._persist()
+
+        pos_after = self.portfolio.positions.get(sym)
+        if not sold or (pos_after and pos_after.quantity >= qty_before * 0.99):
+            fail = (self.bot.message or "").strip()
+            if fail:
+                return fail
+            return (
+                f"{pos.display} — 손익절 범위이나 매도 실패 "
+                "(API·최소주문·잔고 확인)"
+            )
+
+        self.bot.recent_trades = self.portfolio.trades[-30:]
+        self._bump_version()
+        self._notify()
+        return f"{pos.display} — 현재가가 손익절 범위 안 · 즉시 전량 매도 완료"
 
     async def apply_recommendations(
         self,
@@ -710,16 +765,34 @@ class TradingEngine:
         if not pos:
             return False, "보유하지 않은 코인입니다"
         self._persist()
+        self.ensure_auto_guard()
+
+        immediate = await self._try_immediate_exit_on_apply(sym)
+        if immediate:
+            if "즉시 전량 매도 완료" in immediate:
+                return True, immediate
+            return False, immediate
+
         if self._is_live():
             await store.sync_live(self.config)
             self.bind_portfolio()
-        self.ensure_auto_guard()
+            pos = self.portfolio.positions.get(sym) or pos
+            immediate2 = await self._try_immediate_exit_on_apply(sym)
+            if immediate2:
+                if "즉시 전량 매도 완료" in immediate2:
+                    return True, immediate2
+                return False, immediate2
+
+        if not self._is_live():
+            self._persist()
+
         if custom_sl_tp:
             sl_p = pos.custom_stop_loss_pct or self.config.stop_loss_pct
             tp_p = pos.custom_take_profit_pct or self.config.take_profit_pct
             return (
                 True,
-                f"{pos.display} — 손절 -{sl_p:g}% / 익절 +{tp_p:g}% 수동 지정 · 도달 시 자동 매도",
+                f"{pos.display} — 손절 -{sl_p:g}% / 익절 +{tp_p:g}% 적용 · "
+                f"범위 도달 시 자동 매도 (감시 중)",
             )
         return (
             True,
@@ -780,7 +853,7 @@ class TradingEngine:
         if auto_pnl <= -0.12:
             await self._auto_sell(symbol, "급락 방어")
 
-    async def _auto_sell(self, symbol: str, reason: str, *, full: bool = False) -> None:
+    async def _auto_sell(self, symbol: str, reason: str, *, full: bool = False) -> bool:
         sym = symbol.upper()
         if self._is_live():
             ok, msg = await live_market_sell(
@@ -796,26 +869,25 @@ class TradingEngine:
                 self.bot.message = f"{sym} {reason} 자동 매도 완료"
                 self._bump_version()
                 self._notify()
-            else:
-                self.bot.message = f"{sym} {reason} 자동 매도 실패: {msg}"
-                self._notify()
-        else:
-            tickers = await market.tickers_24h()
-            px = await self._price_for_symbol(sym, tickers)
-            if px <= 0:
-                pos = self.portfolio.positions.get(sym)
-                px = pos.current_price if pos else 0.0
-            if px > 0 and self.portfolio.sell(
-                sym, px, reason, auto_only=not full
-            ):
-                self._persist()
-                self.bot.recent_trades = self.portfolio.trades[-30:]
-                self.bot.message = f"{sym} {reason} 자동 매도 완료"
-                self._bump_version()
-                self._notify()
-            else:
-                self.bot.message = f"{sym} {reason} 자동 매도 실패 (시세 없음)"
-                self._notify()
+                return True
+            self.bot.message = f"{sym} {reason} 자동 매도 실패: {msg}"
+            self._notify()
+            return False
+        tickers = await market.tickers_for_symbols([sym])
+        px = await self._price_for_symbol(sym, tickers)
+        if px <= 0:
+            pos = self.portfolio.positions.get(sym)
+            px = pos.current_price if pos else 0.0
+        if px > 0 and self.portfolio.sell(sym, px, reason, auto_only=not full):
+            self._persist()
+            self.bot.recent_trades = self.portfolio.trades[-30:]
+            self.bot.message = f"{sym} {reason} 자동 매도 완료"
+            self._bump_version()
+            self._notify()
+            return True
+        self.bot.message = f"{sym} {reason} 자동 매도 실패 (시세 없음)"
+        self._notify()
+        return False
 
     async def get_candles(self, symbol: str, interval: str = "1h") -> list[dict]:
         iv = interval.lower()
