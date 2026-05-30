@@ -39,6 +39,9 @@ from app.storage.credentials import load_credentials, mask_key
 
 STATIC_DIR = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
 
+# PC에서 run.bat 시작 시 표시 — GitHub 최신과 비교용
+AIDI_BUILD = "2026-03-24-pc-upbit"
+
 engine = TradingEngine()
 _ws_clients: set[WebSocket] = set()
 _broadcast_task: asyncio.Task | None = None
@@ -189,6 +192,20 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@api.get("/version")
+async def api_version():
+    return {
+        "build": AIDI_BUILD,
+        "app": app.version,
+        "ok": True,
+        "features": {
+            "network_routes": True,
+            "upbit_probe": True,
+            "status_network_field": True,
+        },
+    }
 
 
 @api.get("/status")

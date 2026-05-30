@@ -79,6 +79,18 @@ if not exist "frontend\dist\index.html" goto :no_dist
 if not exist "backend\data" mkdir "backend\data"
 
 echo.
+echo  Build check...
+"backend\.venv\Scripts\python.exe" -c "from app.main import AIDI_BUILD; print('  AIDI_BUILD =', AIDI_BUILD)" 2>nul
+if errorlevel 1 (
+  echo   WARNING: Old code - no AIDI_BUILD. Use update-windows.bat or latest ZIP from GitHub.
+) else (
+  "backend\.venv\Scripts\python.exe" -c "from app.main import AIDI_BUILD; import sys; sys.exit(0 if AIDI_BUILD=='2026-03-24-pc-upbit' else 1)" 2>nul
+  if errorlevel 1 (
+    echo   WARNING: This folder is not the latest build. Run update-windows.bat
+  )
+)
+
+echo.
 echo  Open in browser: http://127.0.0.1:%PORT%
 echo  Tablet same Wi-Fi: http://YOUR-PC-IP:%PORT%
 echo  Stop server: Ctrl+C in this window

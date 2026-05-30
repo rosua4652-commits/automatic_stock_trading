@@ -1,0 +1,41 @@
+========================================
+  AIDI — PC 폴더 (6) 에서 실행할 때
+========================================
+
+올바른 폴더 (run.bat 이 있는 곳):
+  C:\Users\dongil-3\Downloads\automatic_stock_trading-main (6)\automatic_stock_trading-main
+
+※ 상위 "(6)" 폴더가 아니라, 안쪽 automatic_stock_trading-main 에서 run.bat 실행
+
+
+[증상] check-upbit-ip 에서 {"error":"not found"}
+→ 이 ZIP/폴더가 예전 버전입니다. IP/API가 맞아도 AIDI 코드가 구버전이면 연동 실패합니다.
+
+
+[해결 1] 같은 폴더에서 업데이트 (git 설치된 경우)
+  1. run.bat 창 Ctrl+C 로 종료
+  2. update-windows.bat 더블클릭
+  3. run.bat 다시 실행
+  4. check-build.bat → build 가 2026-03-24-pc-upbit 인지 확인
+
+
+[해결 2] ZIP 새로 받기 (가장 확실)
+  1. https://github.com/rosua4652-commits/automatic_stock_trading
+     → Code → Download ZIP
+  2. 압축 해제 후 frontend\dist 가 있는지 확인
+  3. 예전 (6) 폴더 대신 새 폴더에서 run.bat 실행
+  4. backend\data\credentials.json 만 필요하면 복사 (키 파일)
+
+
+[업비트 키]
+  1. 설정 → Access + Secret 둘 다 붙여넣기 → 저장
+  2. 연결 테스트
+  3. probe-upbit.bat (서버 꺼져 있어도 됨) → saved_access_key 가 업비트 키와 같은지
+
+
+[빌드 확인]
+  - check-build.bat
+  - 브라우저: http://127.0.0.1:8000/api/version
+    → "build":"2026-03-24-pc-upbit" 이어야 최신
+
+========================================
