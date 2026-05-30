@@ -6,6 +6,16 @@
 
 ## 실행
 
+### Windows
+
+1. [Python 3.11+](https://www.python.org/downloads/) 설치 (PATH 추가)
+2. 프로젝트 폴더에서 **`run.bat`** 더블클릭  
+   자세한 내용: **`WINDOWS_설치안내.md`**
+
+브라우저: http://localhost:8000
+
+### Mac / Linux
+
 ```bash
 chmod +x run.sh
 ./run.sh
