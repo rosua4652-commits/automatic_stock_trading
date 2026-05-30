@@ -455,7 +455,10 @@ class TradingEngine:
                 self.bot.recent_trades = self.portfolio.trades[-30:]
 
     async def get_candles(self, symbol: str, interval: str = "1h") -> list[dict]:
-        raw = await binance.klines(symbol, interval, 200)
+        iv = interval.lower()
+        limits = {"1s": 600, "1m": 500, "15m": 300, "1h": 200, "4h": 200, "1d": 200}
+        limit = limits.get(iv, 200)
+        raw = await binance.klines(symbol, iv, limit)
         candles = [
             {
                 "time": int(r[0] // 1000),

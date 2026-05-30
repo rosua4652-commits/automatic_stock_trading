@@ -18,6 +18,8 @@ type Props = {
 };
 
 const INTERVALS = [
+  { v: "1s", label: "1초" },
+  { v: "1m", label: "1분" },
   { v: "15m", label: "15분" },
   { v: "1h", label: "1시간" },
   { v: "4h", label: "4시간" },
@@ -166,6 +168,22 @@ export default function ChartPanel({
     candleCountRef.current = cs.length;
     applyVisibleRange(cs.length, visibleBars);
   }, [candles, visibleBars]);
+
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart) return;
+    const isSec = chartInterval === "1s";
+    const isMin = chartInterval === "1m";
+    chart.timeScale().applyOptions({
+      secondsVisible: isSec,
+      timeVisible: true,
+      barSpacing: isSec ? 4 : isMin ? 5 : 8,
+      minBarSpacing: isSec ? 2 : 3,
+    });
+    if (candleCountRef.current > 0) {
+      applyVisibleRange(candleCountRef.current, visibleBars);
+    }
+  }, [chartInterval, visibleBars]);
 
   const setVisibleBars = (bars: number) => {
     setVisibleBarsState(bars);

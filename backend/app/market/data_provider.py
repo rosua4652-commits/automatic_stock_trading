@@ -170,15 +170,24 @@ class MarketDataProvider:
         self, symbol: str, price: float, interval: str, limit: int
     ) -> list[list]:
         rng = random.Random(hash(symbol) + limit)
-        step_ms = {"15m": 900_000, "1h": 3_600_000, "4h": 14_400_000, "1d": 86_400_000}.get(
-            interval, 3_600_000
-        )
+        step_ms = {
+            "1s": 1_000,
+            "1m": 60_000,
+            "15m": 900_000,
+            "1h": 3_600_000,
+            "4h": 14_400_000,
+            "1d": 86_400_000,
+        }.get(interval, 3_600_000)
+        vol_scale = {
+            "1s": (-0.0008, 0.0008),
+            "1m": (-0.004, 0.004),
+        }.get(interval, (-0.018, 0.022))
         now = int(time.time() * 1000)
         rows = []
         p = price * 0.92
         for i in range(limit):
             ts = now - (limit - i) * step_ms
-            change = rng.uniform(-0.018, 0.022)
+            change = rng.uniform(vol_scale[0], vol_scale[1])
             o = p
             c = p * (1 + change)
             h = max(o, c) * (1 + rng.uniform(0, 0.008))

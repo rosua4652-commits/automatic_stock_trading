@@ -222,15 +222,19 @@ async def force_sync():
     return status
 
 
+_CHART_INTERVALS = frozenset({"1s", "1m", "15m", "1h", "4h", "1d"})
+
+
 @api.get("/chart/{symbol}")
 async def chart(symbol: str, interval: str = "1h"):
     engine.bind_portfolio()
     sym = symbol.upper()
-    data = await engine.get_candles(sym, interval)
+    iv = interval.lower() if interval.lower() in _CHART_INTERVALS else "1h"
+    data = await engine.get_candles(sym, iv)
     markers = [m.model_dump() for m in engine.portfolio.chart_markers(sym)]
     return {
         "symbol": sym,
-        "interval": interval,
+        "interval": iv,
         "candles": data,
         "markers": markers,
     }
