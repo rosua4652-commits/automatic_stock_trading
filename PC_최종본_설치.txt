@@ -5,11 +5,10 @@ AIDI PC 최종본 — dongil-3 / automatic_stock_trading-main (3)
    C:\Users\dongil-3\Downloads\automatic_stock_trading-main (3)\automatic_stock_trading-main
    안에 run.bat, backend\app\main.py 가 있어야 합니다.
 
-2) GitHub 최신 코드 받기
-   A) sync-pc-from-github.bat  (Git 설치된 경우)
-   B) 없으면 https://github.com/rosua4652-commits/automatic_stock_trading
-      → Code → Download ZIP → 압축 해제 후 (3) 폴더에 덮어쓰기
-      → credentials.json 만 백업 후 복원
+2) GitHub 최신 코드 → PC 폴더에 복사 (필수)
+   A) download-latest-pc.bat  ← 이걸 실행해야 PC 파일이 바뀜
+   B) bat 없으면: PC_지금_업데이트.txt 참고 (curl + PowerShell)
+   C) 수동 ZIP: GitHub → Download ZIP → (3) 폴더에 덮어쓰기
 
 3) 실행
    SETUP_PC.bat  또는  run.bat

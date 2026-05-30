@@ -16,31 +16,23 @@ if exist "pc-path.txt" (
 )
 
 where git >nul 2>&1
-if errorlevel 1 goto no_git
+if errorlevel 1 goto use_download
 
 echo [git pull origin main]
 git pull origin main
-if errorlevel 1 goto pull_fail
+if errorlevel 1 goto use_download
 
 echo.
 echo  OK. Next: run SETUP_PC.bat or run.bat
-echo  Keep backend\data\credentials.json if you had API keys saved.
 echo.
 pause
 exit /b 0
 
-:no_git
-echo git not found. Download ZIP from:
-echo   https://github.com/rosua4652-commits/automatic_stock_trading
-echo Extract over THIS folder ^(keep backend\data\credentials.json^).
+:use_download
+echo git 없거나 pull 실패 - download-latest-pc.bat 으로 PC 파일을 받습니다.
 echo.
-pause
-exit /b 1
-
-:pull_fail
-echo git pull failed. Use ZIP download instead.
-pause
-exit /b 1
+call "%~dp0download-latest-pc.bat"
+exit /b %ERRORLEVEL%
 
 :wrongfolder
 echo ERROR: backend\app\main.py not found.

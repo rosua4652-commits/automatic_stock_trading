@@ -10,10 +10,11 @@
 
 
 [PC에 최종본 맞추기 — 순서]
+  ※ GitHub 커밋만으로는 PC 파일이 안 바뀝니다. 반드시 2번 실행!
 
   1. run.bat 이 돌아가 중이면 Ctrl+C 로 종료
-  2. sync-pc-from-github.bat 더블클릭 (git 있으면 pull)
-     - git 없으면: GitHub ZIP 받아 이 (3) 폴더에 덮어쓰기
+  2. download-latest-pc.bat 더블클릭  ← PC 파일 실제 업데이트
+     (없으면 PC_지금_업데이트.txt 의 CMD 방법 B)
   3. SETUP_PC.bat 또는 run.bat 실행
   4. check-build.bat → build: 2026-03-30-pc-dongil3-final
   5. probe-upbit.bat → 업비트 연동 확인
