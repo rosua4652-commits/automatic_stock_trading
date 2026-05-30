@@ -11,6 +11,7 @@ type Props = {
   manualMode: boolean;
   onManualBuy: (symbol: string, amountKrw: number) => Promise<void>;
   onManualSell: (symbol: string, percent: number) => Promise<void>;
+  onSellAll?: () => void;
   onSelectChart: (symbol: string) => void;
   onExclude: (symbol: string, exclude: boolean) => Promise<void>;
   busy: boolean;
@@ -155,6 +156,7 @@ export default function FundsTab({
   manualMode,
   onManualBuy,
   onManualSell,
+  onSellAll,
   onSelectChart,
   onExclude,
   busy,
@@ -254,7 +256,19 @@ export default function FundsTab({
       )}
 
       <section className="funds-positions">
-        <h3>보유 코인 상세</h3>
+        <div className="panel-block-head">
+          <h3>보유 코인 상세</h3>
+          {portfolio.positions.length > 0 && canTrade && onSellAll && (
+            <button
+              type="button"
+              className="btn-sell-all"
+              disabled={busy}
+              onClick={onSellAll}
+            >
+              전체 매도 (100%)
+            </button>
+          )}
+        </div>
         {portfolio.positions.length === 0 ? (
           <p className="empty">보유 중인 코인이 없습니다</p>
         ) : (

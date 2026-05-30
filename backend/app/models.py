@@ -262,6 +262,10 @@ class ManualSellRequest(BaseModel):
     from_auto_only: bool = False
 
 
+class SellAllRequest(BaseModel):
+    percent: float = Field(default=100.0, ge=1.0, le=100.0)
+
+
 class PositionExcludeRequest(BaseModel):
     exclude: bool
 

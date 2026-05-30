@@ -1,5 +1,14 @@
-import type { CoinView } from "../types";
-import { entryBadge, fmtKrw, fmtPct, fmtUsd, isRunning } from "../utils";
+import type { AppConfig, CoinView, InvestmentRecommendation } from "../types";
+import {
+  entryBadge,
+  fmtKrw,
+  fmtPct,
+  fmtUsd,
+  isRunning,
+  MIN_BUY_KRW,
+  positionTpSl,
+  recommendationTpSl,
+} from "../utils";
 import CoinTradeBar from "./CoinTradeBar";
 
 type Props = {
@@ -9,7 +18,8 @@ type Props = {
   canTrade: boolean;
   busy: boolean;
   cashKrw: number;
-  recommendation?: import("../types").InvestmentRecommendation | null;
+  config: AppConfig;
+  recommendation?: InvestmentRecommendation | null;
   onBuy: (symbol: string, amountKrw: number) => Promise<void>;
   onSell: (symbol: string, percent: number) => Promise<void>;
 };
@@ -21,6 +31,7 @@ export default function CoinDetailBar({
   canTrade,
   busy,
   cashKrw,
+  config,
   recommendation,
   onBuy,
   onSell,
@@ -28,6 +39,24 @@ export default function CoinDetailBar({
   const { meta, price_usdt, change_24h, in_portfolio, position, candidate } = view;
   const running = isRunning(botStatus);
   const entry = entryBadge(candidate ?? undefined);
+
+  const heldTpSl = position ? positionTpSl(position) : null;
+  const previewAmt =
+    recommendation && recommendation.amount_krw >= MIN_BUY_KRW
+      ? recommendation.amount_krw
+      : 0;
+  const previewTpSl =
+    !in_portfolio && previewAmt > 0
+      ? recommendationTpSl(
+          recommendation,
+          price_usdt,
+          previewAmt,
+          config.stop_loss_pct,
+          config.take_profit_pct
+        )
+      : null;
+  const tpSl = heldTpSl?.hasLevels ? heldTpSl : previewTpSl?.hasLevels ? previewTpSl : null;
+  const tpSlAuto = !!position && position.auto_quantity > 0 && position.stop_loss > 0;
 
   return (
     <div className="coin-detail-wrap">
@@ -59,6 +88,33 @@ export default function CoinDetailBar({
               {fmtKrw(position.pnl_krw)}원 ({fmtPct(position.pnl_pct)})
             </span>
           </div>
+        )}
+
+        {tpSl && (
+          <div className="coin-detail-tpsl">
+            <span className="tpsl-tag">
+              {in_portfolio
+                ? tpSlAuto
+                  ? "자동 익절·손절"
+                  : "익절·손절 기준"
+                : "승인 시 익절·손절"}
+            </span>
+            <span className="tpsl-line">
+              <span className="up">
+                익절 +{fmtKrw(tpSl.take_profit_krw)}원
+                {tpSl.take_profit > 0 ? ` ($${fmtUsd(tpSl.take_profit)})` : ""}
+              </span>
+              <span className="tpsl-sep">/</span>
+              <span className="down">
+                손절 -{fmtKrw(tpSl.stop_loss_krw)}원
+                {tpSl.stop_loss > 0 ? ` ($${fmtUsd(tpSl.stop_loss)})` : ""}
+              </span>
+            </span>
+          </div>
+        )}
+
+        {in_portfolio && position && !heldTpSl?.hasLevels && (
+          <p className="coin-detail-mini dim">수동 매수 — 익절·손절 자동 없음</p>
         )}
 
         {!in_portfolio && candidate && (

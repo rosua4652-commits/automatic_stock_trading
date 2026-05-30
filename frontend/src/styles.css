@@ -652,6 +652,70 @@ body {
   color: var(--muted);
 }
 
+.coin-detail-tpsl {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem 0.5rem;
+  font-size: 0.68rem;
+  padding: 0.35rem 0.45rem;
+  background: rgba(59, 158, 255, 0.06);
+  border-radius: 6px;
+  border: 1px solid var(--border);
+}
+
+.coin-detail-tpsl .tpsl-tag {
+  font-weight: 600;
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+.coin-detail-tpsl .tpsl-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem;
+}
+
+.coin-detail-tpsl .tpsl-sep {
+  color: var(--muted);
+  opacity: 0.6;
+}
+
+.panel-block-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.panel-block-head h3 {
+  margin: 0;
+}
+
+.btn-sell-all {
+  padding: 0.28rem 0.55rem;
+  font-size: 0.68rem;
+  font-weight: 600;
+  border-radius: 6px;
+  border: 1px solid rgba(248, 113, 113, 0.45);
+  background: rgba(248, 113, 113, 0.12);
+  color: #f87171;
+  cursor: pointer;
+  font-family: inherit;
+  white-space: nowrap;
+}
+
+.btn-sell-all:hover:not(:disabled) {
+  background: rgba(248, 113, 113, 0.22);
+}
+
+.btn-sell-all:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .coin-detail-mini {
   font-size: 0.68rem;
   color: var(--muted);

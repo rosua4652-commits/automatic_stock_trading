@@ -125,6 +125,14 @@ export async function manualSell(
   });
 }
 
+export async function sellAll(percent = 100): Promise<StatusPayload> {
+  return request("/api/trade/sell-all", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ percent }),
+  });
+}
+
 export function connectWs(
   onMessage: (data: StatusPayload) => void,
   onError?: () => void

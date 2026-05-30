@@ -6,6 +6,7 @@ import {
   fetchStatus,
   manualBuy,
   manualSell,
+  sellAll,
   saveConfig,
   setPositionExclude,
   setViewSymbol,
@@ -235,6 +236,31 @@ export default function App() {
       showToast(s.message || "매도 완료");
     } catch (e) {
       showToast(e instanceof Error ? e.message : "매도 실패");
+    } finally {
+      setTradeBusy(false);
+    }
+  };
+
+  const handleSellAll = async () => {
+    const n = data?.portfolio.positions.length ?? 0;
+    if (n === 0) {
+      showToast("보유 코인이 없습니다");
+      return;
+    }
+    if (
+      !window.confirm(
+        `보유 중인 ${n}개 코인을 100% 전체 매도하시겠습니까?\n(실거래·모의 모두 즉시 체결됩니다)`
+      )
+    ) {
+      return;
+    }
+    setTradeBusy(true);
+    try {
+      const s = await sellAll(100);
+      applyPayload(s);
+      showToast(s.message || "전체 매도 완료");
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "전체 매도 실패");
     } finally {
       setTradeBusy(false);
     }
@@ -483,6 +509,7 @@ export default function App() {
                   canTrade={canTrade}
                   busy={tradeBusy}
                   onQuickBuy={handleQuickBuy}
+                  onSellAll={handleSellAll}
                 />
                 <EntryOpportunitiesPanel
                   list={editableRecs}
@@ -505,6 +532,7 @@ export default function App() {
                 canTrade={canTrade}
                 busy={tradeBusy}
                 cashKrw={data.portfolio.cash_krw}
+                config={appConfig}
                 recommendation={activeRec}
                 onBuy={handleManualBuy}
                 onSell={handleManualSell}
@@ -543,6 +571,7 @@ export default function App() {
             manualMode={data.bot.manual_mode}
             onManualBuy={handleManualBuy}
             onManualSell={handleManualSell}
+            onSellAll={handleSellAll}
             onSelectChart={goChart}
             onExclude={async (sym, ex) => {
               setTradeBusy(true);

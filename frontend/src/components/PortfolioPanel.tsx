@@ -11,6 +11,7 @@ type Props = {
   canTrade: boolean;
   busy: boolean;
   onQuickBuy: (symbol: string) => void;
+  onSellAll?: () => void;
 };
 
 export default function PortfolioPanel({
@@ -22,6 +23,7 @@ export default function PortfolioPanel({
   canTrade,
   busy,
   onQuickBuy,
+  onSellAll,
 }: Props) {
   const pnl = portfolio.unrealized_pnl_krw + portfolio.realized_pnl_krw;
   const pnlClass = pnl >= 0 ? "up" : "down";
@@ -63,7 +65,19 @@ export default function PortfolioPanel({
       </section>
 
       <section className="panel-block">
-        <h3>보유 코인</h3>
+        <div className="panel-block-head">
+          <h3>보유 코인</h3>
+          {portfolio.positions.length > 0 && canTrade && onSellAll && (
+            <button
+              type="button"
+              className="btn-sell-all"
+              disabled={busy}
+              onClick={onSellAll}
+            >
+              전체 매도
+            </button>
+          )}
+        </div>
         {portfolio.positions.length === 0 ? (
           <p className="empty">보유 중인 코인이 없습니다</p>
         ) : (

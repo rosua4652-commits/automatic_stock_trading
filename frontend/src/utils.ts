@@ -1,4 +1,4 @@
-import type { CoinCandidate, Portfolio, StatusPayload } from "./types";
+import type { CoinCandidate, InvestmentRecommendation, Portfolio, Position, StatusPayload } from "./types";
 
 export function fmtKrw(n: number) {
   return new Intl.NumberFormat("ko-KR").format(Math.round(n));
@@ -131,6 +131,61 @@ export function mergeWsPayload(
 
 /** 최소 매수 금액 (원) — 백엔드와 동일 */
 export const MIN_BUY_KRW = 5_000;
+
+/** 보유 포지션 익절·손절 (USDT 가격 + 원화 예상 손익) */
+export function positionTpSl(pos: Position) {
+  const { avg_price, cost_basis_krw, stop_loss, take_profit } = pos;
+  const hasLevels = stop_loss > 0 && take_profit > 0;
+  if (!hasLevels || avg_price <= 0) {
+    return { hasLevels: false, stop_loss: 0, take_profit: 0, stop_loss_krw: 0, take_profit_krw: 0 };
+  }
+  const stop_loss_krw = Math.round(
+    Math.max(0, ((avg_price - stop_loss) / avg_price) * cost_basis_krw)
+  );
+  const take_profit_krw = Math.round(
+    Math.max(0, ((take_profit - avg_price) / avg_price) * cost_basis_krw)
+  );
+  return {
+    hasLevels: true,
+    stop_loss,
+    take_profit,
+    stop_loss_krw,
+    take_profit_krw,
+  };
+}
+
+/** 미보유 시 AI 제안·설정 기준 익절·손절 */
+export function recommendationTpSl(
+  rec: InvestmentRecommendation | null | undefined,
+  priceUsdt: number,
+  amountKrw: number,
+  stopLossPct: number,
+  takeProfitPct: number,
+  usdtKrw = 1400
+) {
+  if (rec?.stop_loss_krw && rec?.take_profit_krw) {
+    return {
+      hasLevels: true,
+      stop_loss: rec.stop_loss_price_usdt ?? 0,
+      take_profit: rec.take_profit_price_usdt ?? 0,
+      stop_loss_krw: rec.stop_loss_krw,
+      take_profit_krw: rec.take_profit_krw,
+      fromAi: true,
+    };
+  }
+  if (priceUsdt <= 0 || amountKrw < MIN_BUY_KRW) {
+    return { hasLevels: false, stop_loss: 0, take_profit: 0, stop_loss_krw: 0, take_profit_krw: 0, fromAi: false };
+  }
+  const plan = computeTradePlan(amountKrw, priceUsdt, usdtKrw, stopLossPct, takeProfitPct);
+  return {
+    hasLevels: true,
+    stop_loss: plan.stop_loss_price_usdt,
+    take_profit: plan.take_profit_price_usdt,
+    stop_loss_krw: plan.stop_loss_krw,
+    take_profit_krw: plan.take_profit_krw,
+    fromAi: false,
+  };
+}
 
 /** 매수 금액 기준 예상 수량·손절/익절 (원화) */
 export function computeTradePlan(

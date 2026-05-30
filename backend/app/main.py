@@ -20,6 +20,7 @@ from app.models import (
     ManualBuyRequest,
     ManualSellRequest,
     PositionExcludeRequest,
+    SellAllRequest,
     StatusResponse,
     TradeMode,
 )
@@ -278,6 +279,15 @@ async def trade_buy(req: ManualBuyRequest):
 @api.post("/trade/sell")
 async def trade_sell(req: ManualSellRequest):
     ok, msg = await engine.manual_sell(req)
+    status = await _build_status()
+    status["ok"] = ok
+    status["message"] = msg
+    return status
+
+
+@api.post("/trade/sell-all")
+async def trade_sell_all(req: SellAllRequest):
+    ok, msg = await engine.manual_sell_all(req.percent)
     status = await _build_status()
     status["ok"] = ok
     status["message"] = msg

@@ -240,6 +240,37 @@ class TradingEngine:
         self._notify()
         return True, f"{pos.display} 모의 {req.percent:.0f}% 매도"
 
+    async def manual_sell_all(self, percent: float = 100.0) -> tuple[bool, str]:
+        if not self.can_manual_trade():
+            return False, "잠시 후 다시 시도하세요."
+
+        self.bind_portfolio()
+        symbols = list(self.portfolio.positions.keys())
+        if not symbols:
+            return False, "보유 코인이 없습니다."
+
+        ok_count = 0
+        fail_msgs: list[str] = []
+        for sym in symbols:
+            ok, msg = await self.manual_sell(
+                ManualSellRequest(symbol=sym, percent=percent)
+            )
+            if ok:
+                ok_count += 1
+            else:
+                fail_msgs.append(msg)
+
+        if ok_count == 0:
+            return False, fail_msgs[0] if fail_msgs else "전체 매도 실패"
+
+        pct_label = f"{percent:.0f}%"
+        if fail_msgs:
+            return (
+                True,
+                f"{ok_count}종목 {pct_label} 매도 · 실패 {len(fail_msgs)}건",
+            )
+        return True, f"보유 {ok_count}종목 {pct_label} 전체 매도 완료"
+
     async def _loop(self) -> None:
         try:
             while self.is_running():
