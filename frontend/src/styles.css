@@ -261,9 +261,151 @@ body {
 
 .coin-trade-actions {
   display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.75rem;
+  max-width: 520px;
+}
+
+.coin-trade-actions .buy-amount-control {
+  flex: 1;
+}
+
+.coin-trade-actions .buy-submit-btn {
+  align-self: flex-start;
+}
+
+.coin-trade-actions .sell-block {
+  display: flex;
   flex-wrap: wrap;
-  align-items: flex-end;
-  gap: 0.65rem 1rem;
+  align-items: center;
+  gap: 0.65rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--border);
+}
+
+.sell-range-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.sell-range-label input[type="range"] {
+  width: 120px;
+}
+
+.buy-amount-control {
+  padding: 0.65rem 0.75rem;
+  background: var(--surface2);
+  border-radius: 10px;
+  border: 1px solid var(--border);
+}
+
+.buy-amount-control.disabled {
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+.buy-amount-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.35rem;
+  margin-bottom: 0.5rem;
+}
+
+.buy-amount-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.buy-amount-cash {
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.buy-amount-cash strong {
+  color: var(--text);
+}
+
+.buy-amount-cash .dim {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.buy-amount-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-bottom: 0.5rem;
+}
+
+.preset-btn {
+  padding: 0.25rem 0.55rem;
+  font-size: 0.72rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--muted);
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.preset-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.preset-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.buy-amount-slider-row {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  margin-bottom: 0.45rem;
+}
+
+.buy-amount-range {
+  flex: 1;
+  min-width: 0;
+  accent-color: var(--accent);
+}
+
+.buy-amount-pct {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--accent);
+  min-width: 2.5rem;
+  text-align: right;
+}
+
+.buy-amount-input-row {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.buy-amount-number {
+  flex: 1;
+  max-width: 200px;
+  padding: 0.45rem 0.6rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 0.95rem;
+  font-weight: 600;
+  font-family: inherit;
+}
+
+.buy-amount-unit {
+  font-size: 0.85rem;
+  color: var(--muted);
 }
 
 .coin-trade-actions label {
@@ -1169,14 +1311,19 @@ body {
 
 .buy-form {
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
   gap: 0.75rem;
-  align-items: flex-end;
+  align-items: stretch;
+  max-width: 520px;
   margin-bottom: 1.5rem;
   padding: 1rem;
   background: var(--surface);
   border-radius: 10px;
   border: 1px solid var(--border);
+}
+
+.buy-form .buy-submit-btn {
+  align-self: flex-start;
 }
 
 .buy-form label {

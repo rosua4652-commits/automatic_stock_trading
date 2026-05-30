@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { CoinView } from "../types";
+import BuyAmountControl, { maxBuyKrw } from "./BuyAmountControl";
 import { fmtKrw } from "../utils";
 
 type Props = {
@@ -21,10 +22,20 @@ export default function CoinTradeBar({
   onBuy,
   onSell,
 }: Props) {
-  const [amount, setAmount] = useState(500_000);
+  const [amount, setAmount] = useState(() =>
+    Math.min(500_000, maxBuyKrw(cashKrw))
+  );
   const [sellPct, setSellPct] = useState(100);
   const sym = view.meta.symbol;
   const held = view.in_portfolio && view.position;
+  const maxKrw = maxBuyKrw(cashKrw);
+
+  useEffect(() => {
+    setAmount((prev) => Math.min(prev, maxKrw));
+  }, [maxKrw, sym]);
+
+  const canBuy =
+    canTrade && !busy && amount >= 50_000 && amount <= cashKrw && cashKrw >= 50_000;
 
   return (
     <div className="coin-trade-bar">
@@ -46,29 +57,25 @@ export default function CoinTradeBar({
       )}
 
       <div className="coin-trade-actions">
-        <label>
-          매수 금액 (원)
-          <input
-            type="number"
-            min={50000}
-            step={10000}
-            value={amount}
-            disabled={!canTrade || busy}
-            onChange={(e) => setAmount(Number(e.target.value))}
-          />
-        </label>
+        <BuyAmountControl
+          id={`buy-${sym}`}
+          cashKrw={cashKrw}
+          value={amount}
+          onChange={setAmount}
+          disabled={!canTrade || busy}
+        />
         <button
           type="button"
-          className="btn-primary btn-sm"
-          disabled={!canTrade || busy || amount > cashKrw}
+          className="btn-primary btn-sm buy-submit-btn"
+          disabled={!canBuy}
           onClick={() => onBuy(sym, amount)}
         >
-          매수
+          매수 ({fmtKrw(amount)}원)
         </button>
         {held && (
-          <>
-            <label>
-              매도 %
+          <div className="sell-block">
+            <label className="sell-range-label">
+              매도 비율
               <input
                 type="range"
                 min={10}
@@ -88,12 +95,9 @@ export default function CoinTradeBar({
             >
               매도
             </button>
-          </>
+          </div>
         )}
       </div>
-      {canTrade && amount > cashKrw && (
-        <p className="trade-hint warn">현금 {fmtKrw(cashKrw)}원 — 잔고 부족</p>
-      )}
     </div>
   );
 }

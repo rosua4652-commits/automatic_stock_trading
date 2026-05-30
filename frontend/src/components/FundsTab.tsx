@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { Portfolio, Position, TradeEvent } from "../types";
 import { fmtKrw, fmtPct, fmtUsd, isRunning } from "../utils";
+import BuyAmountControl, { maxBuyKrw } from "./BuyAmountControl";
 
 type Props = {
   portfolio: Portfolio;
@@ -169,9 +170,14 @@ export default function FundsTab({
   busy,
 }: Props) {
   const [buySymbol, setBuySymbol] = useState("BTCUSDT");
-  const [buyAmount, setBuyAmount] = useState(500000);
+  const [buyAmount, setBuyAmount] = useState(500_000);
   const running = isRunning(botStatus);
   const canTrade = manualMode && !running;
+  const maxKrw = maxBuyKrw(portfolio.cash_krw);
+
+  useEffect(() => {
+    setBuyAmount((prev) => Math.min(prev, maxKrw));
+  }, [maxKrw]);
 
   return (
     <div className="funds-tab">
@@ -234,23 +240,24 @@ export default function FundsTab({
                 placeholder="BTCUSDT"
               />
             </label>
-            <label>
-              매수 금액 (원)
-              <input
-                type="number"
-                min={50000}
-                step={10000}
-                value={buyAmount}
-                onChange={(e) => setBuyAmount(Number(e.target.value))}
-              />
-            </label>
+            <BuyAmountControl
+              id="funds-buy-amount"
+              cashKrw={portfolio.cash_krw}
+              value={buyAmount}
+              onChange={setBuyAmount}
+              disabled={busy}
+            />
             <button
               type="button"
-              className="btn-primary"
-              disabled={busy}
+              className="btn-primary buy-submit-btn"
+              disabled={
+                busy ||
+                buyAmount < 50_000 ||
+                buyAmount > portfolio.cash_krw
+              }
               onClick={() => onManualBuy(buySymbol, buyAmount)}
             >
-              매수
+              매수 ({fmtKrw(buyAmount)}원)
             </button>
           </div>
         </section>

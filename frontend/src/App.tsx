@@ -287,7 +287,12 @@ export default function App() {
         })();
 
   const handleQuickBuy = (symbol: string) => {
-    handleManualBuy(symbol, 500_000);
+    const cash = data?.portfolio.cash_krw ?? 0;
+    const amount = Math.max(
+      50_000,
+      Math.min(Math.floor(cash * 0.25), Math.floor(cash * 0.95))
+    );
+    handleManualBuy(symbol, amount);
   };
 
   const pairLabel =
