@@ -1248,11 +1248,23 @@ body {
   align-self: center;
 }
 
-.chart-tools-divider {
-  width: 1px;
-  height: 1.2rem;
-  background: var(--border);
-  margin: 0 0.15rem;
+.chart-tools-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.5rem;
+  align-items: center;
+}
+
+.chart-tools-hint {
+  font-size: 0.65rem;
+  color: var(--muted);
+  margin: 0 0 0.35rem;
+  line-height: 1.35;
+}
+
+.chart-tools-hint strong {
+  color: var(--text);
+  font-weight: 600;
 }
 
 .main-nav {

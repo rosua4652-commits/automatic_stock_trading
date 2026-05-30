@@ -17,20 +17,21 @@ type Props = {
   onIntervalChange: (v: string) => void;
 };
 
+/** 각 캔들이 의미하는 시간 (1시간봉 = 60분봉, 같은 것) */
 const INTERVALS = [
-  { v: "1s", label: "1초" },
-  { v: "1m", label: "1분" },
-  { v: "15m", label: "15분" },
-  { v: "1h", label: "1시간" },
-  { v: "4h", label: "4시간" },
-  { v: "1d", label: "1일" },
+  { v: "1s", label: "1초봉" },
+  { v: "1m", label: "1분봉" },
+  { v: "15m", label: "15분봉" },
+  { v: "1h", label: "1시간봉" },
+  { v: "4h", label: "4시간봉" },
+  { v: "1d", label: "일봉" },
 ];
 
-/** 화면에 보여줄 캔들 개수 (고정 범위) */
-const RANGE_OPTIONS = [
-  { bars: 60, label: "60봉" },
-  { bars: 100, label: "100봉" },
-  { bars: 150, label: "150봉" },
+/** 차트 화면에 몇 개 캔들을 보여줄지 (시간봉과 별개) */
+const ZOOM_OPTIONS = [
+  { bars: 60, label: "60개" },
+  { bars: 100, label: "100개" },
+  { bars: 150, label: "150개" },
 ] as const;
 
 const DEFAULT_VISIBLE_BARS = 100;
@@ -193,31 +194,46 @@ export default function ChartPanel({
     <div className="chart-panel">
       <div className="chart-toolbar">
         <span className="chart-pair-badge">{pairLabel}</span>
-        <div className="chart-tools">
-          <span className="chart-tools-label">구간</span>
-          {RANGE_OPTIONS.map((r) => (
-            <button
-              key={r.bars}
-              type="button"
-              className={`tool-btn ${visibleBars === r.bars ? "active" : ""}`}
-              onClick={() => setVisibleBars(r.bars)}
+        <div className="chart-tools-wrap">
+          <div className="chart-tools">
+            <span className="chart-tools-label" title="캔들 1개가 나타내는 시간">
+              시간봉
+            </span>
+            {INTERVALS.map((i) => (
+              <button
+                key={i.v}
+                type="button"
+                className={`tool-btn ${chartInterval === i.v ? "active" : ""}`}
+                onClick={() => onIntervalChange(i.v)}
+              >
+                {i.label}
+              </button>
+            ))}
+          </div>
+          <div className="chart-tools">
+            <span
+              className="chart-tools-label"
+              title="화면에 보이는 캔들 개수 (줌). 시간봉과는 다릅니다"
             >
-              {r.label}
-            </button>
-          ))}
-          <span className="chart-tools-divider" />
-          {INTERVALS.map((i) => (
-            <button
-              key={i.v}
-              type="button"
-              className={`tool-btn ${chartInterval === i.v ? "active" : ""}`}
-              onClick={() => onIntervalChange(i.v)}
-            >
-              {i.label}
-            </button>
-          ))}
+              표시
+            </span>
+            {ZOOM_OPTIONS.map((r) => (
+              <button
+                key={r.bars}
+                type="button"
+                className={`tool-btn ${visibleBars === r.bars ? "active" : ""}`}
+                onClick={() => setVisibleBars(r.bars)}
+              >
+                {r.label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
+      <p className="chart-tools-hint">
+        <strong>시간봉</strong> = 캔들 1개의 길이 (1시간봉 = 60분봉) ·{" "}
+        <strong>표시</strong> = 차트에 보이는 캔들 개수
+      </p>
       <div className="chart-canvas-wrap">
         {chartLoading && (
           <div className="chart-overlay">차트 불러오는 중...</div>
