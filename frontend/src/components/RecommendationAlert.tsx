@@ -1,17 +1,17 @@
 import { useEffect, useState } from "react";
-import type { InvestmentRecommendation } from "../types";
+import type { ApplyItem, EditableRecommendation } from "../hooks/useRecommendationAmounts";
 import { fmtKrw, fmtUsd } from "../utils";
 
 type Props = {
-  recommendations: InvestmentRecommendation[];
+  list: EditableRecommendation[];
   cashKrw: number;
   busy: boolean;
-  onApply: (symbols: string[]) => Promise<void>;
+  onApply: (items: ApplyItem[]) => Promise<void>;
   onSelectSymbol?: (symbol: string) => void;
 };
 
 export default function RecommendationAlert({
-  recommendations,
+  list,
   cashKrw,
   busy,
   onApply,
@@ -21,23 +21,23 @@ export default function RecommendationAlert({
   const [dismissed, setDismissed] = useState(false);
 
   useEffect(() => {
-    if (recommendations.length > 0) {
+    if (list.length > 0) {
       setDismissed(false);
       setOpen(true);
     }
-  }, [recommendations]);
+  }, [list]);
 
-  if (recommendations.length === 0 || dismissed) {
+  if (list.length === 0 || dismissed) {
     return null;
   }
 
-  const total = recommendations.reduce((s, r) => s + r.amount_krw, 0);
-  const top = recommendations.slice(0, 5);
+  const total = list.reduce((s, r) => s + r.amount_krw, 0);
+  const top = list.slice(0, 5);
 
   return (
     <div className={`rec-alert ${open ? "open" : "collapsed"}`} role="dialog" aria-label="투자 제안 알림">
       <div className="rec-alert-head">
-        <strong>진입 가능 {recommendations.length}종</strong>
+        <strong>진입 가능 {list.length}종</strong>
         <span className="rec-alert-sum">합계 {fmtKrw(total)}원</span>
         <div className="rec-alert-head-btns">
           <button
@@ -59,6 +59,7 @@ export default function RecommendationAlert({
       </div>
       {open && (
         <>
+          <p className="panel-hint rec-alert-hint">승인 시 익절·손절 자동 (왼쪽에서 금액 조절)</p>
           <ul className="rec-alert-list">
             {top.map((r) => (
               <li key={r.symbol}>
@@ -82,21 +83,23 @@ export default function RecommendationAlert({
               </li>
             ))}
           </ul>
-          {recommendations.length > 5 && (
-            <p className="rec-alert-more">외 {recommendations.length - 5}종 · 왼쪽 패널에서 전체 확인</p>
+          {list.length > 5 && (
+            <p className="rec-alert-more">외 {list.length - 5}종 · 왼쪽 패널에서 금액 조절</p>
           )}
           <div className="rec-alert-actions">
             <button
               type="button"
               className="btn-primary btn-sm"
               disabled={busy || total > cashKrw}
-              onClick={() => onApply(recommendations.map((r) => r.symbol))}
+              onClick={() =>
+                onApply(list.map((r) => ({ symbol: r.symbol, amount_krw: r.amount_krw })))
+              }
             >
-              {busy ? "매수 중…" : `전체 승인 매수 (${recommendations.length}건)`}
+              {busy ? "매수 중…" : `전체 승인 (${list.length}건)`}
             </button>
           </div>
           {total > cashKrw && (
-            <p className="warn">현금 {fmtKrw(cashKrw)}원 — 일부만 선택하세요</p>
+            <p className="warn">현금 {fmtKrw(cashKrw)}원 — 금액 조절 필요</p>
           )}
         </>
       )}

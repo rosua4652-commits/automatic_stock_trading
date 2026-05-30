@@ -23,6 +23,8 @@ import FundsTab from "./components/FundsTab";
 import PortfolioPanel from "./components/PortfolioPanel";
 import SettingsModal from "./components/SettingsModal";
 import type { AppConfig, Candle, MainView, StatusPayload } from "./types";
+import { useRecommendationAmounts } from "./hooks/useRecommendationAmounts";
+import type { ApplyItem } from "./hooks/useRecommendationAmounts";
 import {
   DEFAULT_CONFIG,
   chartRefreshMs,
@@ -52,6 +54,16 @@ export default function App() {
   const botLockVersionRef = useRef(0);
   const prevRecKeyRef = useRef("");
   const activeSymbolRef = useRef(activeSymbol);
+
+  const botRecs = data?.bot.recommendations ?? [];
+  const appConfig = data?.config ?? DEFAULT_CONFIG;
+  const {
+    list: editableRecs,
+    aiAmounts,
+    setAmount: setRecAmount,
+    resetToAi: resetRecAi,
+    getApplyItems,
+  } = useRecommendationAmounts(botRecs, appConfig);
   activeSymbolRef.current = activeSymbol;
 
   const applyPayload = useCallback((incoming: StatusPayload, lockBot = false) => {
@@ -272,7 +284,7 @@ export default function App() {
   const isPaper = data.config.trade_mode === "paper";
   const canTrade = !stopping;
   const activeRec =
-    data.bot.recommendations?.find((r) => r.symbol === activeSymbol) ?? null;
+    editableRecs.find((r) => r.symbol === activeSymbol) ?? null;
   const tabs =
     data.tabs?.length > 0
       ? data.tabs
@@ -341,10 +353,15 @@ export default function App() {
     data.bot.candidates.find((c) => c.symbol === activeSymbol)?.pair_label ||
     `${activeSymbol.replace("USDT", "")}/USDT`;
 
-  const applyRecs = async (symbols: string[]) => {
+  const applyRecs = async (symbolsOrItems: string[] | ApplyItem[]) => {
     setTradeBusy(true);
     try {
-      const s = await applyRecommendations(symbols);
+      const items: ApplyItem[] =
+        symbolsOrItems.length > 0 && typeof symbolsOrItems[0] === "object"
+          ? (symbolsOrItems as ApplyItem[])
+          : getApplyItems(symbolsOrItems as string[]);
+      const symbols = items.map((i) => i.symbol);
+      const s = await applyRecommendations(symbols, items);
       applyPayload(s);
       showToast(s.message || "매수 완료");
     } catch (e) {
@@ -388,7 +405,7 @@ export default function App() {
             </div>
           </div>
           <RecommendationAlert
-            recommendations={data.bot.recommendations ?? []}
+            list={editableRecs}
             cashKrw={data.portfolio.cash_krw}
             busy={tradeBusy}
             onApply={applyRecs}
@@ -447,10 +464,13 @@ export default function App() {
             <aside className="side-panel">
               <RecommendationsPanel
                 variant="sidebar"
-                recommendations={data.bot.recommendations ?? []}
+                list={editableRecs}
+                aiAmounts={aiAmounts}
                 botStatus={data.bot.status}
                 cashKrw={data.portfolio.cash_krw}
                 busy={tradeBusy}
+                onAmountChange={setRecAmount}
+                onResetAi={resetRecAi}
                 onApply={applyRecs}
               />
               <div className="side-panel-scroll">
@@ -465,10 +485,13 @@ export default function App() {
                   onQuickBuy={handleQuickBuy}
                 />
                 <EntryOpportunitiesPanel
-                  recommendations={data.bot.recommendations ?? []}
-                  config={data.config}
+                  list={editableRecs}
+                  aiAmounts={aiAmounts}
+                  config={appConfig}
                   cashKrw={data.portfolio.cash_krw}
                   busy={tradeBusy}
+                  onAmountChange={setRecAmount}
+                  onResetAi={resetRecAi}
                   onApply={applyRecs}
                   onSelect={handleSelectCoin}
                 />
@@ -504,10 +527,13 @@ export default function App() {
         <div className="funds-screen">
           <RecommendationsPanel
             variant="full"
-            recommendations={data.bot.recommendations ?? []}
+            list={editableRecs}
+            aiAmounts={aiAmounts}
             botStatus={data.bot.status}
             cashKrw={data.portfolio.cash_krw}
             busy={tradeBusy}
+            onAmountChange={setRecAmount}
+            onResetAi={resetRecAi}
             onApply={applyRecs}
           />
           <FundsTab
@@ -537,10 +563,13 @@ export default function App() {
 
       <EntryAlertModal
         open={entryAlertOpen}
-        recommendations={data.bot.recommendations ?? []}
-        config={data.config}
+        list={editableRecs}
+        aiAmounts={aiAmounts}
+        config={appConfig}
         cashKrw={data.portfolio.cash_krw}
         busy={tradeBusy}
+        onAmountChange={setRecAmount}
+        onResetAi={resetRecAi}
         onClose={() => setEntryAlertOpen(false)}
         onApply={applyRecs}
         onSelect={handleSelectCoin}

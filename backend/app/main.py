@@ -211,7 +211,7 @@ async def bot_stop():
 
 @api.post("/recommendations/apply")
 async def apply_recommendations(body: ApplyRecommendationsRequest):
-    ok, msg = await engine.apply_recommendations(body.symbols)
+    ok, msg = await engine.apply_recommendations(body.symbols, body.items)
     status = await _build_status()
     status["ok"] = ok
     status["message"] = msg

@@ -62,13 +62,19 @@ export async function stopBot(): Promise<StatusPayload> {
   return request("/api/bot/stop", { method: "POST" });
 }
 
+export type RecommendationApplyItem = {
+  symbol: string;
+  amount_krw: number;
+};
+
 export async function applyRecommendations(
-  symbols: string[]
+  symbols: string[],
+  items?: RecommendationApplyItem[]
 ): Promise<StatusPayload> {
   return request("/api/recommendations/apply", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ symbols }),
+    body: JSON.stringify({ symbols, items: items ?? [] }),
   });
 }
 

@@ -132,6 +132,39 @@ export function mergeWsPayload(
 /** 최소 매수 금액 (원) — 백엔드와 동일 */
 export const MIN_BUY_KRW = 5_000;
 
+/** 매수 금액 기준 예상 수량·손절/익절 (원화) */
+export function computeTradePlan(
+  amountKrw: number,
+  priceUsdt: number,
+  usdtKrw: number,
+  stopLossPct: number,
+  takeProfitPct: number
+) {
+  if (priceUsdt <= 0 || usdtKrw <= 0 || amountKrw <= 0) {
+    return {
+      quantity_est: 0,
+      stop_loss_price_usdt: 0,
+      take_profit_price_usdt: 0,
+      stop_loss_krw: 0,
+      take_profit_krw: 0,
+    };
+  }
+  const slR = stopLossPct / 100;
+  const tpR = takeProfitPct / 100;
+  const slPrice = priceUsdt * (1 - slR);
+  const tpPrice = priceUsdt * (1 + tpR);
+  const qty = amountKrw / (priceUsdt * usdtKrw);
+  const slKrw = Math.max(0, (priceUsdt - slPrice) * qty * usdtKrw);
+  const tpKrw = Math.max(0, (tpPrice - priceUsdt) * qty * usdtKrw);
+  return {
+    quantity_est: Math.round(qty * 1e6) / 1e6,
+    stop_loss_price_usdt: slPrice,
+    take_profit_price_usdt: tpPrice,
+    stop_loss_krw: Math.round(slKrw),
+    take_profit_krw: Math.round(tpKrw),
+  };
+}
+
 /** 차트 자동 갱신 주기 (초봉은 1초마다) */
 export function chartRefreshMs(interval: string): number {
   if (interval === "1s") return 1000;

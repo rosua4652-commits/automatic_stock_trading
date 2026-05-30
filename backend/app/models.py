@@ -223,8 +223,17 @@ class InvestmentRecommendation(BaseModel):
     selected: bool = True
 
 
+class RecommendationApplyItem(BaseModel):
+    symbol: str
+    amount_krw: float = Field(ge=5_000, le=500_000_000)
+
+
 class ApplyRecommendationsRequest(BaseModel):
     symbols: list[str] = Field(default_factory=list, description="비우면 선택된 항목 전체")
+    items: list[RecommendationApplyItem] = Field(
+        default_factory=list,
+        description="심볼별 매수 금액 (있으면 symbols보다 우선)",
+    )
 
 
 class BotState(BaseModel):

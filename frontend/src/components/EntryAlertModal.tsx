@@ -1,24 +1,32 @@
 import { useEffect } from "react";
-import type { AppConfig, InvestmentRecommendation } from "../types";
+import type { AppConfig } from "../types";
+import type { ApplyItem, EditableRecommendation } from "../hooks/useRecommendationAmounts";
 import { fmtKrw, fmtUsd } from "../utils";
+import RecommendationAmountField from "./RecommendationAmountField";
 
 type Props = {
   open: boolean;
-  recommendations: InvestmentRecommendation[];
+  list: EditableRecommendation[];
+  aiAmounts: Record<string, number>;
   config: AppConfig;
   cashKrw: number;
   busy: boolean;
+  onAmountChange: (symbol: string, amount: number) => void;
+  onResetAi: (symbol: string) => void;
   onClose: () => void;
-  onApply: (symbols: string[]) => Promise<void>;
+  onApply: (items: ApplyItem[]) => Promise<void>;
   onSelect: (symbol: string) => void;
 };
 
 export default function EntryAlertModal({
   open,
-  recommendations,
+  list,
+  aiAmounts,
   config,
   cashKrw,
   busy,
+  onAmountChange,
+  onResetAi,
   onClose,
   onApply,
   onSelect,
@@ -32,10 +40,10 @@ export default function EntryAlertModal({
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
 
-  if (!open || recommendations.length === 0) return null;
+  if (!open || list.length === 0) return null;
 
-  const total = recommendations.reduce((s, r) => s + r.amount_krw, 0);
-  const top = recommendations.slice(0, 6);
+  const total = list.reduce((s, r) => s + r.amount_krw, 0);
+  const top = list.slice(0, 4);
 
   return (
     <div className="entry-modal-backdrop" role="presentation" onClick={onClose}>
@@ -52,12 +60,12 @@ export default function EntryAlertModal({
           </button>
         </header>
         <p className="entry-modal-sub">
-          {recommendations.length}종 · 합계 {fmtKrw(total)}원 · 익절{" "}
-          {config.take_profit_pct}% / 손절 {config.stop_loss_pct}%
+          금액 조절 후 승인 · 익절 {config.take_profit_pct}% / 손절{" "}
+          {config.stop_loss_pct}% 자동 매도
         </p>
         <ul className="entry-modal-list">
           {top.map((r) => (
-            <li key={r.symbol}>
+            <li key={r.symbol} className="entry-modal-item">
               <button
                 type="button"
                 className="entry-modal-row"
@@ -70,21 +78,28 @@ export default function EntryAlertModal({
                   <strong>{r.name_ko}</strong>
                   <span className="dim"> {r.base}</span>
                 </div>
-                <span>{fmtKrw(r.amount_krw)}원</span>
               </button>
+              <RecommendationAmountField
+                row={r}
+                aiAmount={aiAmounts[r.symbol] ?? r.amount_krw}
+                cashKrw={cashKrw}
+                disabled={busy}
+                onAmountChange={onAmountChange}
+                onResetAi={onResetAi}
+              />
               <p className="entry-modal-detail">
                 {(r.quantity_est ?? 0) > 0 && r.price_usdt
                   ? `≈ ${(r.quantity_est ?? 0).toFixed(4)}개 @ $${fmtUsd(r.price_usdt)} · `
                   : ""}
-                익절 +{fmtKrw(r.take_profit_krw ?? 0)}원 / 손절 -
+                익절 +{fmtKrw(r.take_profit_krw ?? 0)} / 손절 -
                 {fmtKrw(r.stop_loss_krw ?? 0)}원
               </p>
             </li>
           ))}
         </ul>
-        {recommendations.length > 6 && (
+        {list.length > 4 && (
           <p className="dim entry-modal-more">
-            외 {recommendations.length - 6}종 — 왼쪽 「진입 가능」 패널에서 확인
+            외 {list.length - 4}종 — 왼쪽 패널에서 금액 조절
           </p>
         )}
         <div className="entry-modal-actions">
@@ -93,11 +108,11 @@ export default function EntryAlertModal({
             className="btn-primary"
             disabled={busy || total > cashKrw}
             onClick={() => {
-              onApply(recommendations.map((r) => r.symbol));
+              onApply(list.map((r) => ({ symbol: r.symbol, amount_krw: r.amount_krw })));
               onClose();
             }}
           >
-            전체 승인 매수
+            전체 승인 ({fmtKrw(total)}원)
           </button>
           <button type="button" className="btn-ghost" onClick={onClose}>
             나중에

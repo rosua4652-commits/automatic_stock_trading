@@ -1622,6 +1622,88 @@ main.layout.chart-layout {
   gap: 0.35rem;
 }
 
+.rec-alert-hint {
+  margin: 0 0 0.35rem;
+  font-size: 0.62rem;
+}
+
+.rec-amount-field {
+  margin: 0.35rem 0;
+}
+
+.rec-amount-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.rec-amount-label {
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.rec-amount-input-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.rec-amount-input {
+  flex: 1;
+  min-width: 100px;
+  padding: 0.4rem 0.55rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 0.88rem;
+  font-weight: 600;
+  font-family: inherit;
+}
+
+.rec-amount-input.compact {
+  max-width: 110px;
+  padding: 0.25rem 0.4rem;
+  font-size: 0.8rem;
+}
+
+.rec-amount-unit {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.rec-amount-hint {
+  font-size: 0.62rem;
+  color: var(--accent);
+  margin: 0.2rem 0 0;
+}
+
+.auto-tag {
+  opacity: 0.9;
+}
+
+.rec-row-amt-btn {
+  border: none;
+  background: none;
+  color: var(--accent);
+  font-weight: 600;
+  font-size: 0.72rem;
+  cursor: pointer;
+  font-family: inherit;
+  padding: 0;
+}
+
+.rec-expand {
+  padding: 0.35rem 0 0.35rem 1.5rem;
+}
+
+.entry-modal-item {
+  margin-bottom: 0.65rem;
+  padding-bottom: 0.65rem;
+  border-bottom: 1px solid var(--border);
+}
+
 .topbar {
   position: relative;
 }

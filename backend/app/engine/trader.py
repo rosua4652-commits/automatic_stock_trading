@@ -19,8 +19,10 @@ from app.models import (
     CoinView,
     ManualBuyRequest,
     ManualSellRequest,
+    RecommendationApplyItem,
     TradeMode,
 )
+from app.config import settings
 from app.storage.credentials import has_api_keys
 
 
@@ -251,9 +253,21 @@ class TradingEngine:
                 if not self.is_running():
                     break
                 interval = max(15, self.config.scan_interval_sec)
-                for _ in range(interval):
+                for tick in range(interval):
                     if not self.is_running():
                         return
+                    if tick > 0 and tick % 5 == 0:
+                        try:
+                            self.bind_portfolio()
+                            tix = await binance.tickers_24h()
+                            await self._monitor_positions(tix)
+                            if self._is_live():
+                                self.bind_portfolio()
+                            else:
+                                self._persist()
+                            self._notify()
+                        except Exception:
+                            pass
                     await asyncio.sleep(1)
         except asyncio.CancelledError:
             pass
@@ -356,15 +370,45 @@ class TradingEngine:
             f"단타가능 {scalp_total}종 · "
             f"제안 {len(self.bot.recommendations)}건 · 합계 {total_rec:,.0f}원"
         )
+        await self._monitor_positions(tickers)
+        if not self._is_live():
+            self._persist()
         self._notify()
 
-    async def apply_recommendations(self, symbols: list[str]) -> tuple[bool, str]:
-        """사용자 승인 후 제안 매수 실행."""
+    async def _monitor_positions(self, tickers: dict) -> None:
+        """보유 auto 포지션 손절·익절·트레일링."""
+        if not self.portfolio.positions:
+            return
+        for sym in list(self.portfolio.positions.keys()):
+            if not self.is_running():
+                return
+            pos = self.portfolio.positions.get(sym)
+            if not pos or pos.auto_quantity <= 1e-10:
+                continue
+            t = tickers.get(sym)
+            if not t:
+                continue
+            await self._manage_position(sym, float(t["lastPrice"]))
+
+    async def apply_recommendations(
+        self,
+        symbols: list[str],
+        items: list[RecommendationApplyItem] | None = None,
+    ) -> tuple[bool, str]:
+        """사용자 승인 후 제안 매수 실행 (금액 조절 가능, 익절·손절 자동)."""
         self.bind_portfolio()
         self.portfolio.usdt_krw = await binance.usdt_krw_rate()
 
         if not self.bot.recommendations:
             return False, "먼저 「분석 시작」으로 투자 제안을 받으세요"
+
+        amount_map: dict[str, float] = {}
+        if items:
+            for it in items:
+                if isinstance(it, RecommendationApplyItem):
+                    amount_map[it.symbol.upper()] = float(it.amount_krw)
+                elif isinstance(it, dict):
+                    amount_map[str(it["symbol"]).upper()] = float(it["amount_krw"])
 
         want = {s.upper() for s in symbols} if symbols else None
         to_apply = [
@@ -390,14 +434,22 @@ class TradingEngine:
                 continue
             price = float(t["lastPrice"])
             entry_txt = rec.entry_detail or "승인 매수"
+            amt = round(
+                max(settings.min_buy_krw, amount_map.get(sym, rec.amount_krw)), -3
+            )
+            tp_label = f"익절{self.config.take_profit_pct:g}%"
+            sl_label = f"손절{self.config.stop_loss_pct:g}%"
+            buy_reason = (
+                f"AI 승인 · {int(amt):,}원 · {tp_label}/{sl_label} 자동"
+            )
 
             if self._is_live():
                 ok, msg = await live_market_buy(
                     self.config,
                     sym,
-                    rec.amount_krw,
-                    f"승인 매수 · {entry_txt}",
-                    as_auto=False,
+                    amt,
+                    f"{buy_reason} · {entry_txt}",
+                    as_auto=True,
                 )
                 if ok:
                     ok_n += 1
@@ -410,15 +462,15 @@ class TradingEngine:
                     sym,
                     rec.base,
                     price,
-                    rec.amount_krw,
+                    amt,
                     sl_pct,
                     tp_pct,
                     score=rec.market_score,
-                    reason=f"승인 매수 · {int(rec.amount_krw):,}원",
-                    entry_reason=entry_txt,
+                    reason=buy_reason,
+                    entry_reason=f"{entry_txt} · {tp_label}/{sl_label} 자동매도",
                     entry_score=rec.entry_score,
-                    entry_outlook="승인 투자",
-                    auto_managed=False,
+                    entry_outlook="AI 승인",
+                    auto_managed=True,
                 )
                 if pos:
                     ok_n += 1

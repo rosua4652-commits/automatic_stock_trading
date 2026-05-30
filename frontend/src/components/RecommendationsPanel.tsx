@@ -1,38 +1,46 @@
 import { useEffect, useState } from "react";
-import type { InvestmentRecommendation } from "../types";
+import type { EditableRecommendation } from "../hooks/useRecommendationAmounts";
+import type { ApplyItem } from "../hooks/useRecommendationAmounts";
 import { fmtKrw, fmtPct, fmtUsd, isRunning } from "../utils";
+import RecommendationAmountField from "./RecommendationAmountField";
 
 type Props = {
-  recommendations: InvestmentRecommendation[];
+  list: EditableRecommendation[];
+  aiAmounts: Record<string, number>;
   botStatus: string;
   cashKrw: number;
   busy: boolean;
-  onApply: (symbols: string[]) => Promise<void>;
+  onAmountChange: (symbol: string, amount: number) => void;
+  onResetAi: (symbol: string) => void;
+  onApply: (items: ApplyItem[]) => Promise<void>;
   variant?: "full" | "sidebar";
 };
 
 export default function RecommendationsPanel({
-  recommendations,
+  list,
+  aiAmounts,
   botStatus,
   cashKrw,
   busy,
+  onAmountChange,
+  onResetAi,
   onApply,
   variant = "full",
 }: Props) {
   const sidebar = variant === "sidebar";
   const [selected, setSelected] = useState<Record<string, boolean>>({});
+  const [expanded, setExpanded] = useState<string | null>(null);
 
   useEffect(() => {
     const m: Record<string, boolean> = {};
-    recommendations.forEach((r) => {
+    list.forEach((r) => {
       m[r.symbol] = selected[r.symbol] ?? r.selected !== false;
     });
     setSelected(m);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [recommendations]);
+  }, [list]);
 
   const running = isRunning(botStatus);
-  const list = recommendations;
   const picked = list.filter((r) => selected[r.symbol] !== false);
   const total = picked.reduce((s, r) => s + r.amount_krw, 0);
 
@@ -48,6 +56,12 @@ export default function RecommendationsPanel({
     setSelected(m);
   };
 
+  const applyPicked = () => {
+    onApply(
+      picked.map((r) => ({ symbol: r.symbol, amount_krw: r.amount_krw }))
+    );
+  };
+
   if (list.length === 0) {
     return (
       <section className={`rec-panel empty ${sidebar ? "rec-sidebar" : ""}`}>
@@ -55,7 +69,7 @@ export default function RecommendationsPanel({
         <p className="empty">
           {running
             ? "분석 중…"
-            : "분석 시작 → 조건 충족 코인만 제안 (단타는 분석 목록에서 직접 매수 가능)"}
+            : "분석 시작 → AI 제안 (금액 조절 후 승인 · 익절/손절 자동)"}
         </p>
       </section>
     );
@@ -65,7 +79,7 @@ export default function RecommendationsPanel({
     <section className={`rec-panel ${sidebar ? "rec-sidebar" : ""}`}>
       <div className="rec-head">
         <h3>투자 제안</h3>
-        <p className="panel-hint">자동 추천·단타 가능 코인만 금액 제안 (전체 탭과 다름)</p>
+        <p className="panel-hint">AI 금액 수정 가능 · 승인 시 손절/익절 자동</p>
         <span className="rec-meta">
           현금 {fmtKrw(cashKrw)}원 · 선택 {picked.length}건 · 합계 {fmtKrw(total)}원
         </span>
@@ -81,13 +95,13 @@ export default function RecommendationsPanel({
           type="button"
           className="btn-primary"
           disabled={busy || picked.length === 0 || total > cashKrw}
-          onClick={() => onApply(picked.map((r) => r.symbol))}
+          onClick={applyPicked}
         >
-          {busy ? "매수 중…" : `선택 승인 매수 (${picked.length}건)`}
+          {busy ? "매수 중…" : `선택 승인 (${picked.length}건)`}
         </button>
       </div>
       {total > cashKrw && (
-        <p className="warn">선택 금액이 현금보다 큽니다. 일부만 선택하세요.</p>
+        <p className="warn">선택 금액이 현금보다 큽니다.</p>
       )}
       <div className="rec-table-wrap">
         {sidebar ? (
@@ -101,13 +115,29 @@ export default function RecommendationsPanel({
                     onChange={() => toggle(r.symbol)}
                   />
                   <span className="rec-row-name">{r.name_ko}</span>
-                  <span className="rec-row-amt">{fmtKrw(r.amount_krw)}</span>
-                  <span className="rec-row-qty">
-                    {r.price_usdt && r.price_usdt > 0
-                      ? `${(r.quantity_est ?? 0).toFixed(3)}개`
-                      : "—"}
-                  </span>
+                  <button
+                    type="button"
+                    className="rec-row-amt-btn"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      setExpanded(expanded === r.symbol ? null : r.symbol);
+                    }}
+                  >
+                    {fmtKrw(r.amount_krw)}원
+                  </button>
                 </label>
+                {expanded === r.symbol && (
+                  <div className="rec-expand">
+                    <RecommendationAmountField
+                      row={r}
+                      aiAmount={aiAmounts[r.symbol] ?? r.amount_krw}
+                      cashKrw={cashKrw}
+                      disabled={busy}
+                      onAmountChange={onAmountChange}
+                      onResetAi={onResetAi}
+                    />
+                  </div>
+                )}
               </li>
             ))}
           </ul>
@@ -117,13 +147,9 @@ export default function RecommendationsPanel({
               <tr>
                 <th />
                 <th>코인</th>
-                <th>시장</th>
-                <th>차트</th>
-                <th>비중</th>
-                <th>제안 금액</th>
-                <th>가격·수량</th>
+                <th>매수 금액</th>
+                <th>익절/손절</th>
                 <th>24h</th>
-                <th>근거</th>
               </tr>
             </thead>
             <tbody>
@@ -138,27 +164,30 @@ export default function RecommendationsPanel({
                   </td>
                   <td>
                     <strong>{r.name_ko}</strong>
-                    <span className="dim">{r.pair_label}</span>
+                    <span className="dim">{r.base}</span>
                   </td>
-                  <td>{r.market_score}</td>
-                  <td>{r.entry_score}</td>
-                  <td>{r.weight_pct}%</td>
-                  <td className="amount">{fmtKrw(r.amount_krw)}원</td>
+                  <td className="amount">
+                    <input
+                      type="number"
+                      className="rec-amount-input compact"
+                      min={5000}
+                      step={1000}
+                      value={r.amount_krw}
+                      disabled={busy}
+                      onChange={(e) =>
+                        onAmountChange(r.symbol, Number(e.target.value) || 5000)
+                      }
+                    />
+                    <span className="dim"> AI {fmtKrw(aiAmounts[r.symbol] ?? 0)}</span>
+                  </td>
                   <td className="rec-qty">
-                    {r.price_usdt && r.price_usdt > 0 ? (
-                      <>
-                        ${fmtUsd(r.price_usdt)}
-                        <br />
-                        <span className="dim">≈ {(r.quantity_est ?? 0).toFixed(4)}개</span>
-                      </>
-                    ) : (
-                      "—"
-                    )}
+                    <span className="up">+{fmtKrw(r.take_profit_krw ?? 0)}</span>
+                    <br />
+                    <span className="down">-{fmtKrw(r.stop_loss_krw ?? 0)}</span>
                   </td>
                   <td className={r.change_24h >= 0 ? "up" : "down"}>
                     {fmtPct(r.change_24h)}
                   </td>
-                  <td className="rec-reason">{r.entry_detail}</td>
                 </tr>
               ))}
             </tbody>
