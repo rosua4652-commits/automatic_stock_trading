@@ -49,7 +49,7 @@ export default function App() {
   const [botBusy, setBotBusy] = useState(false);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
-  const [mainView, setMainView] = useState<MainView>("summary");
+  const [mainView, setMainView] = useState<MainView>("chart");
   const [tradeBusy, setTradeBusy] = useState(false);
   const [entryAlertOpen, setEntryAlertOpen] = useState(false);
 
@@ -409,28 +409,15 @@ export default function App() {
               : `실거래 — ${data.account_link?.message || "API 연동 필요"}`}
         </div>
 
-        <header className="topbar topbar-compact">
+        <header className="topbar topbar-compact topbar-with-funds">
           <div className="brand">
             <span className="logo">AIDI</span>
           </div>
-          <div className="hero-metrics hero-inline">
-            <div className="metric">
-              <span className="m-label">목표</span>
-              <span className="m-value">{fmtKrw(data.config.target_profit_krw)}</span>
-            </div>
-            <div className="metric">
-              <span className="m-label">달성</span>
-              <span className="m-value accent">{data.portfolio.progress_pct.toFixed(0)}%</span>
-            </div>
-            <div className="metric">
-              <span className="m-label">총자산</span>
-              <span className="m-value">{fmtKrw(data.portfolio.total_value_krw)}</span>
-            </div>
-            <div className="metric">
-              <span className="m-label">현금</span>
-              <span className="m-value dim">{fmtKrw(data.portfolio.cash_krw)}</span>
-            </div>
-          </div>
+          <FundsSummaryStrip
+            portfolio={data.portfolio}
+            config={data.config}
+            variant="topbar"
+          />
           <RecommendationAlert
             list={editableRecs}
             cashKrw={data.portfolio.cash_krw}
@@ -463,13 +450,6 @@ export default function App() {
         <nav className="main-nav">
           <button
             type="button"
-            className={`nav-btn ${mainView === "summary" ? "active" : ""}`}
-            onClick={() => setMainView("summary")}
-          >
-            자금 현황
-          </button>
-          <button
-            type="button"
             className={`nav-btn ${mainView === "chart" ? "active" : ""}`}
             onClick={() => setMainView("chart")}
           >
@@ -483,20 +463,7 @@ export default function App() {
             보유 · 매매
           </button>
         </nav>
-
-        {mainView !== "summary" && (
-          <FundsSummaryStrip portfolio={data.portfolio} compact />
-        )}
       </div>
-
-      {mainView === "summary" && (
-        <div className="summary-screen">
-          <FundsSummaryStrip portfolio={data.portfolio} />
-          <p className="summary-hint">
-            코인 차트·매매는 「차트 · AI」「보유 · 매매」 탭에서 이용하세요.
-          </p>
-        </div>
-      )}
 
       {mainView === "chart" && (
         <div className="chart-screen">

@@ -13,11 +13,40 @@ class PortfolioManager:
         self.positions: dict[str, Position] = {}
         self.trades: list[TradeEvent] = []
         self.usdt_krw = 1350.0
+        self.trading_fee_pct = 0.05
 
     def apply_config(self, config: AppConfig) -> None:
+        self.trading_fee_pct = float(getattr(config, "trading_fee_pct", 0.05))
         if not self.positions and not self.trades:
             self.cash_krw = config.initial_balance_krw
             self.realized_pnl_krw = 0.0
+
+    def _fee_krw(self, amount_krw: float) -> float:
+        rate = getattr(self, "trading_fee_pct", 0.05) / 100
+        return amount_krw * rate
+
+    def _sell_cash_flow(
+        self,
+        sell_qty: float,
+        price_usdt: float,
+        avg_price_usdt: float,
+        cost_portion_krw: float,
+        *,
+        charge_fee: bool = True,
+    ) -> tuple[float, float]:
+        """
+        매도 현금·실현손익 (원).
+        같은 USDT 가격이면 환율 변동만으로 손실이 나지 않도록 USDT 가격 차이만 반영.
+        """
+        if avg_price_usdt <= 0:
+            avg_price_usdt = price_usdt
+        usdt_gain = sell_qty * (price_usdt - avg_price_usdt)
+        market_pnl_krw = self.usdt_to_krw(usdt_gain)
+        proceeds_krw = cost_portion_krw + market_pnl_krw
+        fee = self._fee_krw(proceeds_krw) if charge_fee else 0.0
+        proceeds_krw -= fee
+        realized_delta = market_pnl_krw - fee
+        return proceeds_krw, realized_delta
 
     def set_fx(self, rate: float) -> None:
         self.usdt_krw = rate
@@ -158,6 +187,8 @@ class PortfolioManager:
         executed_qty: float,
         fill_price_usdt: float,
         auto_only: bool,
+        *,
+        charge_fee: bool = False,
     ) -> float:
         """실거래 매도 후 메타·실현손익 — 모의투자 sell()과 동일 규칙. 반환: 실현손익(원)."""
         sell_qty = max(0.0, executed_qty)
@@ -168,12 +199,18 @@ class PortfolioManager:
 
         if auto_only:
             base_qty = before["auto"]
+            avg_auto = (
+                before["auto_cost"] / self.usdt_krw / base_qty
+                if base_qty > 0 and before["auto_cost"] > 0
+                else fill_price_usdt
+            )
             if base_qty <= 1e-12:
                 return 0.0
             sq = min(sell_qty, base_qty)
             cost_portion = before["auto_cost"] * (sq / base_qty)
-            proceeds_krw = self.usdt_to_krw(sq * fill_price_usdt)
-            pnl = proceeds_krw - cost_portion
+            _, pnl = self._sell_cash_flow(
+                sq, fill_price_usdt, avg_auto, cost_portion, charge_fee=charge_fee
+            )
             if pos:
                 pos.auto_quantity = max(0.0, min(pos.quantity, base_qty - sq))
                 pos.auto_cost_basis_krw = max(0.0, before["auto_cost"] - cost_portion)
@@ -190,8 +227,14 @@ class PortfolioManager:
                 return 0.0
             sq = min(sell_qty, total_q)
             cost_portion = before["cost"] * (sq / total_q)
-            proceeds_krw = self.usdt_to_krw(sq * fill_price_usdt)
-            pnl = proceeds_krw - cost_portion
+            avg_all = (
+                before["cost"] / self.usdt_krw / total_q
+                if total_q > 0
+                else fill_price_usdt
+            )
+            _, pnl = self._sell_cash_flow(
+                sq, fill_price_usdt, avg_all, cost_portion, charge_fee=charge_fee
+            )
             if pos:
                 auto_part = min(sq, before["auto"])
                 man_part = sq - auto_part
@@ -321,9 +364,12 @@ class PortfolioManager:
         entry_outlook: str = "",
         auto_managed: bool = True,
     ) -> Optional[Position]:
-        cost_krw = min(allocation_krw, self.cash_krw * 0.95)
+        fee_rate = getattr(self, "trading_fee_pct", 0.05) / 100
+        max_spend = self.cash_krw / (1 + fee_rate) if fee_rate > 0 else self.cash_krw
+        cost_krw = min(allocation_krw, max_spend)
         if cost_krw < settings.min_buy_krw:
             return None
+        fee_krw = self._fee_krw(cost_krw)
         usdt = self.krw_to_usdt(cost_krw)
         qty = usdt / price_usdt
         if qty <= 0:
@@ -331,7 +377,8 @@ class PortfolioManager:
         # 매수 시점 환율로 수량·원금을 맞춤 (이후 평가는 USDT 손익 × 현재 환율)
         fx_at_buy = self.usdt_krw
         meta = coin_meta(symbol, base)
-        self.cash_krw -= cost_krw
+        self.cash_krw -= cost_krw + fee_krw
+        self.realized_pnl_krw -= fee_krw
 
         if symbol in self.positions:
             pos = self.positions[symbol]
@@ -419,8 +466,11 @@ class PortfolioManager:
                 return None
             sell_qty = base_qty if pct >= 0.999 else base_qty * pct
             cost_portion = pos.auto_cost_basis_krw * (sell_qty / base_qty)
-            proceeds_krw = self.usdt_to_krw(sell_qty * price_usdt)
-            self.realized_pnl_krw += proceeds_krw - cost_portion
+            avg_px = pos.auto_avg_price if pos.auto_avg_price > 0 else price_usdt
+            proceeds_krw, pnl_delta = self._sell_cash_flow(
+                sell_qty, price_usdt, avg_px, cost_portion
+            )
+            self.realized_pnl_krw += pnl_delta
             self.cash_krw += proceeds_krw
             pos.auto_quantity -= sell_qty
             pos.auto_cost_basis_krw -= cost_portion
@@ -446,8 +496,11 @@ class PortfolioManager:
                 cost_m = pos.manual_cost_basis_krw * (man_part / pos.manual_quantity)
                 pos.manual_quantity -= man_part
                 pos.manual_cost_basis_krw = max(0, pos.manual_cost_basis_krw - cost_m)
-            proceeds_krw = self.usdt_to_krw(sell_qty * price_usdt)
-            self.realized_pnl_krw += proceeds_krw - cost_portion
+            avg_px = pos.avg_price if pos.avg_price > 0 else price_usdt
+            proceeds_krw, pnl_delta = self._sell_cash_flow(
+                sell_qty, price_usdt, avg_px, cost_portion
+            )
+            self.realized_pnl_krw += pnl_delta
             self.cash_krw += proceeds_krw
             pos.cost_basis_krw -= cost_portion
             is_auto = False

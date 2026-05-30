@@ -140,26 +140,38 @@ export default function SettingsModal({
           <h3>매매 전략</h3>
           <div className="field-grid">
             <label className="field">
-              <span>손절 (%) · 단타</span>
+              <span>손절 (%) · 소수 가능</span>
               <input
                 type="number"
-                min={1}
+                min={0.1}
                 max={25}
-                step={0.5}
+                step={0.1}
                 value={draft.stop_loss_pct}
                 onChange={(e) => set("stop_loss_pct", Number(e.target.value))}
               />
             </label>
             <label className="field">
-              <span>익절 (%) · 단타</span>
+              <span>익절 (%) · 소수 가능</span>
               <input
                 type="number"
-                min={2}
+                min={0.1}
                 max={50}
-                step={0.5}
+                step={0.1}
                 value={draft.take_profit_pct}
                 onChange={(e) => set("take_profit_pct", Number(e.target.value))}
               />
+            </label>
+            <label className="field">
+              <span>거래 수수료 (%) · 편도 · 모의</span>
+              <input
+                type="number"
+                min={0}
+                max={1}
+                step={0.01}
+                value={draft.trading_fee_pct ?? 0.05}
+                onChange={(e) => set("trading_fee_pct", Number(e.target.value))}
+              />
+              <small>모의투자 체결 시 반영 · 실거래는 거래소 수수료</small>
             </label>
             <label className="field">
               <span>시장 스캔 최소 점수</span>

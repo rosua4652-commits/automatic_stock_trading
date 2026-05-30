@@ -1,6 +1,6 @@
 export type BotStatus = "stopped" | "running" | "stopping";
 export type TradeMode = "paper" | "live";
-export type MainView = "summary" | "chart" | "funds";
+export type MainView = "chart" | "funds";
 
 export interface TabQuote {
   price_usdt: number;
@@ -15,6 +15,7 @@ export interface AppConfig {
   max_positions: number;
   stop_loss_pct: number;
   take_profit_pct: number;
+  trading_fee_pct?: number;
   scan_interval_sec: number;
   min_buy_score: number;
   min_entry_score: number;

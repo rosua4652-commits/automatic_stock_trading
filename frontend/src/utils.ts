@@ -267,6 +267,7 @@ export const DEFAULT_CONFIG = {
   max_positions: 0,
   stop_loss_pct: 3,
   take_profit_pct: 5,
+  trading_fee_pct: 0.05,
   scan_interval_sec: 30,
   min_buy_score: 28,
   min_entry_score: 38,

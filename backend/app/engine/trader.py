@@ -40,6 +40,9 @@ class TradingEngine:
     def bind_portfolio(self) -> None:
         """현재 모드에 맞는 포트폴리오만 참조 (시뮬·실거래 분리)."""
         self.portfolio = store.get(self.config.trade_mode)
+        self.portfolio.trading_fee_pct = float(
+            getattr(self.config, "trading_fee_pct", 0.05)
+        )
 
     def _persist(self) -> None:
         store.persist_active(self.config.trade_mode)

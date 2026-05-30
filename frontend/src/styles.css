@@ -84,6 +84,51 @@ body {
   flex-wrap: nowrap;
 }
 
+.topbar-with-funds {
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.funds-topbar {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.85rem;
+  justify-content: center;
+  min-width: 0;
+  padding: 0.15rem 0;
+}
+
+.funds-topbar-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.05rem;
+  min-width: 4.5rem;
+}
+
+.funds-topbar .ft-label {
+  font-size: 0.58rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.funds-topbar .ft-value {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1.2;
+}
+
+.funds-topbar .ft-value.accent {
+  color: var(--accent);
+}
+
+.funds-topbar .ft-value.dim {
+  color: var(--muted);
+  font-weight: 500;
+}
+
 .btn-settings {
   width: auto !important;
   height: 34px !important;
