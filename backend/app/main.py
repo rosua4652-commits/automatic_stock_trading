@@ -40,7 +40,7 @@ from app.storage.credentials import load_credentials, mask_key
 STATIC_DIR = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
 
 # PC에서 run.bat 시작 시 표시 — GitHub 최신과 비교용
-AIDI_BUILD = "2026-03-24-pc-upbit"
+AIDI_BUILD = "2026-03-24-upbit-hs512"
 
 engine = TradingEngine()
 _ws_clients: set[WebSocket] = set()
