@@ -8,7 +8,7 @@
 
 ### Windows
 
-1. [Python 3.11+](https://www.python.org/downloads/) 설치 (PATH 추가)
+1. [Python 3.12](https://www.python.org/downloads/) 설치 (PATH 추가) — **3.14 사용 금지**
 2. 프로젝트 폴더에서 **`run.bat`** 더블클릭  
    - 한글 깨짐/명령 오류 나면 **`run.ps1`** (PowerShell) 사용  
    자세한 내용: **`WINDOWS_설치안내.md`**

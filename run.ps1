@@ -1,5 +1,4 @@
 # AIDI - Windows PowerShell (if run.bat fails, use this)
-# Right-click -> Run with PowerShell, or:  powershell -ExecutionPolicy Bypass -File run.ps1
 
 $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot
@@ -10,8 +9,36 @@ Write-Host " AIDI - Windows"
 Write-Host " =============="
 Write-Host ""
 
-if (-not (Get-Command python -ErrorAction SilentlyContinue)) {
-    Write-Host "ERROR: Python not found. Install from https://www.python.org/downloads/"
+function Get-PythonCmd {
+    if (Get-Command py -ErrorAction SilentlyContinue) {
+        try {
+            & py -3.12 -c "import sys" 2>$null
+            if ($LASTEXITCODE -eq 0) { return @("py", "-3.12") }
+        } catch {}
+    }
+    if (Get-Command python -ErrorAction SilentlyContinue) {
+        return @("python")
+    }
+    return $null
+}
+
+function Test-PyVersion {
+    param([string[]]$Cmd)
+    & @Cmd -c "import sys; v=sys.version_info; raise SystemExit(0 if (3,11)<=v[:2]<(3,14) else 1)"
+    return ($LASTEXITCODE -eq 0)
+}
+
+$pyCmd = Get-PythonCmd
+if (-not $pyCmd) {
+    Write-Host "ERROR: Python not found. Install Python 3.12 from python.org"
+    Read-Host "Press Enter"
+    exit 1
+}
+
+if (-not (Test-PyVersion $pyCmd)) {
+    Write-Host ""
+    Write-Host "ERROR: Need Python 3.11 or 3.12. Python 3.14 is NOT supported."
+    Write-Host "Install 3.12, then: Remove-Item -Recurse -Force backend\.venv"
     Read-Host "Press Enter"
     exit 1
 }
@@ -23,9 +50,16 @@ if (-not (Test-Path "backend\app\main.py")) {
 }
 
 $venvPy = "backend\.venv\Scripts\python.exe"
+if (Test-Path $venvPy) {
+    if (-not (Test-PyVersion @($venvPy))) {
+        Write-Host "Removing old venv (wrong Python version)..."
+        Remove-Item -Recurse -Force "backend\.venv"
+    }
+}
+
 if (-not (Test-Path $venvPy)) {
     Write-Host "Creating venv..."
-    python -m venv backend\.venv
+    & @pyCmd -m venv backend\.venv
 }
 
 Write-Host "Installing Python packages..."

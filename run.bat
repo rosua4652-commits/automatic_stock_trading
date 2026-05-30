@@ -9,14 +9,32 @@ echo  AIDI - Windows
 echo  ===============
 echo.
 
+set "PYEXE=python"
 where python >nul 2>&1
 if errorlevel 1 goto :no_python
 
+where py >nul 2>&1
+if not errorlevel 1 (
+  py -3.12 -c "import sys" >nul 2>&1
+  if not errorlevel 1 set "PYEXE=py -3.12"
+)
+
+call :check_py_version %PYEXE%
+if errorlevel 1 goto :bad_python
+
 if not exist "backend\app\main.py" goto :no_root
 
+if exist "backend\.venv\Scripts\python.exe" (
+  call :check_py_version "backend\.venv\Scripts\python.exe"
+  if errorlevel 1 (
+    echo Removing old venv - wrong Python version...
+    rmdir /s /q "backend\.venv"
+  )
+)
+
 if not exist "backend\.venv\Scripts\python.exe" (
-  echo Creating venv...
-  python -m venv backend\.venv
+  echo Creating venv with %PYEXE% ...
+  %PYEXE% -m venv backend\.venv
   if errorlevel 1 goto :venv_fail
 )
 
@@ -57,10 +75,28 @@ cd /d "%~dp0backend"
 "%~dp0backend\.venv\Scripts\python.exe" -m uvicorn app.main:app --host 0.0.0.0 --port %PORT%
 goto :eof
 
+:check_py_version
+%1 -c "import sys; v=sys.version_info; raise SystemExit(0 if (3,11)<=v[:2]<(3,14) else 1)"
+exit /b %errorlevel%
+
 :no_python
 echo ERROR: Python not found.
-echo Install Python 3.11+ from https://www.python.org/downloads/
+echo Install Python 3.12 from https://www.python.org/downloads/
 echo Check "Add python.exe to PATH" during install.
+pause
+exit /b 1
+
+:bad_python
+echo.
+echo ERROR: Need Python 3.11 or 3.12 only.
+echo Python 3.14 is NOT supported - pydantic install fails.
+echo.
+echo Fix:
+echo   1. Install Python 3.12 from python.org
+echo   2. cmd: rmdir /s /q backend\.venv
+echo   3. Run run.bat again
+echo.
+echo Check version: python --version
 pause
 exit /b 1
 
@@ -75,7 +111,10 @@ pause
 exit /b 1
 
 :pip_fail
+echo.
 echo ERROR: pip install failed.
+echo If you saw pydantic-core / Python 3.14 error:
+echo   Use Python 3.12, delete backend\.venv, run again.
 pause
 exit /b 1
 

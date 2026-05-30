@@ -72,7 +72,8 @@ python run.py
 | `python` 인식 안 됨 | Python 재설치 + PATH 체크, cmd 새로 열기 |
 | `npm` 인식 안 됨 | Node 설치 또는 dist 포함 zip 사용 |
 | `frontend\dist 없음` | `run.bat`이 npm 빌드 시도 / Node 설치 |
-| 포트 8000 사용 중 | 다른 AIDI 창 끄기, 또는 cmd에서 `set PORT_OVERRIDE=8080` 후 `run.bat` |
+| `pydantic-core` / Python 3.14 오류 | **Python 3.12** 설치 → `rmdir /s /q backend\.venv` → `run.bat` 다시 |
+| `run.bat` 한글 깨짐·이상한 명령 오류 | **`run.ps1`** 사용 |
 | 태블릿에서 접속 안 됨 | 같은 Wi‑Fi, 방화벽 허용, PC IP 확인 |
 
 ## 6. 개발 모드 (선택)
