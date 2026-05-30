@@ -7,7 +7,7 @@ from app.engine.portfolio import PortfolioManager
 from app.engine.portfolio_store import store
 from app.market.binance import binance
 from app.market.coin_registry import coin_meta
-from app.market.entry_analyzer import analyze_entry
+from app.market.entry_analyzer import analyze_entry, format_entry_detail
 from app.market.scanner import scan_market
 from app.models import (
     AppConfig,
@@ -176,10 +176,19 @@ class TradingEngine:
         base = coin_meta(symbol)["base"]
         sl = self.config.stop_loss_pct / 100
         tp = self.config.take_profit_pct / 100
+        est_qty = req.amount_krw / self.portfolio.usdt_krw / max(price, 1e-12)
         pos = self.portfolio.buy(
-            symbol, base, price, req.amount_krw, sl, tp,
-            reason="수동 매수",
-            entry_reason="사용자 직접 매수",
+            symbol,
+            base,
+            price,
+            req.amount_krw,
+            sl,
+            tp,
+            reason=f"수동 매수 · {int(req.amount_krw):,}원",
+            entry_reason=(
+                f"수동 매수 · ${price:.4f} · {int(req.amount_krw):,}원 · "
+                f"예상 수량 {est_qty:.6f}"
+            ),
             auto_managed=False,
         )
         if not pos:
@@ -270,7 +279,7 @@ class TradingEngine:
         if not self.is_running():
             return
 
-        # 후보별 차트 진입 분석
+        # 후보별 차트 진입 분석 (적합/부적합 모두 상세 표시)
         enriched = []
         for cand in candidates:
             if not self.is_running():
@@ -279,13 +288,23 @@ class TradingEngine:
             cand.entry_score = signal.score
             cand.entry_ok = signal.ok
             cand.entry_outlook = signal.outlook
+            cand.entry_pattern = signal.pattern
+            cand.entry_reasons = signal.reasons
+            cand.entry_detail = format_entry_detail(
+                signal,
+                min_entry_score=self.config.min_entry_score,
+                min_market_score=self.config.min_buy_score,
+                market_score=cand.score,
+            )
             if signal.ok:
                 enriched.append((cand, signal))
         enriched.sort(key=lambda x: x[0].score, reverse=True)
 
-        self.bot.candidates = [c for c, _ in enriched] + [
-            c for c in candidates if not c.entry_ok
-        ][:15]
+        self.bot.candidates = sorted(
+            candidates,
+            key=lambda c: (c.entry_ok, c.score),
+            reverse=True,
+        )[:20]
         self.bot.last_scan = time.time()
         mode = "모의" if self.config.trade_mode == TradeMode.PAPER else "실거래"
         self.bot.message = f"[{mode}] 차트 적합 {len(enriched)}개 / 분석 {len(candidates)}개"
@@ -315,12 +334,16 @@ class TradingEngine:
         auto_held = {
             s for s, p in self.portfolio.positions.items() if p.auto_quantity > 0
         }
-        slots = self.config.max_positions - len(auto_held)
-        if slots <= 0:
-            return
+        if self.config.max_positions > 0:
+            slots = self.config.max_positions - len(auto_held)
+            if slots <= 0:
+                return
+        else:
+            slots = max(1, 20 - len(auto_held))
 
         snap = self.portfolio.snapshot(prices, self.config)
-        per_slot = snap.cash_krw / max(slots, 1) * 0.85
+        slot_div = min(slots, 8) if self.config.max_positions == 0 else slots
+        per_slot = snap.cash_krw / max(slot_div, 1) * 0.85
         sl_pct = self.config.stop_loss_pct / 100
         tp_pct = self.config.take_profit_pct / 100
 

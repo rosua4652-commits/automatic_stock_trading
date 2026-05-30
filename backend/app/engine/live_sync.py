@@ -137,9 +137,11 @@ async def _sync_upbit(
         for p in new_positions.values()
     )
     total_krw = portfolio.cash_krw + coin_value
+    if not live_meta.get("account_principal_krw"):
+        live_meta["account_principal_krw"] = total_krw
     return (
         f"[업비트 실거래] 연동 · 보유 {n}종 · "
-        f"총자산 약 {total_krw:,.0f}원 (KRW {krw_cash:,.0f})"
+        f"총자산 {total_krw:,.0f}원 (KRW {krw_cash:,.0f})"
     )
 
 
@@ -247,8 +249,10 @@ async def _sync_binance(
         portfolio.usdt_to_krw(p.quantity * p.current_price)
         for p in new_positions.values()
     )
+    if not live_meta.get("account_principal_krw"):
+        live_meta["account_principal_krw"] = total_krw
     net = "테스트넷" if getattr(config, "use_testnet", False) else "실거래"
-    return f"[Binance {net}] 연동 · 보유 {n}종 · 총자산 약 {total_krw:,.0f}원 (USDT {usdt_free:.2f})"
+    return f"[Binance {net}] 연동 · 보유 {n}종 · 총자산 {total_krw:,.0f}원 (USDT {usdt_free:.2f})"
 
 
 def export_live_meta(portfolio) -> dict[str, Any]:

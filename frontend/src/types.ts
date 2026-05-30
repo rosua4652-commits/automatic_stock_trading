@@ -37,6 +37,9 @@ export interface AccountLink {
   mode: string;
   message: string;
   last_sync?: number;
+  total_assets_krw?: number;
+  cash_krw?: number;
+  exchange?: string;
 }
 
 export interface CoinMeta {
@@ -103,6 +106,9 @@ export interface CoinCandidate {
   entry_score: number;
   entry_ok: boolean;
   entry_outlook: string;
+  entry_detail?: string;
+  entry_pattern?: string;
+  entry_reasons?: string[];
 }
 
 export interface TradeEvent {

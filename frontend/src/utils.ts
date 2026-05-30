@@ -64,7 +64,7 @@ export const DEFAULT_CONFIG = {
   trade_mode: "paper" as const,
   target_profit_krw: 2_000_000,
   initial_balance_krw: 10_000_000,
-  max_positions: 6,
+  max_positions: 0,
   stop_loss_pct: 6,
   take_profit_pct: 12,
   scan_interval_sec: 45,

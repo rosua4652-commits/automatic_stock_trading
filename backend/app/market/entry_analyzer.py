@@ -182,3 +182,44 @@ async def analyze_entry(symbol: str, min_score: float = 60.0) -> EntrySignal:
         rsi=round(rsi, 1),
         trend=trend,
     )
+
+
+def format_entry_detail(
+    signal: EntrySignal,
+    *,
+    min_entry_score: float,
+    min_market_score: float = 0,
+    market_score: float = 0,
+) -> str:
+    """진입 가능/불가 사유를 사용자용 문장으로."""
+    if signal.outlook == "데이터 부족":
+        return "차트 데이터 부족 — " + ", ".join(signal.reasons)
+
+    blockers: list[str] = []
+    if market_score > 0 and market_score < min_market_score:
+        blockers.append(
+            f"시장 점수 {market_score:.0f}점 (기준 {min_market_score:.0f}점 미만)"
+        )
+    if signal.score < min_entry_score:
+        blockers.append(
+            f"차트 점수 {signal.score:.0f}점 (기준 {min_entry_score:.0f}점 미만)"
+        )
+    if "하락" in signal.trend:
+        blockers.append(f"추세 '{signal.trend}' — 하락 구간은 자동 진입 안 함")
+    if signal.rsi >= 75:
+        blockers.append(f"RSI {signal.rsi:.0f} — 과열(75 이상) 구간")
+    if signal.outlook == "진입 부적합":
+        blockers.append(f"차트 전망 '{signal.outlook}' ({signal.pattern})")
+
+    if signal.ok:
+        pos = ", ".join(signal.reasons[:5]) if signal.reasons else signal.outlook
+        return f"✓ 자동 진입 가능 — {signal.outlook} · {pos}"
+
+    head = "진입 보류"
+    if blockers:
+        head = "진입 불가 — " + " / ".join(blockers)
+    elif not signal.ok:
+        head = "진입 불가 — 종합 조건 미달"
+
+    chart_notes = ", ".join(signal.reasons[:6]) if signal.reasons else signal.pattern
+    return f"{head} | 차트 분석: {chart_notes}"

@@ -229,6 +229,7 @@ export default function App() {
   const running = isRunning(data.bot.status);
   const stopping = data.bot.status === "stopping";
   const isPaper = data.config.trade_mode === "paper";
+  const canTrade = data.bot.manual_mode && !running;
   const tabs =
     data.tabs?.length > 0
       ? data.tabs
@@ -283,6 +284,10 @@ export default function App() {
           };
         })();
 
+  const handleQuickBuy = (symbol: string) => {
+    handleManualBuy(symbol, 500_000);
+  };
+
   const pairLabel =
     data.portfolio.positions.find((p) => p.symbol === activeSymbol)?.pair_label ||
     data.bot.candidates.find((c) => c.symbol === activeSymbol)?.pair_label ||
@@ -292,9 +297,13 @@ export default function App() {
     <div className="app">
       <div className={`mode-banner ${isPaper ? "paper" : "live"}`}>
         {isPaper
-          ? "모의투자 — 시뮬 전용 데이터 (실거래와 완전 분리)"
+          ? `모의투자 — 시뮬 자금 ${fmtKrw(data.portfolio.total_value_krw)}원 (실거래와 분리)`
           : data.account_link?.linked
-            ? `실거래 연동 · ${data.account_link.message}`
+            ? `실거래 · ${data.account_link.message}${
+                data.account_link.total_assets_krw
+                  ? ` · 총자산 ${fmtKrw(data.account_link.total_assets_krw)}원`
+                  : ""
+              }`
             : `실거래 — ${data.account_link?.message || "API 연동 필요"}`}
       </div>
 
@@ -370,14 +379,22 @@ export default function App() {
             view={view}
             botStatus={data.bot.status}
             botMessage={data.bot.message}
+            canTrade={canTrade}
+            busy={tradeBusy}
+            cashKrw={data.portfolio.cash_krw}
+            onBuy={handleManualBuy}
+            onSell={handleManualSell}
           />
           <main className="layout">
             <PortfolioPanel
               portfolio={data.portfolio}
               candidates={data.bot.candidates}
-              trades={data.bot.recent_trades}
+              trades={data.all_trades ?? data.bot.recent_trades}
               selected={activeSymbol}
               onSelect={handleSelectCoin}
+              canTrade={canTrade}
+              busy={tradeBusy}
+              onQuickBuy={handleQuickBuy}
             />
             <ChartPanel
               symbol={activeSymbol}

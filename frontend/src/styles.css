@@ -234,6 +234,115 @@ body {
   background: var(--surface2);
 }
 
+.coin-detail-wrap {
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.coin-trade-bar {
+  padding: 0.65rem 1.5rem 0.85rem;
+  border-top: 1px solid var(--border);
+}
+
+.entry-detail-box {
+  font-size: 0.78rem;
+  line-height: 1.45;
+  padding: 0.5rem 0.65rem;
+  border-radius: 8px;
+  margin-bottom: 0.5rem;
+  background: rgba(248, 113, 113, 0.08);
+  color: #fca5a5;
+}
+
+.entry-detail-box.ok {
+  background: rgba(34, 211, 165, 0.08);
+  color: #6ee7b7;
+}
+
+.coin-trade-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.65rem 1rem;
+}
+
+.coin-trade-actions label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.coin-trade-actions input[type="number"] {
+  width: 120px;
+  padding: 0.35rem 0.5rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+}
+
+.btn-sm {
+  padding: 0.4rem 0.85rem;
+  font-size: 0.8rem;
+}
+
+.trade-hint {
+  font-size: 0.75rem;
+  margin-top: 0.35rem;
+}
+
+.cand-item {
+  margin-bottom: 0.5rem;
+}
+
+.cand-detail {
+  font-size: 0.68rem;
+  line-height: 1.35;
+  color: var(--muted);
+  padding: 0.25rem 0.5rem 0.35rem;
+}
+
+.cand-tag {
+  display: inline-block;
+  font-size: 0.62rem;
+  padding: 0.1rem 0.35rem;
+  border-radius: 4px;
+  margin-top: 0.15rem;
+}
+
+.cand-tag.ok {
+  background: rgba(34, 211, 165, 0.15);
+  color: var(--green);
+}
+
+.cand-tag.no {
+  background: rgba(248, 113, 113, 0.12);
+  color: var(--red);
+}
+
+.cand-buy-btn {
+  width: 100%;
+  margin-top: 0.25rem;
+  padding: 0.3rem;
+  font-size: 0.72rem;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.cand-buy-btn:hover:not(:disabled) {
+  background: rgba(59, 158, 255, 0.08);
+}
+
+.cand-buy-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .bot-status-text.on {
   color: var(--green);
   background: rgba(34, 211, 165, 0.1);

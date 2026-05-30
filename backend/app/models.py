@@ -19,7 +19,12 @@ class AppConfig(BaseModel):
     trade_mode: TradeMode = TradeMode.PAPER
     target_profit_krw: float = Field(default=2_000_000, ge=100_000, le=1_000_000_000)
     initial_balance_krw: float = Field(default=10_000_000, ge=100_000, le=1_000_000_000)
-    max_positions: int = Field(default=6, ge=1, le=15)
+    max_positions: int = Field(
+        default=0,
+        ge=0,
+        le=30,
+        description="0이면 보유 코인 수 제한 없음",
+    )
     stop_loss_pct: float = Field(default=6.0, ge=1.0, le=25.0)
     take_profit_pct: float = Field(default=12.0, ge=2.0, le=50.0)
     scan_interval_sec: int = Field(default=45, ge=15, le=300)
@@ -158,6 +163,9 @@ class CoinCandidate(BaseModel):
     entry_score: float = 0.0
     entry_ok: bool = False
     entry_outlook: str = ""
+    entry_pattern: str = ""
+    entry_detail: str = ""
+    entry_reasons: list[str] = Field(default_factory=list)
 
 
 class TradeEvent(BaseModel):
@@ -221,6 +229,9 @@ class AccountLinkInfo(BaseModel):
     mode: str = "paper"
     message: str = ""
     last_sync: Optional[float] = None
+    total_assets_krw: Optional[float] = None
+    cash_krw: Optional[float] = None
+    exchange: str = ""
 
 
 class StatusResponse(BaseModel):

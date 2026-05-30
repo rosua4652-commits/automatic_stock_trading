@@ -7,6 +7,9 @@ type Props = {
   trades: TradeEvent[];
   selected: string;
   onSelect: (symbol: string) => void;
+  canTrade: boolean;
+  busy: boolean;
+  onQuickBuy: (symbol: string) => void;
 };
 
 export default function PortfolioPanel({
@@ -15,6 +18,9 @@ export default function PortfolioPanel({
   trades,
   selected,
   onSelect,
+  canTrade,
+  busy,
+  onQuickBuy,
 }: Props) {
   const pnl = portfolio.unrealized_pnl_krw + portfolio.realized_pnl_krw;
   const pnlClass = pnl >= 0 ? "up" : "down";
@@ -57,7 +63,7 @@ export default function PortfolioPanel({
       <section className="panel-block">
         <h3>보유 코인</h3>
         {portfolio.positions.length === 0 ? (
-          <p className="empty">자동투자 시작 시 AI가 포지션을 구성합니다</p>
+          <p className="empty">자동투자 시작 시 AI가 조건에 맞는 코인에 진입합니다</p>
         ) : (
           <ul className="position-list">
             {portfolio.positions.map((p) => (
@@ -82,13 +88,13 @@ export default function PortfolioPanel({
       </section>
 
       <section className="panel-block scroll">
-        <h3>AI 선정</h3>
+        <h3>AI 분석 · 진입 판단</h3>
         {candidates.length === 0 ? (
-          <p className="empty">자동투자 실행 시 후보가 표시됩니다</p>
+          <p className="empty">자동투자 실행 시 시장 스캔·차트 분석 결과가 표시됩니다</p>
         ) : (
           <ul className="candidate-list">
-            {candidates.slice(0, 10).map((c) => (
-              <li key={c.symbol}>
+            {candidates.slice(0, 12).map((c) => (
+              <li key={c.symbol} className="cand-item">
                 <button
                   type="button"
                   className={`cand-row ${selected === c.symbol ? "active" : ""}`}
@@ -97,9 +103,25 @@ export default function PortfolioPanel({
                   <div className="pos-info">
                     <span className="pos-name">{c.name_ko}</span>
                     <span className="pos-pair">{c.pair_label}</span>
+                    <span className={`cand-tag ${c.entry_ok ? "ok" : "no"}`}>
+                      {c.entry_ok ? "진입가능" : "진입보류"}
+                    </span>
                   </div>
                   <span className="cand-score">{c.score}점</span>
                 </button>
+                {c.entry_detail && (
+                  <p className="cand-detail">{c.entry_detail}</p>
+                )}
+                {canTrade && (
+                  <button
+                    type="button"
+                    className="cand-buy-btn"
+                    disabled={busy}
+                    onClick={() => onQuickBuy(c.symbol)}
+                  >
+                    이 코인 매수
+                  </button>
+                )}
               </li>
             ))}
           </ul>
@@ -113,7 +135,7 @@ export default function PortfolioPanel({
             {trades
               .slice()
               .reverse()
-              .slice(0, 8)
+              .slice(0, 12)
               .map((t, i) => (
                 <li
                   key={`${t.ts}-${t.symbol}-${i}`}
@@ -121,7 +143,9 @@ export default function PortfolioPanel({
                 >
                   <div className="trade-left">
                     <span className="trade-name">{t.display}</span>
-                    <span className="trade-side">{t.side === "BUY" ? "매수" : "매도"}</span>
+                    <span className="trade-side">
+                      {t.side === "BUY" ? "매수" : "매도"} · {fmtKrw(t.amount_krw)}원
+                    </span>
                   </div>
                   <span className="trade-reason">{t.reason}</span>
                 </li>

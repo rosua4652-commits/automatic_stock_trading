@@ -11,6 +11,20 @@ import jwt
 UPBIT_API = "https://api.upbit.com"
 
 
+def _parse_upbit_error(text: str) -> RuntimeError:
+    if "no_authorization_ip" in text:
+        return RuntimeError(
+            "업비트 API: 허용 IP가 등록되지 않았습니다. "
+            "업비트 → 마이페이지 → Open API 관리 → 해당 키에 "
+            "지금 사용 중인 PC(집) 공인 IP를 등록한 뒤 다시 시도하세요."
+        )
+    if "invalid_access_key" in text:
+        return RuntimeError("업비트 API: Access Key가 올바르지 않습니다.")
+    if "invalid_secret_key" in text:
+        return RuntimeError("업비트 API: Secret Key가 올바르지 않습니다.")
+    return RuntimeError(f"Upbit: {text}")
+
+
 class UpbitClient:
     def __init__(self) -> None:
         self._access = ""
@@ -58,7 +72,7 @@ class UpbitClient:
         headers = {"Authorization": f"Bearer {self._token(params)}"}
         resp = await client.get(path, params=params, headers=headers)
         if resp.status_code >= 400:
-            raise RuntimeError(f"Upbit: {resp.text}")
+            raise _parse_upbit_error(resp.text)
         return resp.json()
 
     async def _auth_post(self, path: str, body: dict) -> Any:
@@ -68,7 +82,7 @@ class UpbitClient:
         headers = {"Authorization": f"Bearer {self._token(body)}"}
         resp = await client.post(path, json=body, headers=headers)
         if resp.status_code >= 400:
-            raise RuntimeError(f"Upbit: {resp.text}")
+            raise _parse_upbit_error(resp.text)
         return resp.json()
 
     async def test_connection(self) -> dict[str, Any]:

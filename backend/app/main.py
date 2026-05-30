@@ -69,6 +69,7 @@ async def _build_status() -> dict:
                 link.linked = True
                 link.message = engine._link_message or "거래소 연동됨"
                 link.last_sync = _last_live_sync
+                link.exchange = engine.config.exchange or "upbit"
             except Exception as e:
                 link.linked = False
                 link.message = f"연동 실패: {e}"
@@ -80,6 +81,9 @@ async def _build_status() -> dict:
     prices = await engine.prices_map()
     tickers = await _get_tickers()
     snap = portfolio.snapshot(prices, engine.config)
+    if link.linked and engine.config.trade_mode == TradeMode.LIVE:
+        link.total_assets_krw = round(snap.total_value_krw, 0)
+        link.cash_krw = round(snap.cash_krw, 0)
     view = engine.build_coin_view(engine.bot.view_symbol, prices, tickers)
     engine.bot.manual_mode = engine.can_manual_trade()
     engine.bot.recent_trades = portfolio.trades[-40:]

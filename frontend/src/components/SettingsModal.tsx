@@ -110,31 +110,31 @@ export default function SettingsModal({
                 onChange={(e) => set("target_profit_krw", Number(e.target.value))}
               />
             </label>
-            <label className="field">
-              <span>시작 자금 (원)</span>
-              <input
-                type="number"
-                value={draft.initial_balance_krw}
-                onChange={(e) => set("initial_balance_krw", Number(e.target.value))}
-              />
-              <small>포지션 없을 때만 반영 · 현재 {fmtKrw(config.initial_balance_krw)}원</small>
-            </label>
+            {draft.trade_mode === "paper" ? (
+              <label className="field">
+                <span>모의투자 시작 자금 (원)</span>
+                <input
+                  type="number"
+                  value={draft.initial_balance_krw}
+                  onChange={(e) => set("initial_balance_krw", Number(e.target.value))}
+                />
+                <small>포지션·체결 없을 때만 반영 · 현재 {fmtKrw(config.initial_balance_krw)}원</small>
+              </label>
+            ) : (
+              <div className="field">
+                <span>실거래 자금</span>
+                <p className="warn subtle" style={{ margin: "0.35rem 0 0" }}>
+                  업비트/Binance API로 <strong>실제 잔고·보유 코인</strong>을 불러옵니다.
+                  시작 자금은 수동 입력하지 않습니다. 연결 테스트 후 자금 탭에서 확인하세요.
+                </p>
+              </div>
+            )}
           </div>
         </section>
 
         <section className="settings-section">
           <h3>매매 전략</h3>
           <div className="field-grid">
-            <label className="field">
-              <span>최대 보유 코인 수</span>
-              <input
-                type="number"
-                min={1}
-                max={15}
-                value={draft.max_positions}
-                onChange={(e) => set("max_positions", Number(e.target.value))}
-              />
-            </label>
             <label className="field">
               <span>손절 (%)</span>
               <input
