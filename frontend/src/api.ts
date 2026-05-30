@@ -128,6 +128,8 @@ export async function setPositionExitPlan(
   symbol: string,
   body: {
     custom_sl_tp: boolean;
+    stop_loss_pct?: number;
+    take_profit_pct?: number;
     stop_loss_usdt?: number;
     take_profit_usdt?: number;
   }

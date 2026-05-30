@@ -691,6 +691,8 @@ class TradingEngine:
         symbol: str,
         *,
         custom_sl_tp: bool,
+        stop_loss_pct: float | None = None,
+        take_profit_pct: float | None = None,
         stop_loss_usdt: float | None = None,
         take_profit_usdt: float | None = None,
     ) -> tuple[bool, str]:
@@ -699,6 +701,8 @@ class TradingEngine:
         pos = self.portfolio.set_exit_plan(
             sym,
             custom_sl_tp=custom_sl_tp,
+            stop_loss_pct=stop_loss_pct,
+            take_profit_pct=take_profit_pct,
             stop_loss_usdt=stop_loss_usdt,
             take_profit_usdt=take_profit_usdt,
             config=self.config,
@@ -711,10 +715,11 @@ class TradingEngine:
             self.bind_portfolio()
         self.ensure_auto_guard()
         if custom_sl_tp:
+            sl_p = pos.custom_stop_loss_pct or self.config.stop_loss_pct
+            tp_p = pos.custom_take_profit_pct or self.config.take_profit_pct
             return (
                 True,
-                f"{pos.display} — 손익절 수동 지정 "
-                f"(손절 ${pos.stop_loss:.6f} / 익절 ${pos.take_profit:.6f}) · 도달 시 자동 매도",
+                f"{pos.display} — 손절 -{sl_p:g}% / 익절 +{tp_p:g}% 수동 지정 · 도달 시 자동 매도",
             )
         return (
             True,

@@ -336,6 +336,32 @@ export function pctFromAvg(avg: number, level: number): number | null {
   return ((level - avg) / avg) * 100;
 }
 
+/** 손절 % (평단 대비 하락 폭, 양수로 표시 e.g. 3) */
+export function lossPctFromAvg(avg: number, stopLoss: number, fallback: number): number {
+  if (avg <= 0 || stopLoss <= 0) return fallback;
+  return Math.max(0.01, ((avg - stopLoss) / avg) * 100);
+}
+
+/** 익절 % (평단 대비 상승 폭, 양수로 표시 e.g. 5) */
+export function gainPctFromAvg(avg: number, takeProfit: number, fallback: number): number {
+  if (avg <= 0 || takeProfit <= 0) return fallback;
+  return Math.max(0.01, ((takeProfit - avg) / avg) * 100);
+}
+
+/** 평단·% → 손절/익절 USDT 가격 */
+export function pricesFromExitPct(
+  avg: number,
+  stopLossPct: number,
+  takeProfitPct: number
+): { stop_loss: number; take_profit: number } {
+  const sl = Math.max(0.01, stopLossPct);
+  const tp = Math.max(0.01, takeProfitPct);
+  return {
+    stop_loss: avg * (1 - sl / 100),
+    take_profit: avg * (1 + tp / 100),
+  };
+}
+
 export const DEFAULT_CONFIG = {
   trade_mode: "paper" as const,
   target_profit_krw: 2_000_000,

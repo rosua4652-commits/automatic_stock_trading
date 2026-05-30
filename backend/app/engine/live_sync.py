@@ -189,15 +189,21 @@ async def _sync_upbit(
 
         cm = coin_meta(symbol, base)
         custom_sl = bool(pm.get("custom_sl_tp", False))
+        sl_pct_meta = float(pm.get("custom_stop_loss_pct", 0))
+        tp_pct_meta = float(pm.get("custom_take_profit_pct", 0))
         sl = float(pm.get("stop_loss", 0))
         tp = float(pm.get("take_profit", 0))
         if not custom_sl and total_qty > 0 and sl <= 0:
             sl = ref_usdt * (1 - config.stop_loss_pct / 100)
             tp = ref_usdt * (1 + config.take_profit_pct / 100)
-        elif custom_sl and total_qty > 0:
-            if sl <= 0 and ref_usdt > 0:
+        elif custom_sl and total_qty > 0 and ref_usdt > 0:
+            if sl_pct_meta > 0:
+                sl = ref_usdt * (1 - sl_pct_meta / 100)
+            elif sl <= 0:
                 sl = ref_usdt * (1 - config.stop_loss_pct / 100)
-            if tp <= 0 and ref_usdt > 0:
+            if tp_pct_meta > 0:
+                tp = ref_usdt * (1 + tp_pct_meta / 100)
+            elif tp <= 0:
                 tp = ref_usdt * (1 + config.take_profit_pct / 100)
 
         pos = Position(
@@ -226,6 +232,8 @@ async def _sync_upbit(
             entry_outlook=pm.get("entry_outlook", ""),
             excluded_from_auto=bool(pm.get("excluded_from_auto", False)),
             custom_sl_tp=custom_sl,
+            custom_stop_loss_pct=sl_pct_meta if custom_sl else 0.0,
+            custom_take_profit_pct=tp_pct_meta if custom_sl else 0.0,
             data_source="upbit",
             exchange_quantity=total_qty,
             avg_buy_price_krw=avg_buy_krw,
@@ -412,6 +420,8 @@ def export_live_meta(portfolio, preserve: dict[str, Any] | None = None) -> dict[
             "entry_outlook": pos.entry_outlook,
             "excluded_from_auto": pos.excluded_from_auto,
             "custom_sl_tp": pos.custom_sl_tp,
+            "custom_stop_loss_pct": pos.custom_stop_loss_pct,
+            "custom_take_profit_pct": pos.custom_take_profit_pct,
         }
     out: dict[str, Any] = {
         "positions_meta": positions_meta,

@@ -24,7 +24,26 @@ def _pos(**kw) -> Position:
     return Position(**base)
 
 
-def test_set_exit_plan_custom():
+def test_set_exit_plan_custom_pct():
+    pm = PortfolioManager()
+    pm.positions["CPOOLUSDT"] = _pos()
+    cfg = AppConfig()
+    out = pm.set_exit_plan(
+        "CPOOLUSDT",
+        custom_sl_tp=True,
+        stop_loss_pct=3.0,
+        take_profit_pct=5.0,
+        config=cfg,
+    )
+    assert out is not None
+    assert out.custom_sl_tp is True
+    assert out.custom_stop_loss_pct == 3.0
+    assert out.custom_take_profit_pct == 5.0
+    assert abs(out.stop_loss - 0.032 * 0.97) < 1e-9
+    assert abs(out.take_profit - 0.032 * 1.05) < 1e-9
+
+
+def test_set_exit_plan_custom_usdt():
     pm = PortfolioManager()
     pm.positions["CPOOLUSDT"] = _pos()
     cfg = AppConfig()
@@ -36,7 +55,6 @@ def test_set_exit_plan_custom():
         config=cfg,
     )
     assert out is not None
-    assert out.custom_sl_tp is True
     assert out.stop_loss == 0.03
     assert out.take_profit == 0.035
 

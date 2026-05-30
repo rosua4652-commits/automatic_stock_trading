@@ -309,7 +309,7 @@ export default function App() {
   const buildId = data.aidi_build || "";
   const buildStale = !buildId;
   const serverNewEnough =
-    /chart-fix|sl-tp-manual/.test(buildId);
+    /chart-fix|sl-tp-manual|sl-tp-pct/.test(buildId);
   const uiServerMismatch = !!buildId && buildId !== UI_BUILD;
   const needPcUpdate = buildStale || !serverNewEnough;
   const canTrade = !stopping;

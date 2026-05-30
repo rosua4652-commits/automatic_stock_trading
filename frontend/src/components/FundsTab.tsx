@@ -10,9 +10,13 @@ import {
   fmtPct,
   fmtPctSetting,
   fmtUsd,
+  gainPctFromAvg,
   isRunning,
+  lossPctFromAvg,
   MIN_BUY_KRW,
   pctFromAvg,
+  pricesFromExitPct,
+  roundPct2,
 } from "../utils";
 import BuyAmountControl, { maxBuyKrw } from "./BuyAmountControl";
 import SellPctControl from "./SellPctControl";
@@ -33,8 +37,8 @@ type Props = {
     symbol: string,
     plan: {
       custom_sl_tp: boolean;
-      stop_loss_usdt?: number;
-      take_profit_usdt?: number;
+      stop_loss_pct?: number;
+      take_profit_pct?: number;
     }
   ) => Promise<void>;
   stopLossPct: number;
@@ -76,8 +80,8 @@ function PositionCard({
   onExitPlan: (
     plan: {
       custom_sl_tp: boolean;
-      stop_loss_usdt?: number;
-      take_profit_usdt?: number;
+      stop_loss_pct?: number;
+      take_profit_pct?: number;
     }
   ) => Promise<void>;
   stopLossPct: number;
@@ -85,16 +89,47 @@ function PositionCard({
 }) {
   const [sellPct, setSellPct] = useState(100);
   const [customSlTp, setCustomSlTp] = useState(!!pos.custom_sl_tp);
-  const [slUsdt, setSlUsdt] = useState(pos.stop_loss);
-  const [tpUsdt, setTpUsdt] = useState(pos.take_profit);
+
+  const entry = pos.avg_price;
+  const initSlPct =
+    pos.custom_stop_loss_pct && pos.custom_stop_loss_pct > 0
+      ? pos.custom_stop_loss_pct
+      : lossPctFromAvg(entry, pos.stop_loss, stopLossPct);
+  const initTpPct =
+    pos.custom_take_profit_pct && pos.custom_take_profit_pct > 0
+      ? pos.custom_take_profit_pct
+      : gainPctFromAvg(entry, pos.take_profit, takeProfitPct);
+
+  const [slPctIn, setSlPctIn] = useState(initSlPct);
+  const [tpPctIn, setTpPctIn] = useState(initTpPct);
 
   useEffect(() => {
     setCustomSlTp(!!pos.custom_sl_tp);
-    setSlUsdt(pos.stop_loss);
-    setTpUsdt(pos.take_profit);
-  }, [pos.symbol, pos.custom_sl_tp, pos.stop_loss, pos.take_profit]);
+    const e = pos.avg_price;
+    setSlPctIn(
+      pos.custom_stop_loss_pct && pos.custom_stop_loss_pct > 0
+        ? pos.custom_stop_loss_pct
+        : lossPctFromAvg(e, pos.stop_loss, stopLossPct)
+    );
+    setTpPctIn(
+      pos.custom_take_profit_pct && pos.custom_take_profit_pct > 0
+        ? pos.custom_take_profit_pct
+        : gainPctFromAvg(e, pos.take_profit, takeProfitPct)
+    );
+  }, [
+    pos.symbol,
+    pos.custom_sl_tp,
+    pos.stop_loss,
+    pos.take_profit,
+    pos.avg_price,
+    pos.custom_stop_loss_pct,
+    pos.custom_take_profit_pct,
+    stopLossPct,
+    takeProfitPct,
+  ]);
 
-  const entry = pos.avg_price;
+  const preview =
+    entry > 0 ? pricesFromExitPct(entry, slPctIn, tpPctIn) : null;
   const slPct = pctFromAvg(entry, pos.stop_loss);
   const tpPct = pctFromAvg(entry, pos.take_profit);
   const fxKrw =
@@ -104,11 +139,15 @@ function PositionCard({
   const slKrw = fxKrw > 0 ? pos.stop_loss * fxKrw : 0;
   const tpKrw = fxKrw > 0 ? pos.take_profit * fxKrw : 0;
 
-  const applyExitPlan = async (custom: boolean, sl?: number, tp?: number) => {
+  const applyExitPlan = async (
+    custom: boolean,
+    slPct?: number,
+    tpPct?: number
+  ) => {
     await onExitPlan({
       custom_sl_tp: custom,
-      stop_loss_usdt: sl,
-      take_profit_usdt: tp,
+      stop_loss_pct: slPct != null ? roundPct2(slPct) : undefined,
+      take_profit_pct: tpPct != null ? roundPct2(tpPct) : undefined,
     });
   };
 
@@ -216,7 +255,7 @@ function PositionCard({
             onChange={async (e) => {
               const on = e.target.checked;
               setCustomSlTp(on);
-              await applyExitPlan(on, slUsdt, tpUsdt);
+              await applyExitPlan(on, slPctIn, tpPctIn);
             }}
           />
           <span>
@@ -231,35 +270,52 @@ function PositionCard({
         {customSlTp && (
           <div className="exit-plan-inputs">
             <label>
-              손절가 (USDT)
+              손절 (%)
               <input
                 type="number"
-                step="any"
-                min={0}
-                value={slUsdt || ""}
+                step="0.1"
+                min={0.1}
+                max={50}
+                value={slPctIn}
                 disabled={busy}
-                onChange={(e) => setSlUsdt(parseFloat(e.target.value) || 0)}
+                onChange={(e) =>
+                  setSlPctIn(parseFloat(e.target.value) || stopLossPct)
+                }
               />
             </label>
             <label>
-              익절가 (USDT)
+              익절 (%)
               <input
                 type="number"
-                step="any"
-                min={0}
-                value={tpUsdt || ""}
+                step="0.1"
+                min={0.1}
+                max={100}
+                value={tpPctIn}
                 disabled={busy}
-                onChange={(e) => setTpUsdt(parseFloat(e.target.value) || 0)}
+                onChange={(e) =>
+                  setTpPctIn(parseFloat(e.target.value) || takeProfitPct)
+                }
               />
             </label>
             <button
               type="button"
               className="btn-primary btn-sm"
-              disabled={busy || slUsdt <= 0 || tpUsdt <= 0}
-              onClick={() => applyExitPlan(true, slUsdt, tpUsdt)}
+              disabled={
+                busy || slPctIn <= 0 || tpPctIn <= 0 || entry <= 0
+              }
+              onClick={() => applyExitPlan(true, slPctIn, tpPctIn)}
             >
               손익절 적용
             </button>
+            {preview && entry > 0 && (
+              <p className="exit-plan-preview dim">
+                평단 ${fmtUsd(entry)} 기준 → 손절 ${fmtUsd(preview.stop_loss)}
+                {fxKrw > 0 ? ` (${fmtKrw(preview.stop_loss * fxKrw)}원)` : ""}
+                {" / "}
+                익절 ${fmtUsd(preview.take_profit)}
+                {fxKrw > 0 ? ` (${fmtKrw(preview.take_profit * fxKrw)}원)` : ""}
+              </p>
+            )}
           </div>
         )}
       </div>

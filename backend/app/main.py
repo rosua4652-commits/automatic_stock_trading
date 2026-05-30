@@ -43,7 +43,7 @@ STATIC_DIR = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
 # PC에서 run.bat 시작 시 표시 — GitHub 최신과 비교용
-AIDI_BUILD = "2026-03-30-chart-fix"
+AIDI_BUILD = "2026-03-30-sl-tp-pct"
 
 
 def _load_pc_path_hint() -> str:
@@ -493,6 +493,8 @@ async def position_exit_plan(symbol: str, body: PositionExitPlanRequest):
     ok, msg = await engine.set_position_exit_plan(
         symbol,
         custom_sl_tp=body.custom_sl_tp,
+        stop_loss_pct=body.stop_loss_pct,
+        take_profit_pct=body.take_profit_pct,
         stop_loss_usdt=body.stop_loss_usdt,
         take_profit_usdt=body.take_profit_usdt,
     )

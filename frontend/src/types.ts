@@ -93,6 +93,8 @@ export interface Position {
   entry_outlook: string;
   excluded_from_auto: boolean;
   custom_sl_tp?: boolean;
+  custom_stop_loss_pct?: number;
+  custom_take_profit_pct?: number;
   score: number;
   /** 실거래: 업비트 API 기준 필드 */
   data_source?: string;
