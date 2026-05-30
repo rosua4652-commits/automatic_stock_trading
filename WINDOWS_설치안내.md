@@ -18,11 +18,21 @@
 
 탐색기에서 프로젝트 폴더 → **`run.bat`** 더블클릭
 
-또는 **cmd / PowerShell**:
+**`run.bat`에서 한글 깨지고 `'꼍'`, `'npmfail'` 같은 오류가 나면**  
+→ **`run.ps1`** 사용 (아래 PowerShell 방법)
+
+또는 **cmd**:
 
 ```cmd
 cd C:\경로\automatic_stock_trading
 run.bat
+```
+
+### PowerShell (run.bat 오류 시 권장)
+
+```powershell
+cd C:\경로\automatic_stock_trading
+powershell -ExecutionPolicy Bypass -File run.ps1
 ```
 
 브라우저: **http://127.0.0.1:8000**
