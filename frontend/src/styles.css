@@ -687,45 +687,32 @@ body {
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 0.5rem;
+  gap: 0.65rem;
   max-width: 100%;
+  width: 100%;
 }
 
 .coin-trade-actions .buy-amount-control {
-  padding: 0.45rem 0.55rem;
-}
-
-.coin-trade-actions .buy-amount-presets {
-  margin-bottom: 0.35rem;
-}
-
-.coin-trade-actions .buy-amount-control {
-  flex: 1;
+  padding: 0.55rem 0.65rem;
+  width: 100%;
 }
 
 .coin-trade-actions .buy-submit-btn {
-  align-self: flex-start;
+  width: 100%;
+  padding: 0.55rem 1rem;
 }
 
-.coin-trade-actions .sell-block {
+.coin-trade-actions .sell-block-stack {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.65rem;
-  padding-top: 0.5rem;
-  border-top: 1px solid var(--border);
-}
-
-.sell-range-label {
-  display: flex;
-  align-items: center;
+  flex-direction: column;
   gap: 0.5rem;
-  font-size: 0.78rem;
-  color: var(--muted);
+  padding-top: 0.55rem;
+  border-top: 1px solid var(--border);
+  width: 100%;
 }
 
-.sell-range-label input[type="range"] {
-  width: 120px;
+.coin-trade-actions .sell-submit-btn {
+  width: 100%;
 }
 
 .buy-amount-control {
@@ -733,6 +720,12 @@ body {
   background: var(--surface2);
   border-radius: 10px;
   border: 1px solid var(--border);
+}
+
+.buy-amount-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
 }
 
 .buy-amount-control.disabled {
@@ -767,11 +760,12 @@ body {
   font-weight: 400;
 }
 
-.buy-amount-presets {
-  display: flex;
-  flex-wrap: wrap;
+.buy-amount-presets-stack,
+.sell-pct-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   gap: 0.35rem;
-  margin-bottom: 0.5rem;
+  width: 100%;
 }
 
 .preset-btn {
@@ -785,6 +779,37 @@ body {
   font-family: inherit;
 }
 
+.preset-btn-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
+  padding: 0.45rem 0.55rem;
+  text-align: left;
+  width: 100%;
+}
+
+.preset-btn-stack .preset-label {
+  font-weight: 700;
+  font-size: 0.8rem;
+  color: var(--text);
+}
+
+.preset-btn-stack .preset-amt {
+  font-size: 0.68rem;
+  color: var(--muted);
+}
+
+.preset-btn-stack.active,
+.preset-btn.active {
+  border-color: var(--accent);
+  background: rgba(59, 158, 255, 0.12);
+}
+
+.preset-btn-stack.active .preset-label {
+  color: var(--accent);
+}
+
 .preset-btn:hover:not(:disabled) {
   border-color: var(--accent);
   color: var(--accent);
@@ -795,44 +820,49 @@ body {
   cursor: not-allowed;
 }
 
-.buy-amount-slider-row {
-  display: flex;
-  align-items: center;
-  gap: 0.65rem;
-  margin-bottom: 0.45rem;
+.buy-amount-summary {
+  font-size: 0.75rem;
+  color: var(--muted);
+  margin: 0;
 }
 
-.buy-amount-range {
-  flex: 1;
-  min-width: 0;
-  accent-color: var(--accent);
-}
-
-.buy-amount-pct {
-  font-size: 0.78rem;
-  font-weight: 600;
+.buy-amount-summary strong {
   color: var(--accent);
-  min-width: 2.5rem;
-  text-align: right;
+  font-size: 0.88rem;
 }
 
 .buy-amount-input-row {
   display: flex;
   align-items: center;
   gap: 0.35rem;
+  width: 100%;
 }
 
 .buy-amount-number {
   flex: 1;
-  max-width: 200px;
-  padding: 0.45rem 0.6rem;
+  width: 100%;
+  min-width: 0;
+  padding: 0.5rem 0.65rem;
   border-radius: 8px;
   border: 1px solid var(--border);
   background: var(--bg);
   color: var(--text);
-  font-size: 0.95rem;
+  font-size: 1rem;
   font-weight: 600;
   font-family: inherit;
+}
+
+.sell-pct-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  width: 100%;
+}
+
+.sell-pct-label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--muted);
 }
 
 .buy-amount-unit {

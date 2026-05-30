@@ -4,6 +4,15 @@ import { fmtKrw, MIN_BUY_KRW } from "../utils";
 const MIN_KRW = MIN_BUY_KRW;
 const STEP = 1_000;
 
+const PRESETS: { label: string; ratio: number }[] = [
+  { label: "5%", ratio: 0.05 },
+  { label: "10%", ratio: 0.1 },
+  { label: "25%", ratio: 0.25 },
+  { label: "50%", ratio: 0.5 },
+  { label: "75%", ratio: 0.75 },
+  { label: "전액", ratio: 1 },
+];
+
 type Props = {
   cashKrw: number;
   value: number;
@@ -32,66 +41,33 @@ export default function BuyAmountControl({
   const maxKrw = useMemo(() => maxBuyKrw(cashKrw), [cashKrw]);
 
   const pct = useMemo(() => {
-    if (maxKrw <= MIN_KRW) return 100;
-    return Math.round(((value - MIN_KRW) / (maxKrw - MIN_KRW)) * 100);
-  }, [value, maxKrw]);
+    if (cashKrw <= 0) return 0;
+    return Math.min(100, Math.round((value / cashKrw) * 100));
+  }, [value, cashKrw]);
 
   useEffect(() => {
     const clamped = clampAmount(value, maxKrw);
     if (clamped !== value) onChange(clamped);
-    // maxKrw 변경 시에만 보정 (무한 루프 방지)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [maxKrw]);
-
-  const setFromPct = (p: number) => {
-    const ratio = Math.min(100, Math.max(0, p)) / 100;
-    const raw = MIN_KRW + (maxKrw - MIN_KRW) * ratio;
-    onChange(clampAmount(raw, maxKrw));
-  };
 
   const setPreset = (ratio: number) => {
     onChange(clampAmount(cashKrw * ratio, maxKrw));
   };
 
   const insufficient = value > cashKrw;
+  const activePreset = PRESETS.find(
+    (p) => Math.abs(clampAmount(cashKrw * p.ratio, maxKrw) - value) < STEP
+  )?.label;
 
   return (
-    <div className={`buy-amount-control ${disabled ? "disabled" : ""}`}>
+    <div className={`buy-amount-control buy-amount-stack ${disabled ? "disabled" : ""}`}>
       <div className="buy-amount-head">
         <span className="buy-amount-label">매수 금액</span>
         <span className="buy-amount-cash">
-          보유 현금 <strong>{fmtKrw(cashKrw)}</strong>원
-          <span className="dim"> · 최대 {fmtKrw(maxKrw)}원</span>
+          보유 <strong>{fmtKrw(cashKrw)}</strong>원
+          <span className="dim"> · 매수 가능 최대 {fmtKrw(maxKrw)}원</span>
         </span>
-      </div>
-
-      <div className="buy-amount-presets">
-        {[0.1, 0.25, 0.5, 1].map((r) => (
-          <button
-            key={r}
-            type="button"
-            className="preset-btn"
-            disabled={disabled || cashKrw < MIN_KRW}
-            onClick={() => setPreset(r)}
-          >
-            {r === 1 ? "전액" : `${r * 100}%`}
-          </button>
-        ))}
-      </div>
-
-      <div className="buy-amount-slider-row">
-        <input
-          id={`${id}-range`}
-          type="range"
-          className="buy-amount-range"
-          min={0}
-          max={100}
-          step={1}
-          value={pct}
-          disabled={disabled || maxKrw <= MIN_KRW}
-          onChange={(e) => setFromPct(Number(e.target.value))}
-        />
-        <span className="buy-amount-pct">{pct}%</span>
       </div>
 
       <div className="buy-amount-input-row">
@@ -107,6 +83,32 @@ export default function BuyAmountControl({
           onChange={(e) => onChange(clampAmount(Number(e.target.value), maxKrw))}
         />
         <span className="buy-amount-unit">원</span>
+      </div>
+
+      <p className="buy-amount-summary">
+        선택 <strong>{fmtKrw(value)}</strong>원
+        {cashKrw > 0 && (
+          <span className="dim"> · 현금의 {pct}%</span>
+        )}
+      </p>
+
+      <div className="buy-amount-presets buy-amount-presets-stack" role="group" aria-label="비율 선택">
+        {PRESETS.map((p) => {
+          const amt = clampAmount(cashKrw * p.ratio, maxKrw);
+          const active = activePreset === p.label;
+          return (
+            <button
+              key={p.label}
+              type="button"
+              className={`preset-btn preset-btn-stack ${active ? "active" : ""}`}
+              disabled={disabled || cashKrw < MIN_KRW}
+              onClick={() => setPreset(p.ratio)}
+            >
+              <span className="preset-label">{p.label}</span>
+              <span className="preset-amt">{fmtKrw(amt)}원</span>
+            </button>
+          );
+        })}
       </div>
 
       {insufficient && (

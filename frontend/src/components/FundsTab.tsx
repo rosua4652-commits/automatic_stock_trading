@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { Portfolio, Position, TradeEvent } from "../types";
 import { fmtKrw, fmtPct, fmtUsd, isRunning, MIN_BUY_KRW } from "../utils";
 import BuyAmountControl, { maxBuyKrw } from "./BuyAmountControl";
+import SellPctControl from "./SellPctControl";
 
 type Props = {
   portfolio: Portfolio;
@@ -131,26 +132,15 @@ function PositionCard({
       </label>
 
       {canTrade && (
-        <div className="manual-sell-row">
-          <label>
-            매도 비율
-            <input
-              type="range"
-              min={10}
-              max={100}
-              step={10}
-              value={sellPct}
-              onChange={(e) => setSellPct(Number(e.target.value))}
-            />
-            <span>{sellPct}%</span>
-          </label>
+        <div className="manual-sell-row sell-block-stack">
+          <SellPctControl value={sellPct} onChange={setSellPct} disabled={busy} />
           <button
             type="button"
-            className="btn-sell"
+            className="btn-sell sell-submit-btn"
             disabled={busy}
             onClick={() => onSell(sellPct)}
           >
-            매도
+            {sellPct}% 매도
           </button>
         </div>
       )}

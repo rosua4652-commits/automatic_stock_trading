@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { CoinView, InvestmentRecommendation } from "../types";
 import BuyAmountControl, { maxBuyKrw } from "./BuyAmountControl";
+import SellPctControl from "./SellPctControl";
 import { fmtKrw, fmtUsd, MIN_BUY_KRW } from "../utils";
 
 type Props = {
@@ -104,27 +105,19 @@ export default function CoinTradeBar({
           매수 ({fmtKrw(amount)}원)
         </button>
         {held && (
-          <div className="sell-block">
-            <label className="sell-range-label">
-              매도 비율
-              <input
-                type="range"
-                min={10}
-                max={100}
-                step={10}
-                value={sellPct}
-                disabled={!canTrade || busy}
-                onChange={(e) => setSellPct(Number(e.target.value))}
-              />
-              <span>{sellPct}%</span>
-            </label>
+          <div className="sell-block sell-block-stack">
+            <SellPctControl
+              value={sellPct}
+              onChange={setSellPct}
+              disabled={!canTrade || busy}
+            />
             <button
               type="button"
-              className="btn-sell btn-sm"
+              className="btn-sell btn-sm sell-submit-btn"
               disabled={!canTrade || busy}
               onClick={() => onSell(sym, sellPct)}
             >
-              매도
+              {sellPct}% 매도
             </button>
           </div>
         )}

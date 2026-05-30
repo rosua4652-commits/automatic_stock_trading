@@ -14,6 +14,7 @@ from app.models import (
     AppConfig,
     BotState,
     BotStatus,
+    CoinCandidate,
     CoinMeta,
     CoinView,
     ManualBuyRequest,
