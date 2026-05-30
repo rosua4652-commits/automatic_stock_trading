@@ -59,19 +59,20 @@ def _analyze_closes(closes: np.ndarray, volumes: np.ndarray) -> tuple[float, str
         trend = "상승"
         reasons.append("상승 추세")
     elif closes[-1] < ema26[-1] and ema12[-1] < ema50[-1]:
-        score -= 20
+        score -= 8
         trend = "하락"
-        reasons.append("하락 추세")
+        reasons.append("약한 하락")
     else:
         trend = "횡보"
-        score += 5
+        score += 12
+        reasons.append("횡보·단타 가능")
 
     # RSI: 과열/과매도
     if 42 <= rsi <= 62:
         score += 22
         reasons.append(f"RSI {rsi:.0f} 적정")
-    elif rsi > 72:
-        score -= 25
+    elif rsi > 78:
+        score -= 12
         reasons.append(f"RSI {rsi:.0f} 과열")
     elif rsi < 32:
         score += 8
@@ -115,16 +116,16 @@ def _analyze_closes(closes: np.ndarray, volumes: np.ndarray) -> tuple[float, str
         if mom > 3:
             score += 10
             reasons.append("모멘텀 양호")
-        elif mom < -5:
-            score -= 15
+        elif mom < -8:
+            score -= 8
             reasons.append("모멘텀 약세")
 
-    if score >= 65:
-        outlook = "상승 가능성 높음"
+    if score >= 58:
+        outlook = "단타·상승 우세"
         pattern = "돌파·추세형"
-    elif score >= 45:
-        outlook = "관망·약한 상승"
-        pattern = "횡보·조정"
+    elif score >= 38:
+        outlook = "단타 관망·진입 가능"
+        pattern = "횡보·스캘핑"
     else:
         outlook = "진입 부적합"
         pattern = "약세·하락"
@@ -132,11 +133,11 @@ def _analyze_closes(closes: np.ndarray, volumes: np.ndarray) -> tuple[float, str
     return score, outlook, pattern, reasons, rsi, trend
 
 
-async def analyze_entry(symbol: str, min_score: float = 60.0) -> EntrySignal:
-    """1h·4h 차트 종합 — 올라갈 그래프 패턴인지 판단."""
+async def analyze_entry(symbol: str, min_score: float = 45.0) -> EntrySignal:
+    """15m·1h 차트 — 단타·빠른 진입·청산용 (기준 완화)."""
     try:
-        raw_1h = await binance.klines(symbol, "1h", 120)
-        raw_4h = await binance.klines(symbol, "4h", 80)
+        raw_15m = await binance.klines(symbol, "15m", 120)
+        raw_1h = await binance.klines(symbol, "1h", 80)
     except Exception:
         return EntrySignal(
             ok=False,
@@ -148,30 +149,33 @@ async def analyze_entry(symbol: str, min_score: float = 60.0) -> EntrySignal:
             trend="-",
         )
 
-    if len(raw_1h) < 50:
+    if len(raw_15m) < 40:
         return EntrySignal(
             ok=False, score=0, outlook="데이터 부족", pattern="-",
             reasons=["캔들 부족"], rsi=50, trend="-",
         )
 
-    c1 = np.array([float(r[4]) for r in raw_1h], dtype=float)
-    v1 = np.array([float(r[5]) for r in raw_1h], dtype=float)
-    s1, o1, p1, r1, rsi1, t1 = _analyze_closes(c1, v1)
+    c15 = np.array([float(r[4]) for r in raw_15m], dtype=float)
+    v15 = np.array([float(r[5]) for r in raw_15m], dtype=float)
+    s15, o15, p15, r15, rsi15, t15 = _analyze_closes(c15, v15)
 
-    s2, o2, p2, r2, rsi2, t2 = 0.0, o1, p1, [], rsi1, t1
-    if len(raw_4h) >= 40:
-        c4 = np.array([float(r[4]) for r in raw_4h], dtype=float)
-        v4 = np.array([float(r[5]) for r in raw_4h], dtype=float)
-        s2, o2, p2, r2, rsi2, t2 = _analyze_closes(c4, v4)
+    s1h, o1h, p1h, r1h, rsi1h, t1h = s15, o15, p15, r15, rsi15, t15
+    if len(raw_1h) >= 40:
+        c1h = np.array([float(r[4]) for r in raw_1h], dtype=float)
+        v1h = np.array([float(r[5]) for r in raw_1h], dtype=float)
+        s1h, o1h, p1h, r1h, rsi1h, t1h = _analyze_closes(c1h, v1h)
 
-    combined = s1 * 0.6 + s2 * 0.4
-    reasons = list(dict.fromkeys(r1 + r2))[:8]
-    outlook = o1 if combined >= 55 else o2
-    pattern = p1 if s1 >= s2 else p2
-    trend = t1 if s1 >= s2 else t2
-    rsi = (rsi1 + rsi2) / 2
+    combined = s15 * 0.65 + s1h * 0.35
+    reasons = list(dict.fromkeys(r15 + r1h))[:8]
+    outlook = o15 if s15 >= s1h else o1h
+    pattern = p15 if s15 >= s1h else p1h
+    trend = t15 if s15 >= s1h else t1h
+    rsi = (rsi15 + rsi1h) / 2
 
-    ok = combined >= min_score and "하락" not in trend and rsi < 75
+    # 단타: 점수·횡보·약반등 허용, 극과열·깊은 하락만 제외
+    ok = combined >= min_score and rsi < 82
+    if trend == "하락" and combined < min_score + 5:
+        ok = False
 
     return EntrySignal(
         ok=ok,
@@ -204,18 +208,21 @@ def format_entry_detail(
         blockers.append(
             f"차트 점수 {signal.score:.0f}점 (기준 {min_entry_score:.0f}점 미만)"
         )
-    if "하락" in signal.trend:
-        blockers.append(f"추세 '{signal.trend}' — 하락 구간은 자동 진입 안 함")
-    if signal.rsi >= 75:
-        blockers.append(f"RSI {signal.rsi:.0f} — 과열(75 이상) 구간")
+    if signal.trend == "하락" and signal.score < min_entry_score + 5:
+        blockers.append(f"추세 '{signal.trend}' — 단타 기준 미달")
+    if signal.rsi >= 82:
+        blockers.append(f"RSI {signal.rsi:.0f} — 극과열(82 이상)")
     if signal.outlook == "진입 부적합":
         blockers.append(f"차트 전망 '{signal.outlook}' ({signal.pattern})")
 
     if signal.ok:
         pos = ", ".join(signal.reasons[:5]) if signal.reasons else signal.outlook
-        return f"✓ 자동 진입 가능 — {signal.outlook} · {pos}"
+        return f"✓ 단타 진입 가능 — {signal.outlook} · {pos}"
 
-    head = "진입 보류"
+    if signal.score >= min_entry_score - 8:
+        head = "진입 보류 (근접)"
+    else:
+        head = "진입 보류"
     if blockers:
         head = "진입 불가 — " + " / ".join(blockers)
     elif not signal.ok:

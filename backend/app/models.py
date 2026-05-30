@@ -25,11 +25,11 @@ class AppConfig(BaseModel):
         le=30,
         description="0이면 보유 코인 수 제한 없음",
     )
-    stop_loss_pct: float = Field(default=6.0, ge=1.0, le=25.0)
-    take_profit_pct: float = Field(default=12.0, ge=2.0, le=50.0)
-    scan_interval_sec: int = Field(default=45, ge=15, le=300)
-    min_buy_score: float = Field(default=40.0, ge=20.0, le=90.0)
-    min_entry_score: float = Field(default=60.0, ge=40.0, le=90.0)
+    stop_loss_pct: float = Field(default=3.0, ge=0.5, le=25.0)
+    take_profit_pct: float = Field(default=5.0, ge=0.5, le=50.0)
+    scan_interval_sec: int = Field(default=30, ge=15, le=300)
+    min_buy_score: float = Field(default=28.0, ge=15.0, le=90.0)
+    min_entry_score: float = Field(default=45.0, ge=25.0, le=90.0)
     exchange: str = Field(default="upbit", description="upbit | binance")
     api_access_key: str = ""
     api_secret_key: str = ""

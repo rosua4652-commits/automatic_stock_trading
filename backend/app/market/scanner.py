@@ -105,7 +105,7 @@ async def _analyze_one(
         if closes.std() / (closes.mean() + 1e-9) > 0.35:
             return None
         score, trend, rsi, reason = _score_symbol(closes, volumes, change)
-        if score < 25:
+        if score < 18:
             return None
         meta = coin_meta(symbol, base)
         return CoinCandidate(

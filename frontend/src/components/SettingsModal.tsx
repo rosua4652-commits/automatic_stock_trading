@@ -136,7 +136,7 @@ export default function SettingsModal({
           <h3>매매 전략</h3>
           <div className="field-grid">
             <label className="field">
-              <span>손절 (%)</span>
+              <span>손절 (%) · 단타</span>
               <input
                 type="number"
                 min={1}
@@ -147,7 +147,7 @@ export default function SettingsModal({
               />
             </label>
             <label className="field">
-              <span>익절 (%)</span>
+              <span>익절 (%) · 단타</span>
               <input
                 type="number"
                 min={2}
@@ -176,7 +176,7 @@ export default function SettingsModal({
                 value={draft.min_entry_score}
                 onChange={(e) => set("min_entry_score", Number(e.target.value))}
               />
-              <small>올라갈 패턴일 때만 자동 매수</small>
+              <small>낮을수록 단타 진입 많음 (기본 45)</small>
             </label>
             <label className="field">
               <span>시장 스캔 주기 (초)</span>
