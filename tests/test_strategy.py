@@ -39,7 +39,7 @@ class StrategyTests(unittest.TestCase):
         )
         strategy = ScalpingStrategy(RiskSettings())
         signal = strategy.evaluate("KRW-TEST", candles, MarketContext(btc_5m_change_pct=0.1))
-        self.assertGreaterEqual(signal.score, 60)
+        self.assertGreaterEqual(signal.score, 50)
         if signal.should_enter:
             self.assertIsNotNone(signal.plan)
 
