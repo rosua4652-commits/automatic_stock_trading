@@ -9,7 +9,7 @@ from urllib.parse import urlencode
 import httpx
 import jwt
 
-from app.market.ipv4_http import ipv4_async_client, outbound_ipv4_via_same_stack
+from app.market.ipv4_http import outbound_ipv4_via_same_stack, shared_upbit_client
 from app.market.network_info import get_outbound_public_ip
 from app.storage.credentials import mask_key
 
@@ -77,10 +77,7 @@ class UpbitClient:
 
     async def _ensure(self) -> httpx.AsyncClient:
         if self._client is None:
-            self._client = ipv4_async_client(
-                base_url=UPBIT_API,
-                timeout=25.0,
-            )
+            self._client = shared_upbit_client()
         return self._client
 
     async def close(self) -> None:
