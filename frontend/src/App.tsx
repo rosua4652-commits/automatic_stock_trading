@@ -20,7 +20,7 @@ import FundsTab from "./components/FundsTab";
 import PortfolioPanel from "./components/PortfolioPanel";
 import SettingsModal from "./components/SettingsModal";
 import type { AppConfig, Candle, MainView, StatusPayload } from "./types";
-import { DEFAULT_CONFIG, fmtKrw, isRunning, mergeWsPayload } from "./utils";
+import { DEFAULT_CONFIG, fmtKrw, isRunning, mergeWsPayload, MIN_BUY_KRW } from "./utils";
 
 export default function App() {
   const [data, setData] = useState<StatusPayload | null>(null);
@@ -289,7 +289,7 @@ export default function App() {
   const handleQuickBuy = (symbol: string) => {
     const cash = data?.portfolio.cash_krw ?? 0;
     const amount = Math.max(
-      50_000,
+      MIN_BUY_KRW,
       Math.min(Math.floor(cash * 0.25), Math.floor(cash * 0.95))
     );
     handleManualBuy(symbol, amount);

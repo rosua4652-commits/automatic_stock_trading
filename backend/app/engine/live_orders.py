@@ -9,7 +9,10 @@ from app.market.coin_registry import coin_meta
 from app.market.upbit_client import symbol_to_upbit, upbit_client
 from app.models import AppConfig, TradeEvent
 from app.storage.credentials import get_active_keys
+from app.config import settings
 from app.storage.persistence import save_live_meta
+
+MIN_BUY_KRW = settings.min_buy_krw
 
 
 async def _qty_before(portfolio, symbol: str) -> tuple[float, float]:
@@ -30,8 +33,8 @@ async def live_market_buy(
     sym = symbol.upper()
     exchange = (config.exchange or "upbit").lower()
 
-    if amount_krw < 5000 and exchange == "upbit":
-        return False, "업비트 최소 주문은 5,000원입니다"
+    if amount_krw < MIN_BUY_KRW:
+        return False, f"최소 주문 금액은 {int(MIN_BUY_KRW):,}원입니다"
 
     old_total, old_auto = await _qty_before(portfolio, sym)
 

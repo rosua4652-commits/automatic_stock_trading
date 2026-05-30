@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { Portfolio, Position, TradeEvent } from "../types";
-import { fmtKrw, fmtPct, fmtUsd, isRunning } from "../utils";
+import { fmtKrw, fmtPct, fmtUsd, isRunning, MIN_BUY_KRW } from "../utils";
 import BuyAmountControl, { maxBuyKrw } from "./BuyAmountControl";
 
 type Props = {
@@ -252,7 +252,7 @@ export default function FundsTab({
               className="btn-primary buy-submit-btn"
               disabled={
                 busy ||
-                buyAmount < 50_000 ||
+                buyAmount < MIN_BUY_KRW ||
                 buyAmount > portfolio.cash_krw
               }
               onClick={() => onManualBuy(buySymbol, buyAmount)}

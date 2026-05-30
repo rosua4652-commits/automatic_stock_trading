@@ -60,6 +60,9 @@ export function mergeWsPayload(
   return incoming;
 }
 
+/** 최소 매수 금액 (원) — 백엔드와 동일 */
+export const MIN_BUY_KRW = 5_000;
+
 export const DEFAULT_CONFIG = {
   trade_mode: "paper" as const,
   target_profit_krw: 2_000_000,

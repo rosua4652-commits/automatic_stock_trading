@@ -1,6 +1,9 @@
 """AI 투자 제안: 비중·금액 산출 (자동 체결 없음)."""
 
+from app.config import settings
 from app.models import AppConfig, CoinCandidate, InvestmentRecommendation
+
+MIN_BUY = settings.min_buy_krw
 
 
 def build_recommendations(
@@ -11,7 +14,7 @@ def build_recommendations(
 ) -> list[InvestmentRecommendation]:
     """진입 가능 후보에 투자 가능 현금을 점수 비중으로 배분."""
     budget = cash_krw * 0.85
-    if budget < 50_000:
+    if budget < MIN_BUY:
         return []
 
     pool: list[CoinCandidate] = []
@@ -39,7 +42,7 @@ def build_recommendations(
     allocated = 0.0
     for c, w in zip(pool, weights):
         amount = round(budget * (w / total_w), -3)  # 1,000원 단위
-        if amount < 50_000:
+        if amount < MIN_BUY:
             continue
         weight_pct = round(w / total_w * 100, 1)
         allocated += amount
@@ -66,7 +69,7 @@ def build_recommendations(
         scale = budget / allocated
         recs = [
             r.model_copy(
-                update={"amount_krw": max(50_000, round(r.amount_krw * scale, -3))}
+                update={"amount_krw": max(MIN_BUY, round(r.amount_krw * scale, -3))}
             )
             for r in recs
         ]

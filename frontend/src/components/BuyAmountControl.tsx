@@ -1,8 +1,8 @@
 import { useEffect, useMemo } from "react";
-import { fmtKrw } from "../utils";
+import { fmtKrw, MIN_BUY_KRW } from "../utils";
 
-const MIN_KRW = 50_000;
-const STEP = 10_000;
+const MIN_KRW = MIN_BUY_KRW;
+const STEP = 1_000;
 
 type Props = {
   cashKrw: number;

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { CoinView } from "../types";
 import BuyAmountControl, { maxBuyKrw } from "./BuyAmountControl";
-import { fmtKrw } from "../utils";
+import { fmtKrw, MIN_BUY_KRW } from "../utils";
 
 type Props = {
   view: CoinView;
@@ -35,7 +35,7 @@ export default function CoinTradeBar({
   }, [maxKrw, sym]);
 
   const canBuy =
-    canTrade && !busy && amount >= 50_000 && amount <= cashKrw && cashKrw >= 50_000;
+    canTrade && !busy && amount >= MIN_BUY_KRW && amount <= cashKrw && cashKrw >= MIN_BUY_KRW;
 
   return (
     <div className="coin-trade-bar">

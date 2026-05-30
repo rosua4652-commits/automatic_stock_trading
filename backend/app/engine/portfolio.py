@@ -179,7 +179,7 @@ class PortfolioManager:
         auto_managed: bool = True,
     ) -> Optional[Position]:
         cost_krw = min(allocation_krw, self.cash_krw * 0.95)
-        if cost_krw < 50_000:
+        if cost_krw < settings.min_buy_krw:
             return None
         usdt = self.krw_to_usdt(cost_krw)
         qty = usdt / price_usdt

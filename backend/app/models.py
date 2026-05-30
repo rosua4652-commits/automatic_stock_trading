@@ -232,7 +232,7 @@ class BotState(BaseModel):
 
 class ManualBuyRequest(BaseModel):
     symbol: str
-    amount_krw: float = Field(ge=50_000, le=500_000_000)
+    amount_krw: float = Field(ge=5_000, le=500_000_000)
 
 
 class ManualSellRequest(BaseModel):
