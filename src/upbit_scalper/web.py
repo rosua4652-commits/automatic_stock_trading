@@ -113,7 +113,7 @@ def _dashboard_html() -> str:
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>AI Upbit Scalper</title>
+  <title>AI 업비트 단타 봇</title>
   <style>
     body { font-family: Arial, sans-serif; margin: 0; background: #0f172a; color: #e2e8f0; }
     header { padding: 20px 28px; background: #111827; border-bottom: 1px solid #334155; }
@@ -128,32 +128,32 @@ def _dashboard_html() -> str:
 </head>
 <body>
   <header>
-    <h1>AI Upbit Scalper Dashboard</h1>
-    <p class="muted">기본은 paper mode입니다. 실거래는 환경변수로 별도 활성화해야 합니다.</p>
+    <h1>AI 업비트 단타 봇 대시보드</h1>
+    <p class="muted">기본은 모의투자 모드입니다. 실거래는 환경변수에서 별도로 활성화해야 합니다.</p>
   </header>
   <main>
     <section>
-      <h2>Bot Control</h2>
-      <button class="safe" onclick="post('/api/start', {mode:'paper'})">Paper 지속 실행</button>
+      <h2>봇 제어</h2>
+      <button class="safe" onclick="post('/api/start', {mode:'paper'})">모의투자 지속 실행</button>
       <button onclick="post('/api/step', {})">1회 분석/실행</button>
       <button class="danger" onclick="post('/api/stop', {})">중단</button>
       <button onclick="loadStatus()">상태 새로고침</button>
-      <pre id="status">loading...</pre>
+      <pre id="status">불러오는 중...</pre>
     </section>
     <section>
-      <h2>Signals</h2>
+      <h2>매매 후보 신호</h2>
       <button onclick="post('/api/scan', {})">후보 분석</button>
       <button onclick="post('/api/ai', {})">AI 분석</button>
       <pre id="signals"></pre>
     </section>
     <section>
-      <h2>Portfolio</h2>
+      <h2>자금 현황</h2>
       <button onclick="post('/api/portfolio', {})">자금 현황 저장/조회</button>
       <button onclick="get('/api/report', 'portfolio')">HTML 리포트 생성</button>
       <pre id="portfolio"></pre>
     </section>
     <section>
-      <h2>Logs</h2>
+      <h2>기록 / 로그</h2>
       <button onclick="get('/api/logs?limit=30', 'logs')">최근 로그</button>
       <pre id="logs"></pre>
     </section>

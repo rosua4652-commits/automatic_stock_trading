@@ -23,7 +23,7 @@ def build_portfolio_report(
 <html lang="ko">
 <head>
   <meta charset="utf-8">
-  <title>Portfolio Report</title>
+  <title>자금 현황 리포트</title>
   <style>
     body {{ font-family: Arial, sans-serif; margin: 32px; color: #17202a; }}
     .metric {{ display: inline-block; margin: 0 20px 20px 0; padding: 16px; background: #f4f6f7; border-radius: 8px; }}
@@ -34,13 +34,13 @@ def build_portfolio_report(
   </style>
 </head>
 <body>
-  <h1>Portfolio Report</h1>
-  <div class="metric"><strong>Snapshots</strong><br>{len(rows)}</div>
-  <div class="metric"><strong>Latest Value</strong><br>{_fmt_krw(values[-1]) if values else "N/A"}</div>
-  <div class="metric"><strong>Change</strong><br>{_fmt_change(values)}</div>
-  <h2>Equity Curve</h2>
+  <h1>자금 현황 리포트</h1>
+  <div class="metric"><strong>저장된 스냅샷</strong><br>{len(rows)}</div>
+  <div class="metric"><strong>최근 평가금액</strong><br>{_fmt_krw(values[-1]) if values else "N/A"}</div>
+  <div class="metric"><strong>전체 변동</strong><br>{_fmt_change(values)}</div>
+  <h2>자산 변동 그래프</h2>
   {_sparkline_svg(values)}
-  <h2>Latest Allocation</h2>
+  <h2>최근 자산 비중</h2>
   {_allocation_table(latest)}
 </body>
 </html>
@@ -60,7 +60,7 @@ def _extract_total_value(row: dict[str, Any]) -> float | None:
 
 def _sparkline_svg(values: list[float]) -> str:
     if not values:
-        return "<p>No portfolio snapshots yet.</p>"
+        return "<p>아직 저장된 자금 스냅샷이 없습니다.</p>"
     width = 900
     height = 260
     padding = 20
@@ -87,7 +87,7 @@ def _allocation_table(row: dict[str, Any]) -> str:
     snapshot = row.get("snapshot", row)
     assets = snapshot.get("assets", []) if isinstance(snapshot, dict) else []
     if not assets:
-        return "<p>No allocation data yet.</p>"
+        return "<p>아직 자산 비중 데이터가 없습니다.</p>"
     body = []
     for asset in assets:
         body.append(
@@ -100,8 +100,8 @@ def _allocation_table(row: dict[str, Any]) -> str:
             "</tr>"
         )
     return (
-        "<table><thead><tr><th>Asset</th><th>Value KRW</th><th>Allocation</th>"
-        "<th>Unrealized PnL</th><th>Unrealized %</th></tr></thead>"
+        "<table><thead><tr><th>자산</th><th>평가금액(KRW)</th><th>비중</th>"
+        "<th>미실현 손익</th><th>미실현 수익률</th></tr></thead>"
         f"<tbody>{''.join(body)}</tbody></table>"
     )
 
