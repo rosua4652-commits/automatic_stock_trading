@@ -1,11 +1,11 @@
 ========================================
-  AIDI — PC 최종본 (폴더 3)
+  AIDI — PC 최종본 (폴더 6)
 ========================================
 
 공식 PC 프로젝트 폴더 (run.bat 이 있는 곳):
-  C:\Users\dongil-3\Downloads\automatic_stock_trading-main (3)\automatic_stock_trading-main
+  C:\Users\dongil-3\Downloads\automatic_stock_trading-main (6)\automatic_stock_trading-main
 
-※ 상위 "(3)" ZIP 폴더가 아니라, 안쪽 automatic_stock_trading-main 에서 실행
+※ 상위 "(6)" ZIP 폴더가 아니라, 안쪽 automatic_stock_trading-main 에서 실행
 ※ 경로는 pc-path.txt 와 동일해야 합니다.
 
 
