@@ -1255,6 +1255,22 @@ body {
   align-items: center;
 }
 
+.chart-zoom-select {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.chart-zoom-select select {
+  font-size: 0.72rem;
+  padding: 0.28rem 0.45rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--text);
+  cursor: pointer;
+}
+
 .chart-tools-hint {
   font-size: 0.65rem;
   color: var(--muted);
