@@ -108,24 +108,30 @@ class PortfolioManager:
             px = prices.get(sym, pos.current_price or pos.avg_price)
             pos.current_price = px
             self._recalc_avg(pos)
-            val_krw = self.usdt_to_krw(pos.value_usdt)
             cost_krw = pos.cost_basis_krw
-            pnl_krw = val_krw - cost_krw
-            auto_val = self.usdt_to_krw(pos.auto_value_usdt)
-            manual_val = val_krw - auto_val
+            # USDT 기준 손익 후 원화 환산 (매수·평가 환율 불일치로 가짜 수익 방지)
+            cost_usdt = pos.quantity * pos.avg_price
+            current_usdt = pos.quantity * px
+            pnl_usdt = current_usdt - cost_usdt
+            pnl_krw = self.usdt_to_krw(pnl_usdt)
+            val_krw = cost_krw + pnl_krw
+            auto_cost_usdt = pos.auto_quantity * pos.auto_avg_price
+            auto_current_usdt = pos.auto_quantity * px
+            auto_pnl_usdt = auto_current_usdt - auto_cost_usdt
+            manual_cost_usdt = pos.manual_quantity * pos.manual_avg_price
+            manual_pnl_usdt = (pos.manual_quantity * px) - manual_cost_usdt
             pos.current_value_krw = round(val_krw, 0)
-            pos.auto_value_krw = round(auto_val, 0)
-            pos.manual_value_krw = round(manual_val, 0)
+            pos.auto_value_krw = round(
+                pos.auto_cost_basis_krw + self.usdt_to_krw(auto_pnl_usdt), 0
+            )
+            pos.manual_value_krw = round(
+                pos.manual_cost_basis_krw + self.usdt_to_krw(manual_pnl_usdt), 0
+            )
             pos.pnl_krw = round(pnl_krw, 0)
-            if pos.auto_quantity > 0 and pos.auto_avg_price > 0:
-                pos.auto_pnl_krw = round(
-                    self.usdt_to_krw(
-                        (px - pos.auto_avg_price) * pos.auto_quantity
-                    ),
-                    0,
-                )
-            else:
-                pos.auto_pnl_krw = 0.0
+            pos.auto_pnl_krw = round(self.usdt_to_krw(auto_pnl_usdt), 0) if pos.auto_quantity > 0 else 0.0
+            pos.manual_pnl_krw = (
+                round(self.usdt_to_krw(manual_pnl_usdt), 0) if pos.manual_quantity > 0 else 0.0
+            )
             invested += val_krw
             principal += cost_krw
             unrealized += pnl_krw
@@ -179,6 +185,8 @@ class PortfolioManager:
         qty = usdt / price_usdt
         if qty <= 0:
             return None
+        # 매수 시점 환율로 수량·원금을 맞춤 (이후 평가는 USDT 손익 × 현재 환율)
+        fx_at_buy = self.usdt_krw
         meta = coin_meta(symbol, base)
         self.cash_krw -= cost_krw
 
@@ -188,7 +196,7 @@ class PortfolioManager:
                 new_auto = pos.auto_quantity + qty
                 pos.auto_cost_basis_krw += cost_krw
                 pos.auto_avg_price = (
-                    pos.auto_cost_basis_krw / self.usdt_krw / new_auto if new_auto else price_usdt
+                    pos.auto_cost_basis_krw / fx_at_buy / new_auto if new_auto else price_usdt
                 )
                 pos.auto_quantity = new_auto
                 if pos.stop_loss <= 0:
@@ -199,7 +207,7 @@ class PortfolioManager:
                 new_man = pos.manual_quantity + qty
                 pos.manual_cost_basis_krw += cost_krw
                 pos.manual_avg_price = (
-                    pos.manual_cost_basis_krw / self.usdt_krw / new_man if new_man else price_usdt
+                    pos.manual_cost_basis_krw / fx_at_buy / new_man if new_man else price_usdt
                 )
                 pos.manual_quantity = new_man
             pos.cost_basis_krw += cost_krw
