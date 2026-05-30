@@ -72,6 +72,7 @@ async def live_market_buy(
         delta = max(0, pos.quantity - old_total)
         pos.auto_quantity = min(pos.quantity, old_auto + delta)
         pos.manual_quantity = max(0, pos.quantity - pos.auto_quantity)
+        pos.excluded_from_auto = False
         if pos.auto_avg_price <= 0:
             pos.auto_avg_price = fills_price
         pos.auto_cost_basis_krw += amount_krw * (delta / pos.quantity if pos.quantity else 1)
@@ -81,6 +82,7 @@ async def live_market_buy(
         pos.take_profit = fills_price * (1 + tp)
         pos.trailing_high = fills_price
         pos.entry_reason = reason
+        pos.entry_outlook = "AI 자동투자"
 
     m = coin_meta(sym)
     portfolio.trades.append(

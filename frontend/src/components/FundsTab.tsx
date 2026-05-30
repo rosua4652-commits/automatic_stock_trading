@@ -129,7 +129,16 @@ function PositionCard({
           disabled={busy}
           onChange={(e) => onExclude(e.target.checked)}
         />
-        <span>자동투자 제외 (내 보유분 — AI가 건드리지 않음)</span>
+        <span>
+          자동투자 제외
+          <span className="exclude-hint dim">
+            {pos.excluded_from_auto
+              ? " — 체크됨: AI 익절·손절 안 함"
+              : pos.auto_quantity > 0
+                ? " — 해제(기본): AI가 익절·손절 감시"
+                : " — 수동 매수분만 해당"}
+          </span>
+        </span>
       </label>
 
       {canTrade && (

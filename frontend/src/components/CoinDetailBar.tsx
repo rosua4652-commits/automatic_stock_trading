@@ -82,6 +82,9 @@ export default function CoinDetailBar({
 
         {in_portfolio && position && (
           <div className="coin-detail-hold">
+            {position.auto_quantity > 0 && !position.excluded_from_auto && (
+              <span className="coin-auto-badge">AI 자동투자 · 익절/손절 감시</span>
+            )}
             <span>원금 {fmtKrw(position.cost_basis_krw)}원</span>
             <span className={position.pnl_krw >= 0 ? "up" : "down"}>
               {position.pnl_krw >= 0 ? "+" : ""}

@@ -32,6 +32,7 @@ class TradingEngine:
         self.portfolio: PortfolioManager = store.paper
         self.bot = BotState()
         self._task: Optional[asyncio.Task] = None
+        self._guard_task: Optional[asyncio.Task] = None
         self._listeners: list[Callable[[], None]] = []
         self._status_version: int = 0
         self._link_message: str = ""
@@ -51,6 +52,34 @@ class TradingEngine:
 
     def can_manual_trade(self) -> bool:
         return self.bot.status != BotStatus.STOPPING
+
+    def ensure_auto_guard(self) -> None:
+        """AI 매수 포지션 익절·손절 — 분석 중지 후에도 주기 감시."""
+        if self._guard_task and not self._guard_task.done():
+            return
+        self._guard_task = asyncio.create_task(self._auto_guard_loop())
+
+    async def _auto_guard_loop(self) -> None:
+        try:
+            while True:
+                await asyncio.sleep(5)
+                self.bind_portfolio()
+                has_auto = any(
+                    p.auto_quantity > 1e-10 and not p.excluded_from_auto
+                    for p in self.portfolio.positions.values()
+                )
+                if not has_auto:
+                    continue
+                try:
+                    tickers = await binance.tickers_24h()
+                    await self._monitor_positions(tickers)
+                    if not self._is_live():
+                        self._persist()
+                    self._notify()
+                except Exception:
+                    pass
+        except asyncio.CancelledError:
+            pass
 
     def subscribe(self, cb: Callable[[], None]) -> None:
         self._listeners.append(cb)
@@ -407,14 +436,16 @@ class TradingEngine:
         self._notify()
 
     async def _monitor_positions(self, tickers: dict) -> None:
-        """보유 auto 포지션 손절·익절·트레일링."""
+        """보유 AI(auto) 포지션 손절·익절·트레일링 — 분석 중·중지 후 모두."""
         if not self.portfolio.positions:
             return
         for sym in list(self.portfolio.positions.keys()):
-            if not self.is_running():
-                return
             pos = self.portfolio.positions.get(sym)
-            if not pos or pos.auto_quantity <= 1e-10:
+            if (
+                not pos
+                or pos.auto_quantity <= 1e-10
+                or pos.excluded_from_auto
+            ):
                 continue
             t = tickers.get(sym)
             if not t:
@@ -500,7 +531,7 @@ class TradingEngine:
                     reason=buy_reason,
                     entry_reason=f"{entry_txt} · {tp_label}/{sl_label} 자동매도",
                     entry_score=rec.entry_score,
-                    entry_outlook="AI 승인",
+                    entry_outlook="AI 자동투자",
                     auto_managed=True,
                 )
                 if pos:
@@ -510,18 +541,23 @@ class TradingEngine:
                     fail_msgs.append(f"{rec.base}: 잔고 부족")
 
         if ok_n:
+            await self._monitor_positions(tickers)
             self._persist()
             self.bot.recent_trades = self.portfolio.trades[-40:]
             self.bot.recommendations = [
                 r for r in self.bot.recommendations if r.symbol.upper() not in success_syms
             ]
+            self.ensure_auto_guard()
         self._bump_version()
         self._notify()
 
         if ok_n == 0:
             return False, fail_msgs[0] if fail_msgs else "매수 실패"
         tail = f" ({fail_msgs[0]})" if fail_msgs else ""
-        return True, f"{ok_n}건 매수 체결{tail}"
+        return (
+            True,
+            f"{ok_n}건 AI 자동투자 매수 · 익절/손절 감시 중{tail}",
+        )
 
     async def set_position_exclude(self, symbol: str, exclude: bool) -> tuple[bool, str]:
         self.bind_portfolio()
@@ -538,10 +574,12 @@ class TradingEngine:
         return True, f"{pos.display} — 자동투자 예외 해제"
 
     async def _manage_position(self, symbol: str, price: float) -> None:
-        if not self.is_running():
-            return
         pos = self.portfolio.positions.get(symbol)
-        if not pos or pos.auto_quantity <= 0:
+        if (
+            not pos
+            or pos.auto_quantity <= 0
+            or pos.excluded_from_auto
+        ):
             return
 
         pos.current_price = price

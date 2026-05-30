@@ -138,10 +138,13 @@ async def lifespan(app: FastAPI):
     global _broadcast_task
     engine.config = apply_credentials_to_config(engine.config)
     engine.bind_portfolio()
+    engine.ensure_auto_guard()
     _broadcast_task = asyncio.create_task(_broadcast_loop())
     yield
     if _broadcast_task:
         _broadcast_task.cancel()
+    if engine._guard_task:
+        engine._guard_task.cancel()
     await engine.stop()
     store.persist_active(engine.config.trade_mode)
     await binance.close()

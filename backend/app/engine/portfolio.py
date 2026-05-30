@@ -199,6 +199,7 @@ class PortfolioManager:
                     pos.auto_cost_basis_krw / fx_at_buy / new_auto if new_auto else price_usdt
                 )
                 pos.auto_quantity = new_auto
+                pos.excluded_from_auto = False
                 if pos.stop_loss <= 0:
                     pos.stop_loss = price_usdt * (1 - stop_loss_pct)
                     pos.take_profit = price_usdt * (1 + take_profit_pct)
@@ -241,8 +242,8 @@ class PortfolioManager:
             manual_cost_basis_krw=0.0 if auto_managed else cost_krw,
             entry_reason=entry_reason,
             entry_score=entry_score,
-            entry_outlook=entry_outlook,
-            excluded_from_auto=not auto_managed,
+            entry_outlook=entry_outlook or ("AI 자동투자" if auto_managed else ""),
+            excluded_from_auto=False,
         )
         if not auto_managed:
             pos.manual_quantity = qty
