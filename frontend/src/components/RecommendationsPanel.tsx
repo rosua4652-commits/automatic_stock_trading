@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { EditableRecommendation } from "../hooks/useRecommendationAmounts";
 import type { ApplyItem } from "../hooks/useRecommendationAmounts";
-import { fmtKrw, fmtPct, fmtUsd, isRunning } from "../utils";
+import { deployableCashKrw, fmtKrw, fmtPct, fmtUsd, isRunning } from "../utils";
 import RecommendationAmountField from "./RecommendationAmountField";
 
 type Props = {
@@ -43,6 +43,8 @@ export default function RecommendationsPanel({
   const running = isRunning(botStatus);
   const picked = list.filter((r) => selected[r.symbol] !== false);
   const total = picked.reduce((s, r) => s + r.amount_krw, 0);
+  const deployable = deployableCashKrw(cashKrw);
+  const overBudget = total > deployable + 500;
 
   const toggle = (sym: string) => {
     setSelected((prev) => ({ ...prev, [sym]: !prev[sym] }));
@@ -81,7 +83,11 @@ export default function RecommendationsPanel({
         <h3>투자 제안</h3>
         <p className="panel-hint">AI 금액 수정 가능 · 승인 시 손절/익절 자동</p>
         <span className="rec-meta">
-          현금 {fmtKrw(cashKrw)}원 · 선택 {picked.length}건 · 합계 {fmtKrw(total)}원
+          현금 {fmtKrw(cashKrw)}원 · 배분 가능 {fmtKrw(deployable)}원 · 선택{" "}
+          {picked.length}건 · 합계 {fmtKrw(total)}원
+          {overBudget && (
+            <span className="warn"> (현금 초과 — 자동 조절됨)</span>
+          )}
         </span>
       </div>
       <div className="rec-actions-top">
@@ -94,7 +100,7 @@ export default function RecommendationsPanel({
         <button
           type="button"
           className="btn-primary"
-          disabled={busy || picked.length === 0 || total > cashKrw}
+          disabled={busy || picked.length === 0 || total > deployable + 500}
           onClick={applyPicked}
         >
           {busy ? "매수 중…" : `선택 승인 (${picked.length}건)`}

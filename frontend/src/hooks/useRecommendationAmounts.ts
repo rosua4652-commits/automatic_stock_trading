@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { AppConfig, InvestmentRecommendation } from "../types";
-import { computeTradePlan, MIN_BUY_KRW } from "../utils";
+import {
+  balanceRecommendationAmounts,
+  computeTradePlan,
+  deployableCashKrw,
+  MIN_BUY_KRW,
+} from "../utils";
 
 export type EditableRecommendation = InvestmentRecommendation & {
   amount_krw: number;
@@ -40,76 +45,136 @@ function enrich(
 export function useRecommendationAmounts(
   recommendations: InvestmentRecommendation[],
   config: AppConfig,
+  cashKrw: number,
   usdtKrw = 1350
 ) {
+  const feePct = config.trading_fee_pct ?? 0.05;
+  const budget = deployableCashKrw(cashKrw, feePct);
+
+  const balancedBase = useMemo(
+    () => balanceRecommendationAmounts(recommendations, cashKrw, feePct),
+    [recommendations, cashKrw, feePct]
+  );
+
+  const recKey = useMemo(
+    () =>
+      recommendations
+        .map((r) => `${r.symbol}:${r.amount_krw}:${r.selected}`)
+        .join("|"),
+    [recommendations]
+  );
+
   const [amounts, setAmounts] = useState<Record<string, number>>({});
+  const [syncKey, setSyncKey] = useState("");
 
   useEffect(() => {
-    setAmounts((prev) => {
-      const next = { ...prev };
-      for (const r of recommendations) {
-        if (next[r.symbol] === undefined) {
-          next[r.symbol] = r.amount_krw;
-        }
-      }
-      return next;
-    });
-  }, [recommendations]);
+    if (recKey === syncKey) return;
+    setSyncKey(recKey);
+    setAmounts(balancedBase);
+  }, [recKey, syncKey, balancedBase]);
 
   const list: EditableRecommendation[] = useMemo(() => {
-    return recommendations.map((r) => {
+    const merged = recommendations.map((r) => {
+      const raw = amounts[r.symbol] ?? balancedBase[r.symbol] ?? r.amount_krw;
       const amt = Math.max(
         MIN_BUY_KRW,
-        Math.round((amounts[r.symbol] ?? r.amount_krw) / 1000) * 1000
+        Math.round(raw / 1000) * 1000
       );
       return enrich(r, amt, config, usdtKrw);
     });
-  }, [recommendations, amounts, config, usdtKrw]);
 
-  const setAmount = useCallback((symbol: string, amount: number) => {
-    setAmounts((prev) => ({ ...prev, [symbol]: amount }));
-  }, []);
+    const total = merged.reduce((s, r) => s + (r.selected !== false ? r.amount_krw : 0), 0);
+    if (total <= budget || total === 0) return merged;
+
+    const scaled = balanceRecommendationAmounts(
+      merged.map((r) => ({
+        symbol: r.symbol,
+        amount_krw: r.amount_krw,
+        selected: r.selected,
+      })),
+      cashKrw,
+      feePct
+    );
+    return merged
+      .map((r) => {
+        const amt = scaled[r.symbol] ?? r.amount_krw;
+        return enrich(r, amt >= MIN_BUY_KRW ? amt : 0, config, usdtKrw);
+      })
+      .filter((r) => r.amount_krw >= MIN_BUY_KRW);
+  }, [recommendations, amounts, balancedBase, config, usdtKrw, cashKrw, feePct, budget]);
+
+  const totalSelected = useMemo(
+    () =>
+      list
+        .filter((r) => r.selected !== false)
+        .reduce((s, r) => s + r.amount_krw, 0),
+    [list]
+  );
+
+  const setAmount = useCallback(
+    (symbol: string, amount: number) => {
+      setAmounts((prev) => {
+        const next = {
+          ...prev,
+          [symbol]: Math.max(MIN_BUY_KRW, Math.round(amount / 1000) * 1000),
+        };
+        const draft = recommendations.map((r) => ({
+          symbol: r.symbol,
+          amount_krw: next[r.symbol] ?? prev[r.symbol] ?? r.amount_krw,
+          selected: r.selected,
+        }));
+        return balanceRecommendationAmounts(draft, cashKrw, feePct);
+      });
+    },
+    [recommendations, cashKrw, feePct]
+  );
 
   const resetToAi = useCallback(
     (symbol: string) => {
-      const r = recommendations.find((x) => x.symbol === symbol);
-      if (r) setAmount(symbol, r.amount_krw);
+      const v = balancedBase[symbol];
+      if (v) setAmounts((prev) => ({ ...prev, [symbol]: v }));
     },
-    [recommendations, setAmount]
+    [balancedBase]
   );
 
   const resetAllToAi = useCallback(() => {
-    const m: Record<string, number> = {};
-    recommendations.forEach((r) => {
-      m[r.symbol] = r.amount_krw;
-    });
-    setAmounts(m);
-  }, [recommendations]);
+    setAmounts({ ...balancedBase });
+  }, [balancedBase]);
 
   const getApplyItems = useCallback(
     (symbols: string[]): ApplyItem[] => {
-      return symbols.map((sym) => {
-        const row = list.find((r) => r.symbol === sym);
-        return {
-          symbol: sym,
-          amount_krw: row?.amount_krw ?? amounts[sym] ?? MIN_BUY_KRW,
-        };
-      });
+      const items = symbols
+        .map((sym) => {
+          const row = list.find((r) => r.symbol === sym);
+          return {
+            symbol: sym,
+            amount_krw: row?.amount_krw ?? amounts[sym] ?? MIN_BUY_KRW,
+          };
+        })
+        .filter((i) => i.amount_krw >= MIN_BUY_KRW);
+      const scaled = balanceRecommendationAmounts(
+        items.map((i) => ({
+          symbol: i.symbol,
+          amount_krw: i.amount_krw,
+          selected: true,
+        })),
+        cashKrw,
+        feePct
+      );
+      return symbols
+        .filter((sym) => scaled[sym] >= MIN_BUY_KRW)
+        .map((sym) => ({ symbol: sym, amount_krw: scaled[sym] }));
     },
-    [list, amounts]
+    [list, amounts, cashKrw, feePct]
   );
 
-  const aiAmounts = useMemo(() => {
-    const m: Record<string, number> = {};
-    recommendations.forEach((r) => {
-      m[r.symbol] = r.amount_krw;
-    });
-    return m;
-  }, [recommendations]);
+  const aiAmounts = useMemo(() => ({ ...balancedBase }), [balancedBase]);
 
   return {
     list,
     aiAmounts,
+    totalSelected,
+    deployableBudget: budget,
     setAmount,
     resetToAi,
     resetAllToAi,

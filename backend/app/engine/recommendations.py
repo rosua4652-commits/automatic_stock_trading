@@ -26,6 +26,110 @@ def _trade_plan(
     return round(qty, 6), sl_price, tp_price, round(sl_krw, 0), round(tp_krw, 0)
 
 
+def deployable_cash_krw(cash_krw: float, fee_pct: float = 0.05) -> float:
+    """수수료·여유분 반영 후 배분 가능 현금."""
+    fee_r = max(0.0, fee_pct) / 100
+    return max(0.0, cash_krw / (1 + fee_r) * 0.92)
+
+
+def allocate_amounts_by_weights(
+    weights: list[float],
+    cash_krw: float,
+    fee_pct: float = 0.05,
+) -> list[float]:
+    """
+    점수 비중으로 현금 배분. 합계 <= deployable cash, 각 건 MIN_BUY 이상(또는 0).
+    """
+    if not weights or cash_krw < MIN_BUY:
+        return [0.0] * len(weights)
+
+    budget = round(deployable_cash_krw(cash_krw, fee_pct), -3)
+    if budget < MIN_BUY:
+        return [0.0] * len(weights)
+
+    n = len(weights)
+    max_slots = min(n, int(budget // MIN_BUY))
+    if max_slots <= 0:
+        return [0.0] * n
+
+    order = sorted(range(n), key=lambda i: weights[i], reverse=True)[:max_slots]
+    sel_w = [weights[i] for i in order]
+    wsum = sum(sel_w)
+    if wsum <= 0:
+        return [0.0] * n
+
+    amts: list[float] = []
+    for w in sel_w:
+        amts.append(max(MIN_BUY, round(budget * w / wsum, -3)))
+
+    def _trim() -> None:
+        nonlocal amts, order, sel_w
+        while sum(amts) > budget and len(amts) > 1:
+            amts.pop()
+            order = order[: len(amts)]
+            sel_w = sel_w[: len(amts)]
+            wsum = sum(sel_w)
+            amts = [max(MIN_BUY, round(budget * w / wsum, -3)) for w in sel_w]
+
+        while sum(amts) > budget and amts:
+            over = sum(amts) - budget
+            i = max(range(len(amts)), key=lambda j: amts[j])
+            cut = min(over, amts[i] - MIN_BUY)
+            if cut < 1000:
+                if len(amts) > 1:
+                    amts.pop(i)
+                    order.pop(i)
+                    sel_w.pop(i)
+                    wsum = sum(sel_w) or 1
+                    amts = [max(MIN_BUY, round(budget * w / wsum, -3)) for w in sel_w]
+                else:
+                    amts[i] = max(MIN_BUY, budget)
+                    break
+            else:
+                amts[i] = round(amts[i] - cut, -3)
+
+    _trim()
+
+    out = [0.0] * n
+    for idx, a in zip(order, amts):
+        if a >= MIN_BUY:
+            out[idx] = a
+
+    while sum(out) > budget:
+        active = [i for i in range(n) if out[i] >= MIN_BUY]
+        if not active:
+            break
+        i = max(active, key=lambda j: out[j])
+        over = sum(out) - budget
+        if out[i] - max(MIN_BUY, over) >= MIN_BUY:
+            out[i] = round(out[i] - max(over, 1000), -3)
+        elif len(active) > 1:
+            out[i] = 0.0
+        else:
+            out[i] = round(budget, -3)
+            break
+    return out
+
+
+def cap_apply_amounts(
+    amounts: dict[str, float],
+    cash_krw: float,
+    fee_pct: float = 0.05,
+) -> dict[str, float]:
+    """승인 매수 합계가 현금을 넘지 않도록 비례 축소."""
+    if not amounts:
+        return amounts
+    budget = deployable_cash_krw(cash_krw, fee_pct)
+    total = sum(amounts.values())
+    if total <= budget:
+        return {k: max(MIN_BUY, round(v, -3)) for k, v in amounts.items() if v >= MIN_BUY}
+
+    keys = list(amounts.keys())
+    weights = [amounts[k] for k in keys]
+    scaled = allocate_amounts_by_weights(weights, cash_krw, fee_pct)
+    return {k: scaled[i] for i, k in enumerate(keys) if scaled[i] >= MIN_BUY}
+
+
 def build_recommendations(
     candidates: list[CoinCandidate],
     cash_krw: float,
@@ -35,8 +139,9 @@ def build_recommendations(
     tickers: dict | None = None,
     usdt_krw: float = 1350.0,
 ) -> list[InvestmentRecommendation]:
-    """진입 가능 후보에 투자 가능 현금을 점수 비중으로 배분."""
-    budget = cash_krw * 0.85
+    """진입 가능 후보에 보유 현금 범위 내에서 점수 비중 배분."""
+    fee_pct = float(getattr(config, "trading_fee_pct", 0.05))
+    budget = deployable_cash_krw(cash_krw, fee_pct)
     if budget < MIN_BUY:
         return []
 
@@ -58,19 +163,17 @@ def build_recommendations(
     if not pool:
         return []
 
-    weights: list[float] = []
-    for c in pool:
-        w = max(1.0, c.score + c.entry_score)
-        weights.append(w)
-    total_w = sum(weights)
+    weights = [max(1.0, c.score + c.entry_score) for c in pool]
+    amounts = allocate_amounts_by_weights(weights, cash_krw, fee_pct)
+    total_allocated = sum(amounts)
 
     recs: list[InvestmentRecommendation] = []
-    allocated = 0.0
-    for c, w in zip(pool, weights):
-        amount = round(budget * (w / total_w), -3)  # 1,000원 단위
+    for c, amount, w in zip(pool, amounts, weights):
         if amount < MIN_BUY:
             continue
-        weight_pct = round(w / total_w * 100, 1)
+        weight_pct = (
+            round(amount / total_allocated * 100, 1) if total_allocated > 0 else 0.0
+        )
         price_usdt = 0.0
         qty_est = 0.0
         sl_price = tp_price = sl_krw = tp_krw = 0.0
@@ -89,7 +192,6 @@ def build_recommendations(
             if c.entry_ok
             else ("scalp" if getattr(c, "entry_scalp_ok", False) else "watch")
         )
-        allocated += amount
         recs.append(
             InvestmentRecommendation(
                 symbol=c.symbol,
@@ -114,31 +216,4 @@ def build_recommendations(
                 selected=True,
             )
         )
-
-  # 예산 초과 시 비례 축소
-    if allocated > budget and recs:
-        scale = budget / allocated
-        scaled: list[InvestmentRecommendation] = []
-        for r in recs:
-            amt = max(MIN_BUY, round(r.amount_krw * scale, -3))
-            qty, sl_p, tp_p, sl_k, tp_k = _trade_plan(
-                amt,
-                r.price_usdt,
-                usdt_krw,
-                config.stop_loss_pct,
-                config.take_profit_pct,
-            )
-            scaled.append(
-                r.model_copy(
-                    update={
-                        "amount_krw": amt,
-                        "quantity_est": qty,
-                        "stop_loss_price_usdt": sl_p,
-                        "take_profit_price_usdt": tp_p,
-                        "stop_loss_krw": sl_k,
-                        "take_profit_krw": tp_k,
-                    }
-                )
-            )
-        recs = scaled
     return recs

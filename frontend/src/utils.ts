@@ -165,6 +165,64 @@ export function mergeWsPayload(
 /** 최소 매수 금액 (원) — 백엔드와 동일 */
 export const MIN_BUY_KRW = 5_000;
 
+/** 수수료 반영 후 AI 배분 가능 현금 */
+export function deployableCashKrw(cashKrw: number, feePct = 0.05) {
+  const feeR = Math.max(0, feePct) / 100;
+  return Math.max(0, cashKrw / (1 + feeR) * 0.92);
+}
+
+/** 제안 금액 합이 현금을 넘지 않도록 비중 재배분 */
+export function balanceRecommendationAmounts(
+  recs: { symbol: string; amount_krw: number; selected?: boolean }[],
+  cashKrw: number,
+  feePct = 0.05
+): Record<string, number> {
+  const budget = Math.round(deployableCashKrw(cashKrw, feePct) / 1000) * 1000;
+  const active = recs.filter((r) => r.selected !== false);
+  if (!active.length || budget < MIN_BUY_KRW) return {};
+
+  const weights = active.map((r) => Math.max(1, r.amount_krw));
+  const wsum = weights.reduce((a, b) => a + b, 0);
+  let amounts = active.map((r, i) =>
+    Math.max(MIN_BUY_KRW, Math.round((budget * weights[i]) / wsum / 1000) * 1000)
+  );
+
+  const trim = () => {
+    while (amounts.reduce((a, b) => a + b, 0) > budget && amounts.length > 1) {
+      amounts.pop();
+      const ws = weights.slice(0, amounts.length);
+      const s = ws.reduce((a, b) => a + b, 0) || 1;
+      amounts = ws.map((w) =>
+        Math.max(MIN_BUY_KRW, Math.round((budget * w) / s / 1000) * 1000)
+      );
+    }
+    let total = amounts.reduce((a, b) => a + b, 0);
+    while (total > budget && amounts.length) {
+      const over = total - budget;
+      let i = amounts.indexOf(Math.max(...amounts));
+      const cut = Math.min(over, amounts[i] - MIN_BUY_KRW);
+      if (cut < 1000) {
+        if (amounts.length > 1) {
+          amounts.splice(i, 1);
+        } else {
+          amounts[0] = Math.min(amounts[0], budget);
+          break;
+        }
+      } else {
+        amounts[i] = amounts[i] - cut;
+      }
+      total = amounts.reduce((a, b) => a + b, 0);
+    }
+  };
+  trim();
+
+  const out: Record<string, number> = {};
+  active.slice(0, amounts.length).forEach((r, i) => {
+    if (amounts[i] >= MIN_BUY_KRW) out[r.symbol] = amounts[i];
+  });
+  return out;
+}
+
 /** 보유 포지션 익절·손절 (USDT 가격 + 원화 예상 손익) */
 export function positionTpSl(pos: Position) {
   const { avg_price, cost_basis_krw, stop_loss, take_profit } = pos;

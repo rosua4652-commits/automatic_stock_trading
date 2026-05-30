@@ -5,7 +5,7 @@ from typing import Callable, Optional
 from app.engine.live_orders import live_market_buy, live_market_sell
 from app.engine.portfolio import PortfolioManager
 from app.engine.portfolio_store import store
-from app.engine.recommendations import build_recommendations
+from app.engine.recommendations import build_recommendations, cap_apply_amounts
 from app.market.binance import binance
 from app.market.coin_registry import coin_meta
 from app.market.entry_analyzer import analyze_entry, format_entry_detail
@@ -484,6 +484,15 @@ class TradingEngine:
         if not to_apply:
             return False, "매수할 코인을 선택하세요"
 
+        raw_amts: dict[str, float] = {}
+        for rec in to_apply:
+            sym = rec.symbol.upper()
+            raw_amts[sym] = float(amount_map.get(sym, rec.amount_krw))
+        fee_pct = float(getattr(self.config, "trading_fee_pct", 0.05))
+        capped_amts = cap_apply_amounts(raw_amts, self.portfolio.cash_krw, fee_pct)
+        if not capped_amts:
+            return False, "현금이 부족해 승인 매수할 수 없습니다"
+
         tickers = await binance.tickers_24h()
         sl_pct = self.config.stop_loss_pct / 100
         tp_pct = self.config.take_profit_pct / 100
@@ -499,9 +508,10 @@ class TradingEngine:
                 continue
             price = float(t["lastPrice"])
             entry_txt = rec.entry_detail or "승인 매수"
-            amt = round(
-                max(settings.min_buy_krw, amount_map.get(sym, rec.amount_krw)), -3
-            )
+            if sym not in capped_amts:
+                fail_msgs.append(f"{rec.base}: 배분 제외(현금 부족)")
+                continue
+            amt = round(capped_amts[sym], -3)
             tp_label = f"익절{self.config.take_profit_pct:g}%"
             sl_label = f"손절{self.config.stop_loss_pct:g}%"
             buy_reason = (

@@ -65,7 +65,11 @@ export default function App() {
     setAmount: setRecAmount,
     resetToAi: resetRecAi,
     getApplyItems,
-  } = useRecommendationAmounts(botRecs, appConfig);
+  } = useRecommendationAmounts(
+    botRecs,
+    appConfig,
+    data?.portfolio.cash_krw ?? 0
+  );
   activeSymbolRef.current = activeSymbol;
 
   const applyPayload = useCallback((incoming: StatusPayload, lockBot = false) => {
