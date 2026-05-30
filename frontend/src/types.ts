@@ -37,6 +37,9 @@ export interface CredentialsTestResult {
   krw_balance?: number;
   coin_count?: number;
   accounts?: number;
+  outbound_ip?: string;
+  access_key_hint?: string;
+  hint?: string;
 }
 
 export interface AccountLink {

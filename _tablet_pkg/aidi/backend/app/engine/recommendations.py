@@ -1,0 +1,219 @@
+"""AI 투자 제안: 비중·금액 산출 (자동 체결 없음)."""
+
+from app.config import settings
+from app.models import AppConfig, CoinCandidate, InvestmentRecommendation
+
+MIN_BUY = settings.min_buy_krw
+
+
+def _trade_plan(
+    amount_krw: float,
+    price_usdt: float,
+    usdt_krw: float,
+    stop_loss_pct: float,
+    take_profit_pct: float,
+) -> tuple[float, float, float, float, float]:
+    """매수가·수량 기준 예상 손절/익절 가격(USDT) 및 원화 손익."""
+    if price_usdt <= 0 or usdt_krw <= 0 or amount_krw <= 0:
+        return 0.0, 0.0, 0.0, 0.0, 0.0
+    sl_r = stop_loss_pct / 100
+    tp_r = take_profit_pct / 100
+    sl_price = price_usdt * (1 - sl_r)
+    tp_price = price_usdt * (1 + tp_r)
+    qty = amount_krw / (price_usdt * usdt_krw)
+    sl_krw = max(0.0, (price_usdt - sl_price) * qty * usdt_krw)
+    tp_krw = max(0.0, (tp_price - price_usdt) * qty * usdt_krw)
+    return round(qty, 6), sl_price, tp_price, round(sl_krw, 0), round(tp_krw, 0)
+
+
+def deployable_cash_krw(cash_krw: float, fee_pct: float = 0.05) -> float:
+    """수수료·여유분 반영 후 배분 가능 현금."""
+    fee_r = max(0.0, fee_pct) / 100
+    return max(0.0, cash_krw / (1 + fee_r) * 0.92)
+
+
+def allocate_amounts_by_weights(
+    weights: list[float],
+    cash_krw: float,
+    fee_pct: float = 0.05,
+) -> list[float]:
+    """
+    점수 비중으로 현금 배분. 합계 <= deployable cash, 각 건 MIN_BUY 이상(또는 0).
+    """
+    if not weights or cash_krw < MIN_BUY:
+        return [0.0] * len(weights)
+
+    budget = round(deployable_cash_krw(cash_krw, fee_pct), -3)
+    if budget < MIN_BUY:
+        return [0.0] * len(weights)
+
+    n = len(weights)
+    max_slots = min(n, int(budget // MIN_BUY))
+    if max_slots <= 0:
+        return [0.0] * n
+
+    order = sorted(range(n), key=lambda i: weights[i], reverse=True)[:max_slots]
+    sel_w = [weights[i] for i in order]
+    wsum = sum(sel_w)
+    if wsum <= 0:
+        return [0.0] * n
+
+    amts: list[float] = []
+    for w in sel_w:
+        amts.append(max(MIN_BUY, round(budget * w / wsum, -3)))
+
+    def _trim() -> None:
+        nonlocal amts, order, sel_w
+        while sum(amts) > budget and len(amts) > 1:
+            amts.pop()
+            order = order[: len(amts)]
+            sel_w = sel_w[: len(amts)]
+            wsum = sum(sel_w)
+            amts = [max(MIN_BUY, round(budget * w / wsum, -3)) for w in sel_w]
+
+        while sum(amts) > budget and amts:
+            over = sum(amts) - budget
+            i = max(range(len(amts)), key=lambda j: amts[j])
+            cut = min(over, amts[i] - MIN_BUY)
+            if cut < 1000:
+                if len(amts) > 1:
+                    amts.pop(i)
+                    order.pop(i)
+                    sel_w.pop(i)
+                    wsum = sum(sel_w) or 1
+                    amts = [max(MIN_BUY, round(budget * w / wsum, -3)) for w in sel_w]
+                else:
+                    amts[i] = max(MIN_BUY, budget)
+                    break
+            else:
+                amts[i] = round(amts[i] - cut, -3)
+
+    _trim()
+
+    out = [0.0] * n
+    for idx, a in zip(order, amts):
+        if a >= MIN_BUY:
+            out[idx] = a
+
+    while sum(out) > budget:
+        active = [i for i in range(n) if out[i] >= MIN_BUY]
+        if not active:
+            break
+        i = max(active, key=lambda j: out[j])
+        over = sum(out) - budget
+        if out[i] - max(MIN_BUY, over) >= MIN_BUY:
+            out[i] = round(out[i] - max(over, 1000), -3)
+        elif len(active) > 1:
+            out[i] = 0.0
+        else:
+            out[i] = round(budget, -3)
+            break
+    return out
+
+
+def cap_apply_amounts(
+    amounts: dict[str, float],
+    cash_krw: float,
+    fee_pct: float = 0.05,
+) -> dict[str, float]:
+    """승인 매수 합계가 현금을 넘지 않도록 비례 축소."""
+    if not amounts:
+        return amounts
+    budget = deployable_cash_krw(cash_krw, fee_pct)
+    total = sum(amounts.values())
+    if total <= budget:
+        return {k: max(MIN_BUY, round(v, -3)) for k, v in amounts.items() if v >= MIN_BUY}
+
+    keys = list(amounts.keys())
+    weights = [amounts[k] for k in keys]
+    scaled = allocate_amounts_by_weights(weights, cash_krw, fee_pct)
+    return {k: scaled[i] for i, k in enumerate(keys) if scaled[i] >= MIN_BUY}
+
+
+def build_recommendations(
+    candidates: list[CoinCandidate],
+    cash_krw: float,
+    config: AppConfig,
+    held_symbols: set[str],
+    *,
+    tickers: dict | None = None,
+    usdt_krw: float = 1350.0,
+) -> list[InvestmentRecommendation]:
+    """진입 가능 후보에 보유 현금 범위 내에서 점수 비중 배분."""
+    fee_pct = float(getattr(config, "trading_fee_pct", 0.05))
+    budget = deployable_cash_krw(cash_krw, fee_pct)
+    if budget < MIN_BUY:
+        return []
+
+    pool: list[CoinCandidate] = []
+    entry_floor = config.min_entry_score * 0.85
+    for c in candidates:
+        if c.symbol in held_symbols:
+            continue
+        if c.score < config.min_buy_score:
+            continue
+        if c.entry_ok or getattr(c, "entry_scalp_ok", False):
+            pool.append(c)
+            continue
+        if c.entry_score >= entry_floor:
+            pool.append(c)
+
+    pool.sort(key=lambda c: (c.entry_score + c.score), reverse=True)
+    pool = pool[:15]
+    if not pool:
+        return []
+
+    weights = [max(1.0, c.score + c.entry_score) for c in pool]
+    amounts = allocate_amounts_by_weights(weights, cash_krw, fee_pct)
+    total_allocated = sum(amounts)
+
+    recs: list[InvestmentRecommendation] = []
+    for c, amount, w in zip(pool, amounts, weights):
+        if amount < MIN_BUY:
+            continue
+        weight_pct = (
+            round(amount / total_allocated * 100, 1) if total_allocated > 0 else 0.0
+        )
+        price_usdt = 0.0
+        qty_est = 0.0
+        sl_price = tp_price = sl_krw = tp_krw = 0.0
+        if tickers and c.symbol in tickers:
+            price_usdt = float(tickers[c.symbol].get("lastPrice") or 0)
+            if price_usdt > 0 and usdt_krw > 0:
+                qty_est, sl_price, tp_price, sl_krw, tp_krw = _trade_plan(
+                    amount,
+                    price_usdt,
+                    usdt_krw,
+                    config.stop_loss_pct,
+                    config.take_profit_pct,
+                )
+        tier = (
+            "auto"
+            if c.entry_ok
+            else ("scalp" if getattr(c, "entry_scalp_ok", False) else "watch")
+        )
+        recs.append(
+            InvestmentRecommendation(
+                symbol=c.symbol,
+                base=c.base,
+                name_ko=c.name_ko,
+                display=c.display,
+                pair_label=c.pair_label,
+                market_score=c.score,
+                entry_score=c.entry_score,
+                weight_pct=weight_pct,
+                amount_krw=amount,
+                price_usdt=price_usdt,
+                quantity_est=qty_est,
+                stop_loss_price_usdt=sl_price,
+                take_profit_price_usdt=tp_price,
+                stop_loss_krw=sl_krw,
+                take_profit_krw=tp_krw,
+                entry_tier=tier,
+                entry_detail=c.entry_detail or c.entry_outlook,
+                change_24h=c.change_24h,
+                trend=c.trend,
+                selected=True,
+            )
+        )
+    return recs

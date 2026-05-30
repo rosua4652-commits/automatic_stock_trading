@@ -15,7 +15,7 @@ async def get_outbound_public_ip() -> str | None:
         "https://api.ipify.org",
         "https://ifconfig.me/ip",
     )
-    async with httpx.AsyncClient(timeout=8.0) as client:
+    async with httpx.AsyncClient(timeout=8.0, trust_env=False) as client:
         for url in urls:
             try:
                 resp = await client.get(url)

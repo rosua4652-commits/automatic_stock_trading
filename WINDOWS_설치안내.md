@@ -2,9 +2,13 @@
 
 ## 1. 준비 (한 번만)
 
-1. **Python 3.11+**  
+1. **Python 3.12** (권장) 또는 **3.11**  
    https://www.python.org/downloads/  
-   설치 시 **「Add python.exe to PATH」** 반드시 체크
+   설치 시 **「Add python.exe to PATH」** 반드시 체크  
+
+   > ⚠️ **Python 3.14는 안 됩니다.**  
+   > `pydantic-core` 설치 실패 (PyO3가 3.14 미지원)  
+   > `python --version` 이 3.14면 **3.12 새로 설치** 후 아래 venv 삭제
 
 2. **Node.js 18+** (소스에서 빌드할 때만)  
    https://nodejs.org/  

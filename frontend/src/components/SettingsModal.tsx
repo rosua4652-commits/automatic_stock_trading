@@ -43,15 +43,20 @@ export default function SettingsModal({
       if (res.ok) {
         setTestOk(true);
         if (res.exchange === "upbit") {
+          const ipNote = res.outbound_ip ? ` · IP ${res.outbound_ip}` : "";
           setTestMsg(
-            `연결 성공 · KRW ${fmtKrw(res.krw_balance ?? 0)}원 · 보유 코인 ${res.coin_count ?? 0}종`
+            `연결 성공 · KRW ${fmtKrw(res.krw_balance ?? 0)}원 · 보유 코인 ${res.coin_count ?? 0}종${ipNote}`
           );
         } else {
           setTestMsg(res.message || "연결 성공");
         }
       } else {
         setTestOk(false);
-        setTestMsg(res.message || "연결 실패");
+        const parts = [res.message || "연결 실패"];
+        if (res.outbound_ip) parts.push(`AIDI 나가는 IP: ${res.outbound_ip}`);
+        if (res.access_key_hint) parts.push(`사용 중 Access Key: ${res.access_key_hint}`);
+        if (res.hint) parts.push(res.hint);
+        setTestMsg(parts.join(" · "));
       }
     } catch (e) {
       setTestOk(false);

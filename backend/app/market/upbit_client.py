@@ -42,6 +42,7 @@ class UpbitClient:
     def configure(self, access_key: str, secret_key: str) -> None:
         self._access = access_key.strip()
         self._secret = secret_key.strip()
+        self._client = None
 
     def is_configured(self) -> bool:
         return bool(self._access and self._secret)
@@ -51,6 +52,7 @@ class UpbitClient:
             self._client = httpx.AsyncClient(
                 base_url=UPBIT_API,
                 timeout=25.0,
+                trust_env=False,
             )
         return self._client
 

@@ -182,19 +182,43 @@ async def set_config(cfg: AppConfig):
 async def credentials_test(cfg: AppConfig):
     """저장된 키 또는 요청 본문의 키로 거래소 연결 테스트."""
     draft = cfg.model_copy()
-    ak, sk = get_active_keys(draft)
-    if not ak or not sk:
-        draft = apply_credentials_to_config(draft)
-    else:
-        draft.api_access_key = ak
-        draft.api_secret_key = sk
+    saved = apply_credentials_to_config(draft)
+    ak_d, sk_d = get_active_keys(draft)
+    ak_s, sk_s = get_active_keys(saved)
+    ak = ak_d or ak_s
+    sk = sk_d or sk_s
+    draft.api_access_key = ak
+    draft.api_secret_key = sk
     if not has_api_keys(draft):
         return {"ok": False, "message": "Access Key와 Secret Key를 입력하세요"}
+    outbound = await get_outbound_public_ip()
+    key_hint = f"...{ak[-4:]}" if len(ak) >= 4 else "****"
     try:
         result = await test_exchange_connection(draft)
+        if outbound:
+            result["outbound_ip"] = outbound
+        result["access_key_hint"] = key_hint
         return result
     except Exception as e:
-        return {"ok": False, "message": str(e)}
+        body: dict = {
+            "ok": False,
+            "message": str(e),
+            "access_key_hint": key_hint,
+        }
+        if outbound:
+            body["outbound_ip"] = outbound
+            if "no_authorization_ip" in str(e) or "허용 IP" in str(e):
+                body["hint"] = (
+                    f"업비트에서 Access Key 끝 4자리 [{ak[-4:]}] 키의 허용 IP에 "
+                    f"[{outbound}] 가 등록돼 있는지 확인 (61.43.16.54 와 다르면 그 IP 등록)"
+                )
+        return body
+
+
+@api.get("/network/outbound-ip")
+async def outbound_ip():
+    ip = await get_outbound_public_ip()
+    return {"outbound_ip": ip or ""}
 
 
 @api.post("/bot/start")
