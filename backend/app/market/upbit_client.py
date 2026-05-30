@@ -1,0 +1,145 @@
+"""Upbit REST API (JWT)."""
+
+import hashlib
+import uuid
+from typing import Any
+from urllib.parse import urlencode
+
+import httpx
+import jwt
+
+UPBIT_API = "https://api.upbit.com"
+
+
+class UpbitClient:
+    def __init__(self) -> None:
+        self._access = ""
+        self._secret = ""
+        self._client: httpx.AsyncClient | None = None
+
+    def configure(self, access_key: str, secret_key: str) -> None:
+        self._access = access_key.strip()
+        self._secret = secret_key.strip()
+
+    def is_configured(self) -> bool:
+        return bool(self._access and self._secret)
+
+    async def _ensure(self) -> httpx.AsyncClient:
+        if self._client is None:
+            self._client = httpx.AsyncClient(
+                base_url=UPBIT_API,
+                timeout=25.0,
+            )
+        return self._client
+
+    async def close(self) -> None:
+        if self._client:
+            await self._client.aclose()
+            self._client = None
+
+    def _token(self, query: dict | None = None) -> str:
+        payload: dict[str, Any] = {
+            "access_key": self._access,
+            "nonce": str(uuid.uuid4()),
+        }
+        if query:
+            qs = urlencode(query, doseq=True).encode()
+            h = hashlib.sha512()
+            h.update(qs)
+            payload["query_hash"] = h.hexdigest()
+            payload["query_hash_alg"] = "SHA512"
+        token = jwt.encode(payload, self._secret, algorithm="HS256")
+        return token if isinstance(token, str) else token.decode()
+
+    async def _auth_get(self, path: str, params: dict | None = None) -> Any:
+        if not self.is_configured():
+            raise RuntimeError("Upbit API 키가 없습니다")
+        client = await self._ensure()
+        headers = {"Authorization": f"Bearer {self._token(params)}"}
+        resp = await client.get(path, params=params, headers=headers)
+        if resp.status_code >= 400:
+            raise RuntimeError(f"Upbit: {resp.text}")
+        return resp.json()
+
+    async def _auth_post(self, path: str, body: dict) -> Any:
+        if not self.is_configured():
+            raise RuntimeError("Upbit API 키가 없습니다")
+        client = await self._ensure()
+        headers = {"Authorization": f"Bearer {self._token(body)}"}
+        resp = await client.post(path, json=body, headers=headers)
+        if resp.status_code >= 400:
+            raise RuntimeError(f"Upbit: {resp.text}")
+        return resp.json()
+
+    async def test_connection(self) -> dict[str, Any]:
+        accounts = await self._auth_get("/v1/accounts")
+        krw = 0.0
+        coins = 0
+        for a in accounts:
+            cur = a.get("currency", "")
+            bal = float(a.get("balance", 0))
+            if cur == "KRW":
+                krw = bal
+            elif bal > 0:
+                coins += 1
+        return {
+            "ok": True,
+            "exchange": "upbit",
+            "krw_balance": krw,
+            "coin_count": coins,
+            "accounts": len(accounts),
+        }
+
+    async def accounts(self) -> list[dict]:
+        return await self._auth_get("/v1/accounts")
+
+    async def tickers(self, markets: list[str]) -> dict[str, dict]:
+        if not markets:
+            return {}
+        client = await self._ensure()
+        resp = await client.get(
+            "/v1/ticker",
+            params={"markets": ",".join(markets)},
+        )
+        resp.raise_for_status()
+        rows = resp.json()
+        return {r["market"]: r for r in rows}
+
+    async def market_buy_krw(self, market: str, price_krw: float) -> dict:
+        return await self._auth_post(
+            "/v1/orders",
+            {
+                "market": market,
+                "side": "bid",
+                "ord_type": "price",
+                "price": str(int(price_krw)),
+            },
+        )
+
+    async def market_sell(self, market: str, volume: float) -> dict:
+        return await self._auth_post(
+            "/v1/orders",
+            {
+                "market": market,
+                "side": "ask",
+                "ord_type": "market",
+                "volume": f"{volume:.8f}".rstrip("0").rstrip("."),
+            },
+        )
+
+
+def symbol_to_upbit(symbol: str) -> str:
+    s = symbol.upper()
+    if s.startswith("KRW-"):
+        return s
+    base = s.replace("USDT", "").replace("KRW", "")
+    return f"KRW-{base}"
+
+
+def upbit_to_symbol(market: str) -> str:
+    if market.startswith("KRW-"):
+        return market.replace("KRW-", "") + "USDT"
+    return market
+
+
+upbit_client = UpbitClient()

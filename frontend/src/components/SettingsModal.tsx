@@ -1,3 +1,5 @@
+import { useState } from "react";
+import { testCredentials } from "../api";
 import type { AppConfig } from "../types";
 import { fmtKrw } from "../utils";
 
@@ -18,8 +20,45 @@ export default function SettingsModal({
   onClose,
   saving,
 }: Props) {
+  const [testing, setTesting] = useState(false);
+  const [testMsg, setTestMsg] = useState<string | null>(null);
+  const [testOk, setTestOk] = useState<boolean | null>(null);
+
   const set = <K extends keyof AppConfig>(key: K, value: AppConfig[K]) => {
     onChange({ ...draft, [key]: value });
+    setTestMsg(null);
+    setTestOk(null);
+  };
+
+  const exchange = draft.exchange || "upbit";
+  const maskedAk = config.api_access_key_masked || config.binance_api_key;
+  const maskedSk = config.api_secret_key_masked;
+  const hasSaved = config.has_saved_keys;
+
+  const handleTest = async () => {
+    setTesting(true);
+    setTestMsg(null);
+    try {
+      const res = await testCredentials(draft);
+      if (res.ok) {
+        setTestOk(true);
+        if (res.exchange === "upbit") {
+          setTestMsg(
+            `연결 성공 · KRW ${fmtKrw(res.krw_balance ?? 0)}원 · 보유 코인 ${res.coin_count ?? 0}종`
+          );
+        } else {
+          setTestMsg(res.message || "연결 성공");
+        }
+      } else {
+        setTestOk(false);
+        setTestMsg(res.message || "연결 실패");
+      }
+    } catch (e) {
+      setTestOk(false);
+      setTestMsg(e instanceof Error ? e.message : "연결 실패");
+    } finally {
+      setTesting(false);
+    }
   };
 
   return (
@@ -44,13 +83,13 @@ export default function SettingsModal({
               onClick={() => set("trade_mode", "live")}
             >
               <strong>실거래</strong>
-              <span>Binance API 필요 · 실제 자금</span>
+              <span>거래소 API · 실제 자금</span>
             </button>
           </div>
           {draft.trade_mode === "live" && (
             <p className="warn">
-              실거래는 Binance 잔고·보유 코인을 API로 불러옵니다. 모의투자 데이터와 섞이지
-              않습니다. 소액·테스트넷으로 먼저 확인하세요.
+              실거래는 거래소 잔고·보유 코인을 API로 불러옵니다. 모의투자 데이터와 섞이지
+              않습니다. 연결 테스트 후 소액으로 확인하세요.
             </p>
           )}
           {draft.trade_mode === "paper" && (
@@ -154,33 +193,83 @@ export default function SettingsModal({
 
         {draft.trade_mode === "live" && (
           <section className="settings-section">
-            <h3>Binance API (실거래)</h3>
+            <h3>거래소 API</h3>
             <label className="field">
-              <span>API Key</span>
+              <span>거래소</span>
+              <select
+                value={exchange}
+                onChange={(e) => set("exchange", e.target.value)}
+              >
+                <option value="upbit">업비트 (KRW)</option>
+                <option value="binance">Binance (USDT)</option>
+              </select>
+            </label>
+            <label className="field">
+              <span>Access Key</span>
               <input
                 type="password"
-                value={draft.binance_api_key}
-                onChange={(e) => set("binance_api_key", e.target.value)}
-                placeholder="입력 시에만 저장"
+                value={draft.api_access_key || draft.binance_api_key || ""}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  onChange({
+                    ...draft,
+                    api_access_key: v,
+                    binance_api_key: v,
+                  });
+                  setTestMsg(null);
+                }}
+                placeholder={hasSaved ? `저장됨: ${maskedAk}` : "Access Key 입력"}
+                autoComplete="off"
               />
             </label>
             <label className="field">
-              <span>API Secret</span>
+              <span>Secret Key</span>
               <input
                 type="password"
-                value={draft.binance_api_secret}
-                onChange={(e) => set("binance_api_secret", e.target.value)}
-                placeholder="입력 시에만 저장"
+                value={draft.api_secret_key || draft.binance_api_secret || ""}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  onChange({
+                    ...draft,
+                    api_secret_key: v,
+                    binance_api_secret: v,
+                  });
+                  setTestMsg(null);
+                }}
+                placeholder={hasSaved && maskedSk ? `저장됨: ${maskedSk}` : "Secret Key 입력"}
+                autoComplete="off"
               />
             </label>
-            <label className="field checkbox-field">
-              <input
-                type="checkbox"
-                checked={draft.use_testnet}
-                onChange={(e) => set("use_testnet", e.target.checked)}
-              />
-              <span>Binance 테스트넷 사용 (연습용)</span>
-            </label>
+            {hasSaved && (
+              <p className="warn subtle">
+                키는 이 PC에만 저장됩니다. 변경 시에만 다시 입력하세요.
+              </p>
+            )}
+            {exchange === "binance" && (
+              <label className="field checkbox-field">
+                <input
+                  type="checkbox"
+                  checked={draft.use_testnet}
+                  onChange={(e) => set("use_testnet", e.target.checked)}
+                />
+                <span>Binance 테스트넷 사용 (연습용)</span>
+              </label>
+            )}
+            <div className="modal-actions" style={{ marginTop: 12, padding: 0 }}>
+              <button
+                type="button"
+                className="btn-ghost"
+                onClick={handleTest}
+                disabled={testing || saving}
+              >
+                {testing ? "테스트 중..." : "연결 테스트"}
+              </button>
+            </div>
+            {testMsg && (
+              <p className={testOk ? "ok-hint" : "warn"} style={{ marginTop: 8 }}>
+                {testMsg}
+              </p>
+            )}
           </section>
         )}
 

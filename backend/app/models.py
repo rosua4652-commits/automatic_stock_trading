@@ -25,14 +25,33 @@ class AppConfig(BaseModel):
     scan_interval_sec: int = Field(default=45, ge=15, le=300)
     min_buy_score: float = Field(default=40.0, ge=20.0, le=90.0)
     min_entry_score: float = Field(default=60.0, ge=40.0, le=90.0)
+    exchange: str = Field(default="upbit", description="upbit | binance")
+    api_access_key: str = ""
+    api_secret_key: str = ""
     binance_api_key: str = ""
     binance_api_secret: str = ""
     use_testnet: bool = False
 
-    @field_validator("binance_api_key", "binance_api_secret", mode="before")
+    @field_validator(
+        "api_access_key",
+        "api_secret_key",
+        "binance_api_key",
+        "binance_api_secret",
+        mode="before",
+    )
     @classmethod
     def strip_secrets(cls, v):
         return (v or "").strip()
+
+    def model_post_init(self, __context) -> None:
+        if self.binance_api_key and not self.api_access_key:
+            object.__setattr__(self, "api_access_key", self.binance_api_key)
+        if self.binance_api_secret and not self.api_secret_key:
+            object.__setattr__(self, "api_secret_key", self.binance_api_secret)
+        if self.api_access_key and not self.binance_api_key:
+            object.__setattr__(self, "binance_api_key", self.api_access_key)
+        if self.api_secret_key and not self.binance_api_secret:
+            object.__setattr__(self, "binance_api_secret", self.api_secret_key)
 
 
 class CoinMeta(BaseModel):

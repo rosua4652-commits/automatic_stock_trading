@@ -20,6 +20,14 @@ from app.models import (
     StatusResponse,
     TradeMode,
 )
+from app.storage.credentials import (
+    apply_credentials_to_config,
+    config_for_response,
+    get_active_keys,
+    has_api_keys,
+    save_credentials,
+)
+from app.market.live_exchange import close_all, test_exchange_connection
 
 STATIC_DIR = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
 
@@ -49,7 +57,7 @@ async def _build_status() -> dict:
     link = AccountLinkInfo(mode=engine.config.trade_mode.value)
 
     if engine.config.trade_mode == TradeMode.LIVE:
-        if not engine.config.binance_api_key:
+        if not has_api_keys(engine.config):
             link.linked = False
             link.message = "API 키를 설정하세요"
         else:
@@ -84,6 +92,7 @@ async def _build_status() -> dict:
         tabs=engine.tab_symbols(),
         account_link=link,
     ).model_dump()
+    payload["config"] = config_for_response(engine.config)
     payload["status_version"] = engine._status_version
     payload["all_trades"] = [t.model_dump() for t in portfolio.trades[-50:]]
     return payload
@@ -110,6 +119,7 @@ async def _broadcast_loop() -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global _broadcast_task
+    engine.config = apply_credentials_to_config(engine.config)
     engine.bind_portfolio()
     _broadcast_task = asyncio.create_task(_broadcast_loop())
     yield
@@ -118,9 +128,7 @@ async def lifespan(app: FastAPI):
     await engine.stop()
     store.persist_active(engine.config.trade_mode)
     await binance.close()
-    from app.market.binance_live import binance_live
-
-    await binance_live.close()
+    await close_all()
 
 
 app = FastAPI(title="AIDI Auto Invest", version="1.3.0", lifespan=lifespan)
@@ -139,10 +147,34 @@ async def get_status():
 
 @api.post("/config")
 async def set_config(cfg: AppConfig):
-    msg = await engine.update_config(cfg)
+    ak, sk = get_active_keys(cfg)
+    if ak or sk:
+        save_credentials(cfg.exchange or "upbit", ak, sk, merge=True)
+    merged = apply_credentials_to_config(cfg)
+    msg = await engine.update_config(merged)
+    engine.config = apply_credentials_to_config(engine.config)
     status = await _build_status()
     status["switch_message"] = msg
     return status
+
+
+@api.post("/credentials/test")
+async def credentials_test(cfg: AppConfig):
+    """저장된 키 또는 요청 본문의 키로 거래소 연결 테스트."""
+    draft = cfg.model_copy()
+    ak, sk = get_active_keys(draft)
+    if not ak or not sk:
+        draft = apply_credentials_to_config(draft)
+    else:
+        draft.api_access_key = ak
+        draft.api_secret_key = sk
+    if not has_api_keys(draft):
+        return {"ok": False, "message": "Access Key와 Secret Key를 입력하세요"}
+    try:
+        result = await test_exchange_connection(draft)
+        return result
+    except Exception as e:
+        return {"ok": False, "message": str(e)}
 
 
 @api.post("/bot/start")

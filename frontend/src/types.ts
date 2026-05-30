@@ -12,9 +12,24 @@ export interface AppConfig {
   scan_interval_sec: number;
   min_buy_score: number;
   min_entry_score: number;
+  exchange?: string;
+  api_access_key?: string;
+  api_secret_key?: string;
+  api_access_key_masked?: string;
+  api_secret_key_masked?: string;
+  has_saved_keys?: boolean;
   binance_api_key: string;
   binance_api_secret: string;
   use_testnet: boolean;
+}
+
+export interface CredentialsTestResult {
+  ok: boolean;
+  message?: string;
+  exchange?: string;
+  krw_balance?: number;
+  coin_count?: number;
+  accounts?: number;
 }
 
 export interface AccountLink {

@@ -3,6 +3,7 @@
 from app.engine.portfolio import PortfolioManager
 from app.engine.live_sync import export_live_meta, sync_live_portfolio
 from app.models import AppConfig, TradeMode
+from app.storage.credentials import has_api_keys
 from app.storage.persistence import (
     load_live_meta,
     load_paper_state,
@@ -80,7 +81,7 @@ class PortfolioStore:
             self.save_live_meta()
 
         if new == TradeMode.LIVE:
-            if not config.binance_api_key or not config.binance_api_secret:
+            if not has_api_keys(config):
                 return "실거래: API 키를 입력하세요"
             self.live = PortfolioManager()
             self.live.positions = {}

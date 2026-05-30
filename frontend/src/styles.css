@@ -683,6 +683,13 @@ body {
   color: var(--muted);
 }
 
+.ok-hint {
+  font-size: 0.78rem;
+  color: var(--green);
+  margin-top: 0.5rem;
+  line-height: 1.4;
+}
+
 .checkbox-field {
   flex-direction: row !important;
   align-items: center;

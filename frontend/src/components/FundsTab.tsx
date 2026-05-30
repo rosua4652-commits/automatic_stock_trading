@@ -34,12 +34,14 @@ function PositionCard({
   busy,
   onSell,
   onChart,
+  onExclude,
 }: {
   pos: Position;
   canTrade: boolean;
   busy: boolean;
   onSell: (pct: number) => void;
   onChart: () => void;
+  onExclude: (exclude: boolean) => void;
 }) {
   const [sellPct, setSellPct] = useState(100);
 
@@ -66,8 +68,14 @@ function PositionCard({
 
       <div className="fund-grid">
         <div className="fg-item">
-          <span className="fg-label">보유 수량</span>
+          <span className="fg-label">총 수량</span>
           <span className="fg-val">{fmtQty(pos.quantity)}</span>
+        </div>
+        <div className="fg-item">
+          <span className="fg-label">AI / 수동</span>
+          <span className="fg-val dim">
+            {fmtQty(pos.auto_quantity)} / {fmtQty(pos.manual_quantity)}
+          </span>
         </div>
         <div className="fg-item">
           <span className="fg-label">평단가</span>
@@ -111,6 +119,16 @@ function PositionCard({
         </p>
       )}
 
+      <label className="exclude-row checkbox-field">
+        <input
+          type="checkbox"
+          checked={pos.excluded_from_auto}
+          disabled={busy}
+          onChange={(e) => onExclude(e.target.checked)}
+        />
+        <span>자동투자 제외 (내 보유분 — AI가 건드리지 않음)</span>
+      </label>
+
       {canTrade && (
         <div className="manual-sell-row">
           <label>
@@ -147,6 +165,7 @@ export default function FundsTab({
   onManualBuy,
   onManualSell,
   onSelectChart,
+  onExclude,
   busy,
 }: Props) {
   const [buySymbol, setBuySymbol] = useState("BTCUSDT");
@@ -250,6 +269,7 @@ export default function FundsTab({
               busy={busy}
               onSell={(pct) => onManualSell(p.symbol, pct)}
               onChart={() => onSelectChart(p.symbol)}
+              onExclude={(ex) => onExclude(p.symbol, ex)}
             />
           ))
         )}

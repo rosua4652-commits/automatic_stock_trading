@@ -1,4 +1,9 @@
-import type { AppConfig, ChartResponse, StatusPayload } from "./types";
+import type {
+  AppConfig,
+  ChartResponse,
+  CredentialsTestResult,
+  StatusPayload,
+} from "./types";
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const r = await fetch(url, {
@@ -24,10 +29,28 @@ export async function fetchStatus(): Promise<StatusPayload> {
 }
 
 export async function saveConfig(cfg: AppConfig): Promise<StatusPayload> {
+  const body = {
+    ...cfg,
+    api_access_key: cfg.api_access_key || cfg.binance_api_key || "",
+    api_secret_key: cfg.api_secret_key || cfg.binance_api_secret || "",
+  };
   return request("/api/config", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(cfg),
+    body: JSON.stringify(body),
+  });
+}
+
+export async function testCredentials(cfg: AppConfig): Promise<CredentialsTestResult> {
+  const body = {
+    ...cfg,
+    api_access_key: cfg.api_access_key || cfg.binance_api_key || "",
+    api_secret_key: cfg.api_secret_key || cfg.binance_api_secret || "",
+  };
+  return request("/api/credentials/test", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
   });
 }
 

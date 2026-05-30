@@ -19,6 +19,7 @@ from app.models import (
     ManualSellRequest,
     TradeMode,
 )
+from app.storage.credentials import has_api_keys
 
 
 class TradingEngine:
@@ -63,7 +64,7 @@ class TradingEngine:
 
     async def start(self) -> tuple[bool, str]:
         if self._is_live():
-            if not self.config.binance_api_key or not self.config.binance_api_secret:
+            if not has_api_keys(self.config):
                 self.bot.message = "실거래: API 키를 설정에서 입력하세요"
                 return False, self.bot.message
             try:
