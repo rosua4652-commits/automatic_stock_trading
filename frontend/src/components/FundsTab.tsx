@@ -97,6 +97,12 @@ function PositionCard({
   const entry = pos.avg_price;
   const slPct = pctFromAvg(entry, pos.stop_loss);
   const tpPct = pctFromAvg(entry, pos.take_profit);
+  const fxKrw =
+    pos.current_price > 0 && (pos.current_price_krw ?? 0) > 0
+      ? pos.current_price_krw! / pos.current_price
+      : 0;
+  const slKrw = fxKrw > 0 ? pos.stop_loss * fxKrw : 0;
+  const tpKrw = fxKrw > 0 ? pos.take_profit * fxKrw : 0;
 
   const applyExitPlan = async (custom: boolean, sl?: number, tp?: number) => {
     await onExitPlan({
@@ -182,11 +188,21 @@ function PositionCard({
         <div className="fg-item fg-item-wide">
           <span className="fg-label">손절 / 익절</span>
           <span className="fg-val dim">
-            ${fmtUsd(pos.stop_loss)}
-            {slPct != null ? ` (${fmtPct(slPct)})` : ""}
-            {" / "}$
-            {fmtUsd(pos.take_profit)}
-            {tpPct != null ? ` (${fmtPct(tpPct)})` : ""}
+            {pos.data_source === "upbit" && slKrw > 0 ? (
+              <>
+                {fmtKrw(slKrw)}원{slPct != null ? ` (${fmtPct(slPct)})` : ""}
+                {" / "}
+                {fmtKrw(tpKrw)}원{tpPct != null ? ` (${fmtPct(tpPct)})` : ""}
+              </>
+            ) : (
+              <>
+                ${fmtUsd(pos.stop_loss)}
+                {slPct != null ? ` (${fmtPct(slPct)})` : ""}
+                {" / "}$
+                {fmtUsd(pos.take_profit)}
+                {tpPct != null ? ` (${fmtPct(tpPct)})` : ""}
+              </>
+            )}
           </span>
         </div>
       </div>

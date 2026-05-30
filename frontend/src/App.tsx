@@ -26,6 +26,7 @@ import SettingsModal from "./components/SettingsModal";
 import type { AppConfig, Candle, MainView, StatusPayload } from "./types";
 import { useRecommendationAmounts } from "./hooks/useRecommendationAmounts";
 import type { ApplyItem } from "./hooks/useRecommendationAmounts";
+import { UI_BUILD } from "./uiBuild";
 import {
   DEFAULT_CONFIG,
   chartRefreshMs,
@@ -307,6 +308,10 @@ export default function App() {
   const isPaper = data.config.trade_mode === "paper";
   const buildId = data.aidi_build || "";
   const buildStale = !buildId;
+  const serverNewEnough =
+    /chart-fix|sl-tp-manual/.test(buildId);
+  const uiServerMismatch = !!buildId && buildId !== UI_BUILD;
+  const needPcUpdate = buildStale || !serverNewEnough;
   const canTrade = !stopping;
   const activeRec =
     editableRecs.find((r) => r.symbol === activeSymbol) ?? null;
@@ -400,10 +405,21 @@ export default function App() {
     <div className="app">
       <div className="app-top">
         <div className={`mode-banner ${isPaper ? "paper" : "live"}`}>
-          {buildStale ? (
+          {needPcUpdate ? (
             <strong style={{ display: "block", marginBottom: 4 }}>
-              ⚠ 서버 빌드 정보 없음 — run.bat 재시작 또는 최신 ZIP 적용 후 Ctrl+F5
+              ⚠ 구버전 — GitHub ZIP으로 폴더 덮어쓰기 → stop-aidi.bat → run.bat → Ctrl+F5
+              <br />
+              <span style={{ fontWeight: 400, fontSize: "0.85em" }}>
+                서버: {buildId || "없음"} · 필요: chart-fix · 화면(UI): {UI_BUILD}
+                {!serverNewEnough
+                  ? " · 손익절 %·수동지정 API 없음"
+                  : ""}
+              </span>
             </strong>
+          ) : uiServerMismatch ? (
+            <span style={{ display: "block", fontSize: "0.85em", marginBottom: 4 }}>
+              빌드: 서버 {buildId} · UI {UI_BUILD} (기능 동일하면 무시 가능)
+            </span>
           ) : null}
           {isPaper
             ? `모의투자 · ${fmtKrw(data.portfolio.total_value_krw)}원`

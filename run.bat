@@ -79,6 +79,35 @@ if not exist "frontend\dist\index.html" goto :no_dist
 if not exist "backend\data" mkdir "backend\data"
 
 echo.
+echo  Frontend / backend build sync...
+pushd "%~dp0backend"
+for /f "delims=" %%b in ('".venv\Scripts\python.exe" -c "from app.main import AIDI_BUILD; print(AIDI_BUILD)" 2^>nul') do set "EXPECTED_BUILD=%%b"
+popd
+set "NEED_FE_BUILD=0"
+if not defined EXPECTED_BUILD set "NEED_FE_BUILD=1"
+if not exist "frontend\dist\.aidi-ui-build" set "NEED_FE_BUILD=1"
+if "!NEED_FE_BUILD!"=="0" (
+  set /p STAMPED=<frontend\dist\.aidi-ui-build
+  if /i not "!STAMPED!"=="!EXPECTED_BUILD!" set "NEED_FE_BUILD=1"
+)
+if "!NEED_FE_BUILD!"=="1" (
+  where npm >nul 2>&1
+  if errorlevel 1 goto :fe_skip_rebuild
+  echo  Rebuilding frontend - UI build !EXPECTED_BUILD!...
+  if not exist "frontend\node_modules" (
+    pushd frontend
+    call npm install
+    popd
+  )
+  pushd frontend
+  call npm run build
+  if errorlevel 1 goto :npm_fail
+  popd
+  echo !EXPECTED_BUILD!> frontend\dist\.aidi-ui-build
+)
+:fe_skip_rebuild
+
+echo.
 echo  Build check...
 pushd "%~dp0backend"
 ".venv\Scripts\python.exe" -c "from app.main import AIDI_BUILD; print('  AIDI_BUILD =', AIDI_BUILD)" 2>nul
