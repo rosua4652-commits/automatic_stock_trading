@@ -18,7 +18,8 @@ MIN_BUY_KRW = settings.min_buy_krw
 
 
 def _persist_live(portfolio: PortfolioManager) -> None:
-    store._live_meta = export_live_meta(portfolio)
+    prev = store._live_meta
+    store._live_meta = export_live_meta(portfolio, preserve=prev)
     store._live_meta["realized_pnl_krw"] = portfolio.realized_pnl_krw
     save_live_meta(store._live_meta)
 

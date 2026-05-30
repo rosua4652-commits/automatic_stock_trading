@@ -295,6 +295,17 @@ class PortfolioManager:
             pos.current_price = px
             self._recalc_avg(pos)
             cost_krw = pos.cost_basis_krw
+            if cost_krw <= 0 and pos.quantity > 0 and pos.avg_price > 0:
+                cost_krw = self.usdt_to_krw(pos.quantity * pos.avg_price)
+                pos.cost_basis_krw = cost_krw
+                if pos.auto_quantity > 0 and pos.auto_cost_basis_krw <= 0:
+                    pos.auto_cost_basis_krw = (
+                        cost_krw * (pos.auto_quantity / pos.quantity)
+                        if pos.manual_quantity > 0
+                        else cost_krw
+                    )
+                if pos.manual_quantity > 0 and pos.manual_cost_basis_krw <= 0:
+                    pos.manual_cost_basis_krw = cost_krw - pos.auto_cost_basis_krw
             # USDT 기준 손익 후 원화 환산 (매수·평가 환율 불일치로 가짜 수익 방지)
             cost_usdt = pos.quantity * pos.avg_price
             current_usdt = pos.quantity * px

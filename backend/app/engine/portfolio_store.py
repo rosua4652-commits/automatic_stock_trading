@@ -58,15 +58,17 @@ class PortfolioStore:
         )
 
     def save_live_meta(self) -> None:
-        self._live_meta = export_live_meta(self.live)
+        prev = self._live_meta
+        self._live_meta = export_live_meta(self.live, preserve=prev)
         save_live_meta(self._live_meta)
 
     def get(self, mode: TradeMode) -> PortfolioManager:
         return self.paper if mode == TradeMode.PAPER else self.live
 
     async def sync_live(self, config: AppConfig) -> str:
-        msg = await sync_live_portfolio(self.live, config, self._live_meta)
-        self._live_meta = export_live_meta(self.live)
+        prev = self._live_meta
+        msg = await sync_live_portfolio(self.live, config, prev)
+        self._live_meta = export_live_meta(self.live, preserve=prev)
         save_live_meta(self._live_meta)
         return msg
 

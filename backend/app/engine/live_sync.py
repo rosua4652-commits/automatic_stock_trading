@@ -13,6 +13,65 @@ from app.storage.credentials import get_active_keys
 STABLE = {"USDT", "USDC", "BUSD", "FDUSD", "DAI", "TUSD", "KRW"}
 
 
+def _parse_avg_buy_krw(balance: dict) -> float:
+    """업비트 계정 avg_buy_price (KRW/코인)."""
+    try:
+        v = float(balance.get("avg_buy_price") or 0)
+    except (TypeError, ValueError):
+        return 0.0
+    return v if v > 0 else 0.0
+
+
+def _resolve_position_costs(
+    pm: dict,
+    *,
+    total_qty: float,
+    auto_q: float,
+    manual_q: float,
+    avg_buy_krw: float,
+    price_krw: float,
+    usdt_krw: float,
+) -> tuple[float, float, float, float]:
+    """
+    AIDI 메타에 원금이 없으면 업비트 평단(avg_buy_price)으로 추정.
+    Returns: auto_cost, man_cost, auto_avg_usdt, manual_avg_usdt
+    """
+    auto_cost = float(pm.get("auto_cost_basis_krw", 0))
+    man_cost = float(pm.get("manual_cost_basis_krw", 0))
+    if auto_q <= 0:
+        auto_cost = 0.0
+    if manual_q <= 0:
+        man_cost = 0.0
+
+    total_cost = auto_cost + man_cost
+    if total_cost <= 0 and total_qty > 1e-12:
+        if avg_buy_krw > 0:
+            total_cost = avg_buy_krw * total_qty
+        elif price_krw > 0:
+            total_cost = price_krw * total_qty
+        if total_cost > 0:
+            if auto_q > 0 and manual_q > 0:
+                auto_cost = total_cost * (auto_q / total_qty)
+                man_cost = total_cost - auto_cost
+            elif auto_q > 0:
+                auto_cost = total_cost
+            else:
+                man_cost = total_cost
+
+    avg_usdt = (avg_buy_krw / usdt_krw) if avg_buy_krw > 0 and usdt_krw > 0 else 0.0
+    if avg_usdt <= 0 and price_krw > 0 and usdt_krw > 0:
+        avg_usdt = price_krw / usdt_krw
+
+    auto_avg = float(pm.get("auto_avg_price", 0)) if auto_q > 0 else 0.0
+    manual_avg = float(pm.get("manual_avg_price", 0)) if manual_q > 0 else 0.0
+    if auto_q > 0 and auto_avg <= 0 and avg_usdt > 0:
+        auto_avg = avg_usdt
+    if manual_q > 0 and manual_avg <= 0 and avg_usdt > 0:
+        manual_avg = avg_usdt
+
+    return auto_cost, man_cost, auto_avg, manual_avg
+
+
 async def sync_live_portfolio(
     portfolio,
     config: AppConfig,
@@ -49,6 +108,7 @@ async def _sync_upbit(
 
     krw_cash = 0.0
     holdings: dict[str, float] = {}
+    balances_by_currency: dict[str, dict] = {}
 
     for bal in accounts:
         cur = bal.get("currency", "")
@@ -64,6 +124,7 @@ async def _sync_upbit(
         if krw_market not in allowed_markets:
             continue
         holdings[krw_market] = total
+        balances_by_currency[cur] = bal
 
     tickers = await upbit_client.tickers(list(holdings.keys()))
     new_positions: dict[str, Position] = {}
@@ -86,19 +147,25 @@ async def _sync_upbit(
             manual_q = total_qty
             auto_q = min(float(pm.get("auto_quantity", 0)), max(0, total_qty - manual_q))
 
-        auto_cost = float(pm.get("auto_cost_basis_krw", 0))
-        man_cost = float(pm.get("manual_cost_basis_krw", 0))
-        if auto_q <= 0:
-            auto_cost = 0
-        if manual_q <= 0:
-            man_cost = 0
+        bal = balances_by_currency.get(base, {})
+        avg_buy_krw = _parse_avg_buy_krw(bal)
+        auto_cost, man_cost, auto_avg, manual_avg = _resolve_position_costs(
+            pm,
+            total_qty=total_qty,
+            auto_q=auto_q,
+            manual_q=manual_q,
+            avg_buy_krw=avg_buy_krw,
+            price_krw=price_krw,
+            usdt_krw=portfolio.usdt_krw,
+        )
+        ref_usdt = auto_avg or manual_avg or price_usdt
 
         cm = coin_meta(symbol, base)
         sl = float(pm.get("stop_loss", 0))
         tp = float(pm.get("take_profit", 0))
-        if auto_q > 0 and sl <= 0:
-            sl = price_usdt * (1 - config.stop_loss_pct / 100)
-            tp = price_usdt * (1 + config.take_profit_pct / 100)
+        if total_qty > 0 and sl <= 0:
+            sl = ref_usdt * (1 - config.stop_loss_pct / 100)
+            tp = ref_usdt * (1 + config.take_profit_pct / 100)
 
         pos = Position(
             symbol=symbol,
@@ -109,9 +176,9 @@ async def _sync_upbit(
             display=cm["display"],
             auto_quantity=auto_q,
             manual_quantity=manual_q,
-            avg_price=price_usdt,
-            auto_avg_price=float(pm.get("auto_avg_price", price_usdt)) if auto_q else 0,
-            manual_avg_price=float(pm.get("manual_avg_price", price_usdt)) if manual_q else 0,
+            avg_price=ref_usdt,
+            auto_avg_price=auto_avg,
+            manual_avg_price=manual_avg,
             current_price=price_usdt,
             stop_loss=sl,
             take_profit=tp,
@@ -260,8 +327,8 @@ async def _sync_binance(
     return f"[Binance {net}] 연동 · 보유 {n}종 · 총자산 {total_krw:,.0f}원 (USDT {usdt_free:.2f})"
 
 
-def export_live_meta(portfolio) -> dict[str, Any]:
-    """포트폴리오 → AIDI 메타 저장 (잔고 제외)."""
+def export_live_meta(portfolio, preserve: dict[str, Any] | None = None) -> dict[str, Any]:
+    """포트폴리오 → AIDI 메타 저장 (잔고 제외). preserve: account_principal 등 유지."""
     positions_meta = {}
     for sym, pos in portfolio.positions.items():
         positions_meta[sym] = {
@@ -281,8 +348,12 @@ def export_live_meta(portfolio) -> dict[str, Any]:
             "entry_outlook": pos.entry_outlook,
             "excluded_from_auto": pos.excluded_from_auto,
         }
-    return {
+    out: dict[str, Any] = {
         "positions_meta": positions_meta,
         "trades": [t.model_dump() for t in portfolio.trades[-100:]],
         "realized_pnl_krw": portfolio.realized_pnl_krw,
     }
+    if preserve:
+        if preserve.get("account_principal_krw"):
+            out["account_principal_krw"] = preserve["account_principal_krw"]
+    return out
