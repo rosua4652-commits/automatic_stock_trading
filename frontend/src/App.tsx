@@ -13,14 +13,12 @@ import {
   startBot,
   stopBot,
 } from "./api";
-import RecommendationAlert from "./components/RecommendationAlert";
+import EntryAlertsPanel from "./components/EntryAlertsPanel";
 import RecommendationsPanel from "./components/RecommendationsPanel";
 import ChartPanel from "./components/ChartPanel";
 import CoinDetailBar from "./components/CoinDetailBar";
 import CoinSearchTabs from "./components/CoinSearchTabs";
 import FundsSummaryStrip from "./components/FundsSummaryStrip";
-import EntryAlertModal from "./components/EntryAlertModal";
-import EntryOpportunitiesPanel from "./components/EntryOpportunitiesPanel";
 import FundsTab from "./components/FundsTab";
 import PortfolioPanel from "./components/PortfolioPanel";
 import SettingsModal from "./components/SettingsModal";
@@ -51,10 +49,8 @@ export default function App() {
   const [toast, setToast] = useState<string | null>(null);
   const [mainView, setMainView] = useState<MainView>("chart");
   const [tradeBusy, setTradeBusy] = useState(false);
-  const [entryAlertOpen, setEntryAlertOpen] = useState(false);
 
   const botLockVersionRef = useRef(0);
-  const prevRecKeyRef = useRef("");
   const activeSymbolRef = useRef(activeSymbol);
 
   const botRecs = data?.bot.recommendations ?? [];
@@ -99,24 +95,6 @@ export default function App() {
       });
     });
   }, [applyPayload]);
-
-  useEffect(() => {
-    if (!data) return;
-    const recs = data.bot.recommendations ?? [];
-    const key = recs
-      .map((r) => r.symbol)
-      .sort()
-      .join(",");
-    if (!key) {
-      prevRecKeyRef.current = "";
-      return;
-    }
-    const prev = prevRecKeyRef.current;
-    if ((prev && key !== prev) || (!prev && recs.length > 0)) {
-      setEntryAlertOpen(true);
-    }
-    prevRecKeyRef.current = key;
-  }, [data?.bot.recommendations]);
 
   // 차트 로드 — 초봉(1s)은 1초마다, 분봉은 3초, 그 외 12초
   useEffect(() => {
@@ -422,13 +400,6 @@ export default function App() {
             config={data.config}
             variant="topbar"
           />
-          <RecommendationAlert
-            list={editableRecs}
-            cashKrw={data.portfolio.cash_krw}
-            busy={tradeBusy}
-            onApply={applyRecs}
-            onSelectSymbol={handleSelectCoin}
-          />
           <div className="top-actions">
             <button
               type="button"
@@ -454,6 +425,16 @@ export default function App() {
         <nav className="main-nav">
           <button
             type="button"
+            className={`nav-btn ${mainView === "alerts" ? "active" : ""}`}
+            onClick={() => setMainView("alerts")}
+          >
+            알림
+            {editableRecs.length > 0 && (
+              <span className="nav-badge">{editableRecs.length}</span>
+            )}
+          </button>
+          <button
+            type="button"
             className={`nav-btn ${mainView === "chart" ? "active" : ""}`}
             onClick={() => setMainView("chart")}
           >
@@ -468,6 +449,19 @@ export default function App() {
           </button>
         </nav>
       </div>
+
+      {mainView === "alerts" && (
+        <EntryAlertsPanel
+          list={editableRecs}
+          botStatus={data.bot.status}
+          cashKrw={data.portfolio.cash_krw}
+          feePct={appConfig.trading_fee_pct}
+          busy={tradeBusy}
+          onApply={applyRecs}
+          onOpenChart={() => setMainView("chart")}
+          onSelectSymbol={goChart}
+        />
+      )}
 
       {mainView === "chart" && (
         <div className="chart-screen">
@@ -503,17 +497,6 @@ export default function App() {
                   busy={tradeBusy}
                   onQuickBuy={handleQuickBuy}
                   onSellAll={handleSellAll}
-                />
-                <EntryOpportunitiesPanel
-                  list={editableRecs}
-                  aiAmounts={aiAmounts}
-                  config={appConfig}
-                  cashKrw={data.portfolio.cash_krw}
-                  busy={tradeBusy}
-                  onAmountChange={setRecAmount}
-                  onResetAi={resetRecAi}
-                  onApply={applyRecs}
-                  onSelect={handleSelectCoin}
                 />
               </div>
             </aside>
@@ -582,20 +565,6 @@ export default function App() {
           />
         </div>
       )}
-
-      <EntryAlertModal
-        open={entryAlertOpen}
-        list={editableRecs}
-        aiAmounts={aiAmounts}
-        config={appConfig}
-        cashKrw={data.portfolio.cash_krw}
-        busy={tradeBusy}
-        onAmountChange={setRecAmount}
-        onResetAi={resetRecAi}
-        onClose={() => setEntryAlertOpen(false)}
-        onApply={applyRecs}
-        onSelect={handleSelectCoin}
-      />
 
       {toast && <div className="toast">{toast}</div>}
 

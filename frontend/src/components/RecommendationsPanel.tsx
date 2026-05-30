@@ -91,19 +91,27 @@ export default function RecommendationsPanel({
         </span>
       </div>
       <div className="rec-actions-top">
-        <button type="button" className="btn-ghost btn-sm" onClick={() => toggleAll(true)}>
-          전체 선택
-        </button>
-        <button type="button" className="btn-ghost btn-sm" onClick={() => toggleAll(false)}>
-          전체 해제
+        <button
+          type="button"
+          className="rec-chip-btn"
+          onClick={() => toggleAll(true)}
+        >
+          전체선택
         </button>
         <button
           type="button"
-          className="btn-primary"
+          className="rec-chip-btn"
+          onClick={() => toggleAll(false)}
+        >
+          전체해제
+        </button>
+        <button
+          type="button"
+          className="btn-primary rec-apply-btn"
           disabled={busy || picked.length === 0 || total > deployable + 500}
           onClick={applyPicked}
         >
-          {busy ? "매수 중…" : `선택 승인 (${picked.length}건)`}
+          {busy ? "매수 중…" : `승인(${picked.length})`}
         </button>
       </div>
       {total > cashKrw && (
