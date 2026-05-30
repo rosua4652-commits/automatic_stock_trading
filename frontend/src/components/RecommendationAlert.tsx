@@ -71,12 +71,13 @@ export default function RecommendationAlert({
                   <span className="rec-alert-amt">{fmtKrw(r.amount_krw)}원</span>
                 </button>
                 <span className="rec-alert-detail">
-                  {r.price_usdt > 0 && (
+                  {r.price_usdt && r.price_usdt > 0 && (
                     <>
-                      ${fmtUsd(r.price_usdt)} · 약 {r.quantity_est.toFixed(4)}개 ·{" "}
+                      ${fmtUsd(r.price_usdt)} · 약 {(r.quantity_est ?? 0).toFixed(4)}개 ·{" "}
                     </>
                   )}
-                  비중 {r.weight_pct}%
+                  익절 +{fmtKrw(r.take_profit_krw ?? 0)} / 손절 -
+                  {fmtKrw(r.stop_loss_krw ?? 0)}원
                 </span>
               </li>
             ))}

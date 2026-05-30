@@ -45,6 +45,63 @@ export function displayForSymbol(
 }
 
 /** 탭·목록용 진입 상태 */
+export type CoinMetaBrief = {
+  symbol: string;
+  name_ko: string;
+  base: string;
+  pair_label: string;
+};
+
+export function resolveCoinMeta(
+  symbol: string,
+  portfolio: Portfolio,
+  candidates: CoinCandidate[]
+): CoinMetaBrief {
+  const pos = portfolio.positions.find((p) => p.symbol === symbol);
+  if (pos) {
+    return {
+      symbol,
+      name_ko: pos.name_ko,
+      base: pos.base,
+      pair_label: pos.pair_label,
+    };
+  }
+  const c = candidates.find((x) => x.symbol === symbol);
+  if (c) {
+    return {
+      symbol,
+      name_ko: c.name_ko,
+      base: c.base,
+      pair_label: c.pair_label,
+    };
+  }
+  const base = symbol.replace("USDT", "");
+  return {
+    symbol,
+    name_ko: base,
+    base,
+    pair_label: `${base}/USDT`,
+  };
+}
+
+export function matchCoinSearch(
+  query: string,
+  symbol: string,
+  portfolio: Portfolio,
+  candidates: CoinCandidate[]
+): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  const meta = resolveCoinMeta(symbol, portfolio, candidates);
+  if (symbol.toLowerCase().includes(q)) return true;
+  if (meta.base.toLowerCase().includes(q)) return true;
+  if (meta.name_ko.toLowerCase().includes(q)) return true;
+  if (meta.name_ko.includes(query.trim())) return true;
+  const c = candidates.find((x) => x.symbol === symbol);
+  if (c?.name_en?.toLowerCase().includes(q)) return true;
+  return false;
+}
+
 export function entryBadge(c: CoinCandidate | undefined): {
   label: string;
   kind: "ok" | "scalp" | "hold" | "none";

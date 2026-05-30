@@ -212,6 +212,11 @@ class InvestmentRecommendation(BaseModel):
     amount_krw: float = 0.0
     price_usdt: float = 0.0
     quantity_est: float = 0.0
+    stop_loss_price_usdt: float = 0.0
+    take_profit_price_usdt: float = 0.0
+    stop_loss_krw: float = 0.0
+    take_profit_krw: float = 0.0
+    entry_tier: str = "watch"
     entry_detail: str = ""
     change_24h: float = 0.0
     trend: str = ""

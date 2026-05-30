@@ -146,6 +146,11 @@ export interface InvestmentRecommendation {
   amount_krw: number;
   price_usdt?: number;
   quantity_est?: number;
+  stop_loss_price_usdt?: number;
+  take_profit_price_usdt?: number;
+  stop_loss_krw?: number;
+  take_profit_krw?: number;
+  entry_tier?: string;
   entry_detail: string;
   change_24h: number;
   trend: string;

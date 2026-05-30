@@ -6,6 +6,26 @@ from app.models import AppConfig, CoinCandidate, InvestmentRecommendation
 MIN_BUY = settings.min_buy_krw
 
 
+def _trade_plan(
+    amount_krw: float,
+    price_usdt: float,
+    usdt_krw: float,
+    stop_loss_pct: float,
+    take_profit_pct: float,
+) -> tuple[float, float, float, float, float]:
+    """매수가·수량 기준 예상 손절/익절 가격(USDT) 및 원화 손익."""
+    if price_usdt <= 0 or usdt_krw <= 0 or amount_krw <= 0:
+        return 0.0, 0.0, 0.0, 0.0, 0.0
+    sl_r = stop_loss_pct / 100
+    tp_r = take_profit_pct / 100
+    sl_price = price_usdt * (1 - sl_r)
+    tp_price = price_usdt * (1 + tp_r)
+    qty = amount_krw / (price_usdt * usdt_krw)
+    sl_krw = max(0.0, (price_usdt - sl_price) * qty * usdt_krw)
+    tp_krw = max(0.0, (tp_price - price_usdt) * qty * usdt_krw)
+    return round(qty, 6), sl_price, tp_price, round(sl_krw, 0), round(tp_krw, 0)
+
+
 def build_recommendations(
     candidates: list[CoinCandidate],
     cash_krw: float,
@@ -53,10 +73,22 @@ def build_recommendations(
         weight_pct = round(w / total_w * 100, 1)
         price_usdt = 0.0
         qty_est = 0.0
+        sl_price = tp_price = sl_krw = tp_krw = 0.0
         if tickers and c.symbol in tickers:
             price_usdt = float(tickers[c.symbol].get("lastPrice") or 0)
             if price_usdt > 0 and usdt_krw > 0:
-                qty_est = round(amount / (price_usdt * usdt_krw), 6)
+                qty_est, sl_price, tp_price, sl_krw, tp_krw = _trade_plan(
+                    amount,
+                    price_usdt,
+                    usdt_krw,
+                    config.stop_loss_pct,
+                    config.take_profit_pct,
+                )
+        tier = (
+            "auto"
+            if c.entry_ok
+            else ("scalp" if getattr(c, "entry_scalp_ok", False) else "watch")
+        )
         allocated += amount
         recs.append(
             InvestmentRecommendation(
@@ -71,6 +103,11 @@ def build_recommendations(
                 amount_krw=amount,
                 price_usdt=price_usdt,
                 quantity_est=qty_est,
+                stop_loss_price_usdt=sl_price,
+                take_profit_price_usdt=tp_price,
+                stop_loss_krw=sl_krw,
+                take_profit_krw=tp_krw,
+                entry_tier=tier,
                 entry_detail=c.entry_detail or c.entry_outlook,
                 change_24h=c.change_24h,
                 trend=c.trend,
@@ -81,10 +118,27 @@ def build_recommendations(
   # 예산 초과 시 비례 축소
     if allocated > budget and recs:
         scale = budget / allocated
-        recs = [
-            r.model_copy(
-                update={"amount_krw": max(MIN_BUY, round(r.amount_krw * scale, -3))}
+        scaled: list[InvestmentRecommendation] = []
+        for r in recs:
+            amt = max(MIN_BUY, round(r.amount_krw * scale, -3))
+            qty, sl_p, tp_p, sl_k, tp_k = _trade_plan(
+                amt,
+                r.price_usdt,
+                usdt_krw,
+                config.stop_loss_pct,
+                config.take_profit_pct,
             )
-            for r in recs
-        ]
+            scaled.append(
+                r.model_copy(
+                    update={
+                        "amount_krw": amt,
+                        "quantity_est": qty,
+                        "stop_loss_price_usdt": sl_p,
+                        "take_profit_price_usdt": tp_p,
+                        "stop_loss_krw": sl_k,
+                        "take_profit_krw": tp_k,
+                    }
+                )
+            )
+        recs = scaled
     return recs

@@ -1,5 +1,6 @@
 import type { CoinCandidate, Portfolio, TradeEvent } from "../types";
 import { fmtKrw, fmtPct } from "../utils";
+import CoinCell from "./CoinCell";
 
 type Props = {
   portfolio: Portfolio;
@@ -24,6 +25,7 @@ export default function PortfolioPanel({
 }: Props) {
   const pnl = portfolio.unrealized_pnl_krw + portfolio.realized_pnl_krw;
   const pnlClass = pnl >= 0 ? "up" : "down";
+  const candMap = new Map(candidates.map((c) => [c.symbol, c]));
 
   return (
     <div className="portfolio-panel">
@@ -63,23 +65,35 @@ export default function PortfolioPanel({
       <section className="panel-block">
         <h3>보유 코인</h3>
         {portfolio.positions.length === 0 ? (
-          <p className="empty">자동투자 시작 시 AI가 조건에 맞는 코인에 진입합니다</p>
+          <p className="empty">보유 중인 코인이 없습니다</p>
         ) : (
           <ul className="position-list">
             {portfolio.positions.map((p) => (
               <li key={p.symbol}>
                 <button
                   type="button"
-                  className={`pos-row ${selected === p.symbol ? "active" : ""}`}
+                  className={`pos-row pos-row-rich ${selected === p.symbol ? "active" : ""}`}
                   onClick={() => onSelect(p.symbol)}
                 >
-                  <div className="pos-info">
-                    <span className="pos-name">{p.name_ko}</span>
-                    <span className="pos-pair">{p.pair_label}</span>
-                  </div>
-                  <span className={`pos-pnl ${p.pnl_pct >= 0 ? "up" : "down"}`}>
-                    {fmtPct(p.pnl_pct)}
-                  </span>
+                  <CoinCell
+                    name_ko={p.name_ko}
+                    base={p.base}
+                    candidate={candMap.get(p.symbol)}
+                    held
+                    trailing={
+                      <div className="pos-pnl-block">
+                        <span className="pos-principal">
+                          원금 {fmtKrw(p.cost_basis_krw)}원
+                        </span>
+                        <span
+                          className={`pos-pnl-val ${p.pnl_krw >= 0 ? "up" : "down"}`}
+                        >
+                          {p.pnl_krw >= 0 ? "+" : ""}
+                          {fmtKrw(p.pnl_krw)}원 ({fmtPct(p.pnl_pct)})
+                        </span>
+                      </div>
+                    }
+                  />
                 </button>
               </li>
             ))}
@@ -88,37 +102,27 @@ export default function PortfolioPanel({
       </section>
 
       <section className="panel-block scroll">
-        <h3>분석 코인 · 진입 판단</h3>
-        <p className="panel-hint">
-          상단 탭은 거래대금 상위+분석 종목 · 투자 제안은 그중 조건 충족분만
-        </p>
+        <h3>분석 코인</h3>
+        <p className="panel-hint">이름 / 심볼 / 진입 판단</p>
         {candidates.length === 0 ? (
-          <p className="empty">「분석 시작」 후 스캔·차트 분석 결과가 표시됩니다</p>
+          <p className="empty">「분석 시작」 후 표시됩니다</p>
         ) : (
           <ul className="candidate-list">
-            {candidates.slice(0, 50).map((c) => (
+            {candidates.slice(0, 40).map((c) => (
               <li key={c.symbol} className="cand-item">
                 <button
                   type="button"
-                  className={`cand-row ${selected === c.symbol ? "active" : ""}`}
+                  className={`cand-row cand-row-rich ${selected === c.symbol ? "active" : ""}`}
                   onClick={() => onSelect(c.symbol)}
                 >
-                  <div className="pos-info">
-                    <span className="pos-name">{c.name_ko}</span>
-                    <span className="pos-pair">{c.pair_label}</span>
-                    <span
-                      className={`cand-tag ${
-                        c.entry_ok ? "ok" : c.entry_scalp_ok ? "scalp" : "no"
-                      }`}
-                    >
-                      {c.entry_ok
-                        ? "자동추천"
-                        : c.entry_scalp_ok
-                          ? "단타가능"
-                          : "보류"}
-                    </span>
-                  </div>
-                  <span className="cand-score">{c.score}점</span>
+                  <CoinCell
+                    name_ko={c.name_ko}
+                    base={c.base}
+                    candidate={c}
+                    trailing={
+                      <span className="cand-score">{c.score}점</span>
+                    }
+                  />
                 </button>
                 {c.entry_detail && (
                   <p className="cand-detail">{c.entry_detail}</p>

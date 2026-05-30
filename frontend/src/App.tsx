@@ -16,7 +16,9 @@ import RecommendationAlert from "./components/RecommendationAlert";
 import RecommendationsPanel from "./components/RecommendationsPanel";
 import ChartPanel from "./components/ChartPanel";
 import CoinDetailBar from "./components/CoinDetailBar";
-import CoinTabs from "./components/CoinTabs";
+import CoinSearchTabs from "./components/CoinSearchTabs";
+import EntryAlertModal from "./components/EntryAlertModal";
+import EntryOpportunitiesPanel from "./components/EntryOpportunitiesPanel";
 import FundsTab from "./components/FundsTab";
 import PortfolioPanel from "./components/PortfolioPanel";
 import SettingsModal from "./components/SettingsModal";
@@ -45,8 +47,10 @@ export default function App() {
   const [toast, setToast] = useState<string | null>(null);
   const [mainView, setMainView] = useState<MainView>("chart");
   const [tradeBusy, setTradeBusy] = useState(false);
+  const [entryAlertOpen, setEntryAlertOpen] = useState(false);
 
   const botLockVersionRef = useRef(0);
+  const prevRecKeyRef = useRef("");
   const activeSymbolRef = useRef(activeSymbol);
   activeSymbolRef.current = activeSymbol;
 
@@ -77,6 +81,24 @@ export default function App() {
       });
     });
   }, [applyPayload]);
+
+  useEffect(() => {
+    if (!data) return;
+    const recs = data.bot.recommendations ?? [];
+    const key = recs
+      .map((r) => r.symbol)
+      .sort()
+      .join(",");
+    if (!key) {
+      prevRecKeyRef.current = "";
+      return;
+    }
+    const prev = prevRecKeyRef.current;
+    if ((prev && key !== prev) || (!prev && recs.length > 0)) {
+      setEntryAlertOpen(true);
+    }
+    prevRecKeyRef.current = key;
+  }, [data?.bot.recommendations]);
 
   // 차트 로드 — 초봉(1s)은 1초마다, 분봉은 3초, 그 외 12초
   useEffect(() => {
@@ -414,7 +436,7 @@ export default function App() {
 
       {mainView === "chart" && (
         <div className="chart-screen">
-          <CoinTabs
+          <CoinSearchTabs
             tabs={tabs}
             selected={activeSymbol}
             portfolio={data.portfolio}
@@ -441,6 +463,14 @@ export default function App() {
                   canTrade={canTrade}
                   busy={tradeBusy}
                   onQuickBuy={handleQuickBuy}
+                />
+                <EntryOpportunitiesPanel
+                  recommendations={data.bot.recommendations ?? []}
+                  config={data.config}
+                  cashKrw={data.portfolio.cash_krw}
+                  busy={tradeBusy}
+                  onApply={applyRecs}
+                  onSelect={handleSelectCoin}
                 />
               </div>
             </aside>
@@ -504,6 +534,17 @@ export default function App() {
           />
         </div>
       )}
+
+      <EntryAlertModal
+        open={entryAlertOpen}
+        recommendations={data.bot.recommendations ?? []}
+        config={data.config}
+        cashKrw={data.portfolio.cash_krw}
+        busy={tradeBusy}
+        onClose={() => setEntryAlertOpen(false)}
+        onApply={applyRecs}
+        onSelect={handleSelectCoin}
+      />
 
       {toast && <div className="toast">{toast}</div>}
 

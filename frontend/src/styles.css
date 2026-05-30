@@ -117,6 +117,351 @@ body {
   color: var(--muted);
 }
 
+.coin-search-tabs {
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding-bottom: 0.35rem;
+}
+
+.coin-search-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.75rem 0;
+}
+
+.coin-search-input {
+  flex: 1;
+  min-width: 0;
+  padding: 0.45rem 0.65rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 0.8rem;
+}
+
+.coin-search-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.coin-search-results {
+  list-style: none;
+  margin: 0;
+  padding: 0 0.75rem;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.coin-search-item {
+  width: 100%;
+  border: none;
+  background: transparent;
+  padding: 0.35rem 0.25rem;
+  border-radius: 8px;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+}
+
+.coin-search-item:hover,
+.coin-search-item.active {
+  background: var(--surface2);
+}
+
+.coin-tab-rich {
+  min-width: 88px;
+  align-items: flex-start;
+}
+
+.coin-tab-name {
+  font-weight: 700;
+  font-size: 0.72rem;
+  color: var(--text);
+  line-height: 1.2;
+  max-width: 72px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.coin-tab-base {
+  font-size: 0.62rem;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+
+.coin-cell {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+  width: 100%;
+}
+
+.coin-cell-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.08rem;
+  min-width: 0;
+}
+
+.coin-cell-name {
+  font-weight: 700;
+  font-size: 0.82rem;
+  color: var(--text);
+  line-height: 1.25;
+}
+
+.coin-cell-base {
+  font-size: 0.68rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.coin-cell-entry {
+  font-size: 0.62rem;
+  font-weight: 600;
+  margin-top: 0.1rem;
+}
+
+.coin-cell-entry.ok {
+  color: var(--green);
+}
+
+.coin-cell-entry.scalp {
+  color: var(--accent);
+}
+
+.coin-cell-entry.hold {
+  color: var(--muted);
+}
+
+.coin-cell-side {
+  flex-shrink: 0;
+  text-align: right;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.15rem;
+}
+
+.coin-cell-held {
+  font-size: 0.58rem;
+  color: var(--green);
+}
+
+.pos-row-rich,
+.cand-row-rich {
+  width: 100%;
+  padding: 0.5rem 0.35rem;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  border-radius: 8px;
+}
+
+.pos-row-rich:hover,
+.cand-row-rich:hover,
+.pos-row-rich.active,
+.cand-row-rich.active {
+  background: var(--surface2);
+}
+
+.pos-pnl-block {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.1rem;
+}
+
+.pos-principal {
+  font-size: 0.62rem;
+  color: var(--muted);
+}
+
+.pos-pnl-val {
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.entry-opp-panel {
+  border-top: 1px solid var(--border);
+  margin-top: 0.25rem;
+}
+
+.entry-opp-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.35rem;
+}
+
+.entry-opp-meta {
+  font-size: 0.68rem;
+  color: var(--muted);
+}
+
+.entry-opp-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.entry-opp-item {
+  padding: 0.55rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.entry-opp-coin {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  border: none;
+  background: none;
+  padding: 0 0 0.35rem;
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+}
+
+.entry-opp-ko {
+  display: block;
+  font-weight: 700;
+  font-size: 0.85rem;
+  color: var(--text);
+}
+
+.entry-opp-base {
+  font-size: 0.68rem;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+
+.entry-opp-tier {
+  font-size: 0.62rem;
+  font-weight: 600;
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+}
+
+.entry-opp-tier.auto {
+  background: rgba(34, 211, 165, 0.15);
+  color: var(--green);
+}
+
+.entry-opp-tier.scalp {
+  background: rgba(59, 158, 255, 0.15);
+  color: var(--accent);
+}
+
+.entry-opp-plan {
+  font-size: 0.72rem;
+  margin-bottom: 0.4rem;
+}
+
+.entry-opp-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.12rem 0;
+}
+
+.entry-opp-row.dim {
+  color: var(--muted);
+}
+
+.entry-opp-approve {
+  width: 100%;
+}
+
+.entry-opp-approve-all {
+  width: 100%;
+  margin-top: 0.5rem;
+}
+
+.entry-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.entry-modal {
+  width: min(420px, 100%);
+  max-height: 85vh;
+  overflow-y: auto;
+  background: var(--surface2);
+  border: 1px solid var(--accent);
+  border-radius: 14px;
+  padding: 1rem 1.1rem;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+}
+
+.entry-modal-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.35rem;
+}
+
+.entry-modal-head h2 {
+  font-size: 1rem;
+  color: var(--green);
+}
+
+.entry-modal-sub {
+  font-size: 0.75rem;
+  color: var(--muted);
+  margin-bottom: 0.75rem;
+}
+
+.entry-modal-list {
+  list-style: none;
+  margin: 0 0 0.75rem;
+  padding: 0;
+}
+
+.entry-modal-row {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  border: none;
+  background: none;
+  padding: 0.35rem 0;
+  cursor: pointer;
+  font-family: inherit;
+  color: var(--text);
+  text-align: left;
+}
+
+.entry-modal-detail {
+  font-size: 0.68rem;
+  color: var(--muted);
+  margin: 0 0 0.5rem;
+  padding-left: 0.15rem;
+}
+
+.entry-modal-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
 .coin-tabs-wrap {
   display: flex;
   align-items: stretch;
