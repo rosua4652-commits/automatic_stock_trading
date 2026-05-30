@@ -7,14 +7,30 @@ from pydantic import BaseModel, Field, computed_field
 class BotStatus(str, Enum):
     STOPPED = "stopped"
     RUNNING = "running"
+    STOPPING = "stopping"
 
 
 class AppConfig(BaseModel):
     target_profit_krw: float = Field(default=2_000_000, ge=100_000, le=1_000_000_000)
 
 
+class CoinMeta(BaseModel):
+    symbol: str
+    base: str
+    quote: str = "USDT"
+    name_ko: str
+    name_en: str
+    pair_label: str
+    display: str
+
+
 class Position(BaseModel):
     symbol: str
+    base: str
+    name_ko: str
+    name_en: str
+    pair_label: str
+    display: str
     quantity: float
     avg_price: float
     current_price: float = 0.0
@@ -41,6 +57,11 @@ class Position(BaseModel):
             return 0.0
         return (self.current_price - self.avg_price) / self.avg_price * 100
 
+    @computed_field
+    @property
+    def value_krw_hint(self) -> float:
+        return self.value
+
 
 class PortfolioSnapshot(BaseModel):
     cash_krw: float
@@ -57,6 +78,10 @@ class PortfolioSnapshot(BaseModel):
 class CoinCandidate(BaseModel):
     symbol: str
     base: str
+    name_ko: str
+    name_en: str
+    pair_label: str
+    display: str
     score: float
     trend: str
     rsi: float
@@ -68,31 +93,34 @@ class CoinCandidate(BaseModel):
 class TradeEvent(BaseModel):
     ts: float
     symbol: str
+    base: str
+    display: str
     side: str
     price: float
     quantity: float
     reason: str
 
 
+class CoinView(BaseModel):
+    meta: CoinMeta
+    price_usdt: float = 0.0
+    change_24h: float = 0.0
+    in_portfolio: bool = False
+    position: Optional[Position] = None
+    candidate: Optional[CoinCandidate] = None
+
+
 class BotState(BaseModel):
     status: BotStatus = BotStatus.STOPPED
-    selected_symbol: str = "BTCUSDT"
+    view_symbol: str = "BTCUSDT"
     last_scan: Optional[float] = None
     message: str = "대기 중"
     candidates: list[CoinCandidate] = Field(default_factory=list)
     recent_trades: list[TradeEvent] = Field(default_factory=list)
 
 
-class Candle(BaseModel):
-    time: int
-    open: float
-    high: float
-    low: float
-    close: float
-    volume: float
-
-
 class StatusResponse(BaseModel):
     bot: BotState
     portfolio: PortfolioSnapshot
     config: AppConfig
+    view: CoinView

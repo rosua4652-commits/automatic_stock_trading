@@ -86,59 +86,164 @@ body {
   color: var(--muted);
 }
 
-.top-center {
+.coin-tabs {
   display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  flex: 1;
-  justify-content: center;
-  min-width: 0;
+  gap: 0.35rem;
+  padding: 0.5rem 1rem;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--border);
+  scrollbar-width: thin;
 }
 
-.status-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.45rem;
-  padding: 0.35rem 0.85rem;
-  border-radius: 999px;
-  background: var(--surface2);
-  font-size: 0.82rem;
-  color: var(--muted);
+.coin-tab {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.1rem;
+  padding: 0.45rem 0.75rem;
+  border-radius: 10px;
   border: 1px solid var(--border);
-}
-
-.status-pill.on {
-  color: var(--green);
-  border-color: rgba(34, 211, 165, 0.25);
-  background: rgba(34, 211, 165, 0.08);
-}
-
-.status-pill .dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--muted);
-}
-
-.status-pill.on .dot {
-  background: var(--green);
-  box-shadow: 0 0 8px var(--green);
-  animation: pulse 1.5s ease infinite;
-}
-
-@keyframes pulse {
-  50% {
-    opacity: 0.5;
-  }
-}
-
-.bot-msg {
-  font-size: 0.78rem;
+  background: var(--surface);
   color: var(--muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 280px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.15s;
+  min-width: 72px;
+}
+
+.coin-tab:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.coin-tab.active {
+  background: var(--surface2);
+  border-color: var(--accent);
+  color: var(--text);
+  box-shadow: 0 0 0 1px rgba(59, 158, 255, 0.25);
+}
+
+.coin-tab.held {
+  border-left: 3px solid var(--green);
+}
+
+.tab-base {
+  font-weight: 700;
+  font-size: 0.85rem;
+  color: var(--text);
+}
+
+.tab-sub {
+  font-size: 0.65rem;
+  opacity: 0.7;
+}
+
+.tab-pnl {
+  font-size: 0.7rem;
+  font-weight: 600;
+  margin-top: 0.15rem;
+}
+
+.coin-detail {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1rem 1.5rem;
+  padding: 0.75rem 1.5rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.coin-detail-main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem 0.75rem;
+  min-width: 200px;
+}
+
+.coin-title {
+  font-size: 1.15rem;
+  font-weight: 700;
+}
+
+.coin-en {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.coin-pair {
+  font-size: 0.75rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: 6px;
+  background: var(--surface2);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.coin-detail-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem 1.25rem;
+  flex: 1;
+}
+
+.detail-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.ds-label {
+  font-size: 0.65rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.ds-value {
+  font-size: 0.9rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.ds-value.dim {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.ds-value.accent {
+  color: var(--accent);
+}
+
+.coin-detail-status {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.2rem;
+  margin-left: auto;
+}
+
+.bot-status-text {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--muted);
+  padding: 0.25rem 0.6rem;
+  border-radius: 6px;
+  background: var(--surface2);
+}
+
+.bot-status-text.on {
+  color: var(--green);
+  background: rgba(34, 211, 165, 0.1);
+}
+
+.bot-status-msg {
+  font-size: 0.72rem;
+  color: var(--muted);
+  max-width: 220px;
+  text-align: right;
 }
 
 .top-actions {
@@ -185,6 +290,18 @@ body {
 .btn-primary.stop {
   background: linear-gradient(135deg, #dc4f4f, #b83a3a);
   box-shadow: 0 4px 20px rgba(220, 79, 79, 0.3);
+}
+
+.btn-primary:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.modal-actions .btn-ghost.wide {
+  width: auto;
+  padding: 0 1rem;
+  height: 38px;
 }
 
 .hero-metrics {
@@ -348,8 +465,21 @@ body {
   border-color: var(--border);
 }
 
-.pos-sym {
+.pos-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  align-items: flex-start;
+}
+
+.pos-name {
   font-weight: 600;
+  font-size: 0.85rem;
+}
+
+.pos-pair {
+  font-size: 0.7rem;
+  color: var(--muted);
 }
 
 .pos-pnl {
@@ -366,10 +496,33 @@ body {
 .trade-list li {
   display: flex;
   justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
   font-size: 0.78rem;
-  padding: 0.35rem 0;
+  padding: 0.45rem 0;
   color: var(--muted);
   border-bottom: 1px solid var(--border);
+}
+
+.trade-left {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.trade-name {
+  color: var(--text);
+  font-weight: 500;
+  font-size: 0.8rem;
+}
+
+.trade-side {
+  font-size: 0.68rem;
+}
+
+.trade-reason {
+  font-size: 0.72rem;
+  white-space: nowrap;
 }
 
 .trade-list li.buy span:last-child {
@@ -396,20 +549,32 @@ body {
   gap: 0.5rem;
 }
 
-.chart-symbol {
-  display: flex;
-  align-items: baseline;
-  gap: 0.25rem;
-}
-
-.symbol-badge {
-  font-size: 1.25rem;
-  font-weight: 700;
-}
-
-.symbol-pair {
-  color: var(--muted);
+.chart-pair-badge {
   font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--accent);
+  padding: 0.35rem 0.65rem;
+  background: var(--surface2);
+  border-radius: 8px;
+}
+
+.chart-canvas-wrap {
+  position: relative;
+  flex: 1;
+  min-height: 360px;
+}
+
+.chart-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(11, 15, 20, 0.55);
+  color: var(--muted);
+  font-size: 0.85rem;
+  border-radius: var(--radius);
 }
 
 .chart-tools {
@@ -438,8 +603,8 @@ body {
 }
 
 .chart-canvas {
-  flex: 1;
-  min-height: 360px;
+  position: absolute;
+  inset: 0;
   border-radius: var(--radius);
   border: 1px solid var(--border);
   background: var(--surface);

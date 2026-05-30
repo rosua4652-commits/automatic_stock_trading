@@ -1,4 +1,5 @@
 import type { CoinCandidate, Portfolio, TradeEvent } from "../types";
+import { fmtKrw, fmtPct } from "../utils";
 
 type Props = {
   portfolio: Portfolio;
@@ -7,10 +8,6 @@ type Props = {
   selected: string;
   onSelect: (symbol: string) => void;
 };
-
-function fmt(n: number) {
-  return new Intl.NumberFormat("ko-KR").format(Math.round(n));
-}
 
 export default function PortfolioPanel({
   portfolio,
@@ -29,18 +26,18 @@ export default function PortfolioPanel({
         <div className="stat-grid">
           <div className="stat">
             <span className="label">총 자산</span>
-            <span className="value">{fmt(portfolio.total_value_krw)}원</span>
+            <span className="value">{fmtKrw(portfolio.total_value_krw)}원</span>
           </div>
           <div className="stat">
             <span className="label">수익</span>
             <span className={`value ${pnlClass}`}>
               {pnl >= 0 ? "+" : ""}
-              {fmt(pnl)}원
+              {fmtKrw(pnl)}원
             </span>
           </div>
           <div className="stat">
             <span className="label">현금</span>
-            <span className="value dim">{fmt(portfolio.cash_krw)}원</span>
+            <span className="value dim">{fmtKrw(portfolio.cash_krw)}원</span>
           </div>
         </div>
         <div className="progress-wrap">
@@ -58,7 +55,7 @@ export default function PortfolioPanel({
       </section>
 
       <section className="panel-block">
-        <h3>보유</h3>
+        <h3>보유 코인</h3>
         {portfolio.positions.length === 0 ? (
           <p className="empty">자동투자 시작 시 AI가 포지션을 구성합니다</p>
         ) : (
@@ -70,10 +67,12 @@ export default function PortfolioPanel({
                   className={`pos-row ${selected === p.symbol ? "active" : ""}`}
                   onClick={() => onSelect(p.symbol)}
                 >
-                  <span className="pos-sym">{p.symbol.replace("USDT", "")}</span>
+                  <div className="pos-info">
+                    <span className="pos-name">{p.name_ko}</span>
+                    <span className="pos-pair">{p.pair_label}</span>
+                  </div>
                   <span className={`pos-pnl ${p.pnl_pct >= 0 ? "up" : "down"}`}>
-                    {p.pnl_pct >= 0 ? "+" : ""}
-                    {p.pnl_pct.toFixed(2)}%
+                    {fmtPct(p.pnl_pct)}
                   </span>
                 </button>
               </li>
@@ -84,20 +83,27 @@ export default function PortfolioPanel({
 
       <section className="panel-block scroll">
         <h3>AI 선정</h3>
-        <ul className="candidate-list">
-          {candidates.slice(0, 8).map((c) => (
-            <li key={c.symbol}>
-              <button
-                type="button"
-                className={`cand-row ${selected === c.symbol ? "active" : ""}`}
-                onClick={() => onSelect(c.symbol)}
-              >
-                <span>{c.base}</span>
-                <span className="cand-score">{c.score}</span>
-              </button>
-            </li>
-          ))}
-        </ul>
+        {candidates.length === 0 ? (
+          <p className="empty">자동투자 실행 시 후보가 표시됩니다</p>
+        ) : (
+          <ul className="candidate-list">
+            {candidates.slice(0, 10).map((c) => (
+              <li key={c.symbol}>
+                <button
+                  type="button"
+                  className={`cand-row ${selected === c.symbol ? "active" : ""}`}
+                  onClick={() => onSelect(c.symbol)}
+                >
+                  <div className="pos-info">
+                    <span className="pos-name">{c.name_ko}</span>
+                    <span className="pos-pair">{c.pair_label}</span>
+                  </div>
+                  <span className="cand-score">{c.score}점</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
 
       {trades.length > 0 && (
@@ -107,11 +113,17 @@ export default function PortfolioPanel({
             {trades
               .slice()
               .reverse()
-              .slice(0, 6)
+              .slice(0, 8)
               .map((t, i) => (
-                <li key={`${t.ts}-${i}`} className={t.side === "BUY" ? "buy" : "sell"}>
-                  <span>{t.symbol.replace("USDT", "")}</span>
-                  <span>{t.reason}</span>
+                <li
+                  key={`${t.ts}-${t.symbol}-${i}`}
+                  className={t.side === "BUY" ? "buy" : "sell"}
+                >
+                  <div className="trade-left">
+                    <span className="trade-name">{t.display}</span>
+                    <span className="trade-side">{t.side === "BUY" ? "매수" : "매도"}</span>
+                  </div>
+                  <span className="trade-reason">{t.reason}</span>
                 </li>
               ))}
           </ul>

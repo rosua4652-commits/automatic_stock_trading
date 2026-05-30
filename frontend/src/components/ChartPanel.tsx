@@ -9,8 +9,10 @@ import type { Candle } from "../types";
 
 type Props = {
   symbol: string;
+  pairLabel: string;
   interval: string;
   candles: Candle[];
+  chartLoading: boolean;
   onIntervalChange: (v: string) => void;
 };
 
@@ -23,8 +25,10 @@ const INTERVALS = [
 
 export default function ChartPanel({
   symbol,
+  pairLabel,
   interval,
   candles,
+  chartLoading,
   onIntervalChange,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -84,7 +88,12 @@ export default function ChartPanel({
   }, []);
 
   useEffect(() => {
-    if (!candleRef.current || !volRef.current || !candles.length) return;
+    if (!candleRef.current || !volRef.current) return;
+    if (!candles.length) {
+      candleRef.current.setData([]);
+      volRef.current.setData([]);
+      return;
+    }
     const cs = candles.map((c) => ({
       time: c.time as unknown as import("lightweight-charts").Time,
       open: c.open,
@@ -105,15 +114,10 @@ export default function ChartPanel({
     chartRef.current?.timeScale().fitContent();
   }, [candles, symbol]);
 
-  const base = symbol.replace("USDT", "");
-
   return (
     <div className="chart-panel">
       <div className="chart-toolbar">
-        <div className="chart-symbol">
-          <span className="symbol-badge">{base}</span>
-          <span className="symbol-pair">/ USDT</span>
-        </div>
+        <span className="chart-pair-badge">{pairLabel}</span>
         <div className="chart-tools">
           {INTERVALS.map((i) => (
             <button
@@ -127,7 +131,10 @@ export default function ChartPanel({
           ))}
         </div>
       </div>
-      <div className="chart-canvas" ref={containerRef} />
+      <div className="chart-canvas-wrap">
+        {chartLoading && <div className="chart-overlay">차트 불러오는 중...</div>}
+        <div className="chart-canvas" ref={containerRef} />
+      </div>
     </div>
   );
 }

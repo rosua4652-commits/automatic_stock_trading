@@ -1,5 +1,22 @@
+export type BotStatus = "stopped" | "running" | "stopping";
+
+export interface CoinMeta {
+  symbol: string;
+  base: string;
+  quote: string;
+  name_ko: string;
+  name_en: string;
+  pair_label: string;
+  display: string;
+}
+
 export interface Position {
   symbol: string;
+  base: string;
+  name_ko: string;
+  name_en: string;
+  pair_label: string;
+  display: string;
   quantity: number;
   avg_price: number;
   current_price: number;
@@ -7,6 +24,7 @@ export interface Position {
   take_profit: number;
   pnl_pct: number;
   value: number;
+  score: number;
 }
 
 export interface Portfolio {
@@ -24,6 +42,10 @@ export interface Portfolio {
 export interface CoinCandidate {
   symbol: string;
   base: string;
+  name_ko: string;
+  name_en: string;
+  pair_label: string;
+  display: string;
   score: number;
   trend: string;
   rsi: number;
@@ -34,15 +56,26 @@ export interface CoinCandidate {
 export interface TradeEvent {
   ts: number;
   symbol: string;
+  base: string;
+  display: string;
   side: string;
   price: number;
   quantity: number;
   reason: string;
 }
 
+export interface CoinView {
+  meta: CoinMeta;
+  price_usdt: number;
+  change_24h: number;
+  in_portfolio: boolean;
+  position: Position | null;
+  candidate: CoinCandidate | null;
+}
+
 export interface BotState {
-  status: "stopped" | "running";
-  selected_symbol: string;
+  status: BotStatus;
+  view_symbol: string;
   message: string;
   candidates: CoinCandidate[];
   recent_trades: TradeEvent[];
@@ -56,6 +89,8 @@ export interface StatusPayload {
   bot: BotState;
   portfolio: Portfolio;
   config: AppConfig;
+  view: CoinView;
+  tabs: string[];
 }
 
 export interface Candle {

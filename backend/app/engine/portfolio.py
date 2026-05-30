@@ -2,6 +2,7 @@ import time
 from typing import Optional
 
 from app.config import settings
+from app.market.coin_registry import coin_meta
 from app.models import AppConfig, PortfolioSnapshot, Position, TradeEvent
 
 
@@ -54,12 +55,10 @@ class PortfolioManager:
             positions=sorted(pos_list, key=lambda p: p.value, reverse=True),
         )
 
-    def can_buy(self, cost_krw: float) -> bool:
-        return self.cash_krw >= cost_krw * 1.001
-
     def buy(
         self,
         symbol: str,
+        base: str,
         price_usdt: float,
         allocation_krw: float,
         stop_loss_pct: float,
@@ -73,9 +72,15 @@ class PortfolioManager:
         qty = usdt / price_usdt
         if qty <= 0:
             return None
+        meta = coin_meta(symbol, base)
         self.cash_krw -= cost_krw
         pos = Position(
             symbol=symbol,
+            base=meta["base"],
+            name_ko=meta["name_ko"],
+            name_en=meta["name_en"],
+            pair_label=meta["pair_label"],
+            display=meta["display"],
             quantity=qty,
             avg_price=price_usdt,
             current_price=price_usdt,
@@ -90,6 +95,8 @@ class PortfolioManager:
             TradeEvent(
                 ts=time.time(),
                 symbol=symbol,
+                base=meta["base"],
+                display=meta["display"],
                 side="BUY",
                 price=price_usdt,
                 quantity=qty,
@@ -109,6 +116,8 @@ class PortfolioManager:
         evt = TradeEvent(
             ts=time.time(),
             symbol=symbol,
+            base=pos.base,
+            display=pos.display,
             side="SELL",
             price=price_usdt,
             quantity=pos.quantity,

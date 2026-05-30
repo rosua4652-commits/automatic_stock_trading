@@ -1,10 +1,12 @@
-import time
+import asyncio
+from collections.abc import Callable
 from typing import Any
 
 import numpy as np
 
 from app.config import settings
 from app.market.binance import binance
+from app.market.coin_registry import coin_meta
 from app.models import CoinCandidate
 
 
@@ -31,14 +33,18 @@ def _rsi(closes: np.ndarray, period: int = 14) -> float:
     return float(100 - (100 / (1 + rs)))
 
 
-def _score_symbol(closes: np.ndarray, volumes: np.ndarray, change_24h: float) -> tuple[float, str, float, str]:
+def _score_symbol(
+    closes: np.ndarray, volumes: np.ndarray, change_24h: float
+) -> tuple[float, str, float, str]:
     ema20 = _ema(closes, 20)
     ema50 = _ema(closes, 50)
     rsi = _rsi(closes)
     vol_ratio = float(volumes[-24:].mean() / (volumes[-48:-24].mean() + 1e-9))
 
-    trend = "상승" if ema20[-1] > ema50[-1] and closes[-1] > ema20[-1] else (
-        "횡보" if abs(ema20[-1] - ema50[-1]) / ema50[-1] < 0.01 else "약세"
+    trend = (
+        "상승"
+        if ema20[-1] > ema50[-1] and closes[-1] > ema20[-1]
+        else ("횡보" if abs(ema20[-1] - ema50[-1]) / ema50[-1] < 0.01 else "약세")
     )
 
     score = 0.0
@@ -81,14 +87,60 @@ def _score_symbol(closes: np.ndarray, volumes: np.ndarray, change_24h: float) ->
     return score, trend, rsi, reason
 
 
-async def scan_market(limit: int = 12) -> list[CoinCandidate]:
+async def _analyze_one(
+    symbol: str,
+    base: str,
+    quote_vol: float,
+    change: float,
+    is_running: Callable[[], bool],
+) -> CoinCandidate | None:
+    if not is_running():
+        return None
+    try:
+        raw = await binance.klines(symbol, "1h", settings.min_candles)
+        if not is_running() or len(raw) < settings.min_candles:
+            return None
+        closes = np.array([float(r[4]) for r in raw], dtype=float)
+        volumes = np.array([float(r[5]) for r in raw], dtype=float)
+        if closes.std() / (closes.mean() + 1e-9) > 0.35:
+            return None
+        score, trend, rsi, reason = _score_symbol(closes, volumes, change)
+        if score < 25:
+            return None
+        meta = coin_meta(symbol, base)
+        return CoinCandidate(
+            symbol=symbol,
+            base=meta["base"],
+            name_ko=meta["name_ko"],
+            name_en=meta["name_en"],
+            pair_label=meta["pair_label"],
+            display=meta["display"],
+            score=round(score, 1),
+            trend=trend,
+            rsi=round(rsi, 1),
+            change_24h=round(change, 2),
+            volume_usdt=quote_vol,
+            reason=reason,
+        )
+    except Exception:
+        return None
+
+
+async def scan_market(
+    limit: int = 12,
+    is_running: Callable[[], bool] | None = None,
+) -> list[CoinCandidate]:
+    running = is_running or (lambda: True)
+    if not running():
+        return []
+
     symbols_info, tickers = await binance.exchange_info(), await binance.tickers_24h()
+    if not running():
+        return []
+
     safe = [s for s in symbols_info if binance.is_safe_usdt_pair(s)]
-
-    ranked: list[tuple[float, CoinCandidate]] = []
-
-    # pre-filter by volume
     candidates: list[tuple[str, str, float, float]] = []
+
     for info in safe:
         symbol = info["symbol"]
         base = info["baseAsset"]
@@ -102,42 +154,17 @@ async def scan_market(limit: int = 12) -> list[CoinCandidate]:
         candidates.append((symbol, base, quote_vol, change))
 
     candidates.sort(key=lambda x: x[2], reverse=True)
-    top_by_volume = candidates[:40]
+    top = candidates[:24]
 
-    sem_tasks = []
-    for symbol, base, quote_vol, change in top_by_volume:
-        sem_tasks.append((symbol, base, quote_vol, change))
+    sem = asyncio.Semaphore(6)
 
-    for symbol, base, quote_vol, change in sem_tasks:
-        try:
-            raw = await binance.klines(symbol, "1h", settings.min_candles)
-            if len(raw) < settings.min_candles:
-                continue
-            closes = np.array([float(r[4]) for r in raw], dtype=float)
-            volumes = np.array([float(r[5]) for r in raw], dtype=float)
-            # listing maturity proxy: need stable history without huge gaps
-            if closes.std() / (closes.mean() + 1e-9) > 0.35:
-                continue
-            score, trend, rsi, reason = _score_symbol(closes, volumes, change)
-            if score < 25:
-                continue
-            ranked.append(
-                (
-                    score,
-                    CoinCandidate(
-                        symbol=symbol,
-                        base=base,
-                        score=round(score, 1),
-                        trend=trend,
-                        rsi=round(rsi, 1),
-                        change_24h=round(change, 2),
-                        volume_usdt=quote_vol,
-                        reason=reason,
-                    ),
-                )
-            )
-        except Exception:
-            continue
+    async def run_one(item: tuple[str, str, float, float]) -> CoinCandidate | None:
+        if not running():
+            return None
+        async with sem:
+            return await _analyze_one(*item, is_running=running)
 
+    results = await asyncio.gather(*[run_one(c) for c in top])
+    ranked = [(c.score, c) for c in results if c is not None]
     ranked.sort(key=lambda x: x[0], reverse=True)
     return [c for _, c in ranked[:limit]]
