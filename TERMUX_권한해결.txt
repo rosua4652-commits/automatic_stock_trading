@@ -1,0 +1,44 @@
+═══════════════════════════════════════════════════
+  Termux "Permission denied" — 이렇게 하세요
+═══════════════════════════════════════════════════
+
+■ 원인
+  • zip을 다운로드/SD카드에 풀면 → chmod·실행·venv 전부 막힘
+  • run-tablet.sh 에 chmod 할 필요 없음
+
+■ 해결 (복사해서 한 줄씩)
+
+1) Termux 앱 열기 → 아래 전부 붙여넣기:
+
+pkg update -y
+pkg install -y python python-pip python-venv python-numpy unzip
+termux-setup-storage
+(화면에서 [허용] 누르기)
+
+2) zip을 홈으로 복사 후 풀기 (Downloads에만 두지 마세요):
+
+cp ~/storage/downloads/aidi-samsung-tablet.zip ~/
+cd ~
+rm -rf ~/aidi
+mkdir -p ~/aidi
+unzip -o ~/aidi-samsung-tablet.zip -d ~/aidi
+cd ~/aidi
+ls run.py
+
+3) chmod 없이 실행:
+
+python run.py
+
+4) 삼성 인터넷 또는 Chrome:
+
+   http://127.0.0.1:8000
+
+■ run.py 가 없다면
+  • unzip 경로 잘못됨 → 2번 다시 (반드시 -d ~/aidi)
+  • 또는: ls ~/  /  ls ~/aidi
+
+■ 그래도 안 되면
+  Termux 말고 PC에서 run.sh 실행 후
+  태블릿 브라우저로 http://집PCIP:8000 접속 (같은 Wi-Fi)
+
+═══════════════════════════════════════════════════
