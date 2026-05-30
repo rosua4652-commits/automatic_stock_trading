@@ -1,0 +1,43 @@
+========================================
+  404 오류 — 왜 생기나요?
+========================================
+
+증상:
+  download-latest-pc.ps1 첫 줄이 "404: Not Found"
+  PowerShell이 404 를 명령으로 실행하려다 실패
+
+원인:
+  GitHub 저장소가 비공개(Private)이거나
+  curl/raw 주소가 로그인 없이는 404 를 돌려줍니다.
+  → 받은 파일이 스크립트가 아니라 "404 Not Found" 글자뿐입니다.
+
+
+[지금 할 일 — 수동 ZIP] (비공개 저장소도 됨)
+
+  1) 잘못된 파일 삭제
+     download-latest-pc.ps1  (메모장 열어서 404 만 있으면 삭제)
+
+  2) 크롬/엣지에서 github.com 로그인
+
+  3) automatic_stock_trading 저장소 열기
+     → 초록 Code 버튼 → Download ZIP
+
+  4) ZIP 을 Downloads 에 저장
+
+  5) 프로젝트 폴더에서:
+     apply-manual-zip.bat 더블클릭
+     (ZIP 이 없으면: apply-manual-zip.bat "C:\Users\dongil-3\Downloads\automatic_stock_trading-main.zip")
+
+  6) run.bat 실행
+
+  ※ apply-manual-zip.bat 이 없으면:
+     3번 ZIP 압축 해제 → 안쪽 파일을 (3) 폴더에 복사
+     단, backend\data\credentials.json 은 덮어쓰지 마세요
+
+
+[자동 다운로드 쓰려면]
+  GitHub 저장소 → Settings → General → Danger zone
+  → Change visibility → Public
+  그 다음 download-latest-pc.bat 사용 가능
+
+========================================

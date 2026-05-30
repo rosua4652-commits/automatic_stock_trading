@@ -1,0 +1,21 @@
+비공개 저장소라 PC에 새 bat 이 없을 때
+======================================
+
+아래 2개 파일만 메모장으로 만들어도 됩니다.
+저장 위치:
+  C:\Users\dongil-3\Downloads\automatic_stock_trading-main (3)\automatic_stock_trading-main
+
+--- 파일 1: apply-manual-zip.bat ---
+@echo off
+cd /d "%~dp0"
+powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+ "$z=$args[0]; if(-not $z){$d=[Environment]::GetFolderPath('UserProfile')+'\Downloads'; $z=(Get-ChildItem $d -Filter 'automatic_stock_trading*.zip'|Sort LastWriteTime -Desc|Select -First 1).FullName}; if(-not $z){Write-Host 'ZIP 없음: GitHub에서 Code-Download ZIP'; pause; exit 1}; $r=(Get-Location).Path; $t=$env:TEMP+'\aidi'+[guid]::NewGuid().ToString('n'); $cp=Join-Path $r 'backend\data\credentials.json'; $bk=Join-Path $t 'c.json'; if(Test-Path $cp){New-Item -ItemType Directory -Force -Path $t|Out-Null; Copy-Item $cp $bk -Force}; Expand-Archive -LiteralPath $z -DestinationPath $t -Force; $s=Join-Path $t 'automatic_stock_trading-main'; if(-not(Test-Path $s)){$s=(Get-ChildItem $t -Directory|Select -First 1).FullName}; robocopy $s $r /E /XD backend\.venv backend\data .git node_modules /NFL /NDL /NJH /NJS; if(Test-Path $bk){Copy-Item $bk $cp -Force}; Write-Host Done. run.bat 실행; pause" ^
+ "%~1"
+
+(한 줄로 저장 — 줄바꿈 없이)
+
+--- 사용법 ---
+1. GitHub 로그인 → 저장소 → Code → Download ZIP
+2. apply-manual-zip.bat 더블클릭
+
+======================================

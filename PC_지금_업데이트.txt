@@ -1,54 +1,27 @@
 ========================================
-  PC 파일이 안 바뀔 때 (필독)
+  PC 파일 업데이트 (404 나왔을 때)
 ========================================
 
-GitHub에 올린 것 = 인터넷 저장소입니다.
-내 PC 폴더는 자동으로 안 바뀝니다.
-반드시 아래 중 하나를 PC에서 직접 실행하세요.
+curl / raw.githubusercontent.com 은
+비공개 저장소에서 404 만 받습니다. 사용하지 마세요.
 
 
-[방법 A] 이미 run.bat 있는 (3) 폴더 — 가장 쉬움
+[권장] 브라우저 ZIP + apply-manual-zip.bat
 ------------------------------------------
-1. 탐색기에서 이 폴더 열기:
-   C:\Users\dongil-3\Downloads\automatic_stock_trading-main (3)\automatic_stock_trading-main
-
-2. download-latest-pc.bat 더블클릭
-   (없으면 → 방법 B)
-
-3. 끝나면 run.bat 실행
-4. check-build.bat → 2026-03-30-pc-dongil3-final 확인
+1. github.com 로그인
+2. 저장소 → Code → Download ZIP
+3. 폴더 (3) 에서 apply-manual-zip.bat 실행
+4. run.bat
 
 
-[방법 B] download-latest-pc.bat 이 없을 때 — CMD 한 번
+[공개 저장소로 바꾼 뒤]
 ------------------------------------------
-1. Win+R → cmd → Enter
-
-2. 아래 줄 전체 복사 후 붙여넣기 (Enter):
-
-cd /d "C:\Users\dongil-3\Downloads\automatic_stock_trading-main (3)\automatic_stock_trading-main"
-
-3. 다음 줄:
-
-curl -L -o download-latest-pc.ps1 https://raw.githubusercontent.com/rosua4652-commits/automatic_stock_trading/main/download-latest-pc.ps1
-
-4. 다음 줄:
-
-powershell -NoProfile -ExecutionPolicy Bypass -File download-latest-pc.ps1
-
-5. 끝나면 run.bat 실행
+download-latest-pc.bat
 
 
-[방법 C] 수동 ZIP
-------------------------------------------
-https://github.com/rosua4652-commits/automatic_stock_trading
-→ Code → Download ZIP
-→ 압축 해제 → (3) 폴더 안쪽에 파일 덮어쓰기
-→ backend\data\credentials.json 은 지우지 말 것
+[폴더]
+C:\Users\dongil-3\Downloads\automatic_stock_trading-main (3)\automatic_stock_trading-main
 
-
-[잘못된 경우]
-- 상위 "(3)" 폴더만 열고 실행 (안쪽 automatic_stock_trading-main 이어야 함)
-- sync-pc-from-github.bat 만 실행했는데 git 없음 → 아무 파일도 안 바뀜
-- GitHub만 보고 PC는 안 건드림
+자세히: PC_404_해결.txt
 
 ========================================
