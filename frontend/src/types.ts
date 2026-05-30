@@ -193,6 +193,13 @@ export interface StatusPayload {
   tab_quotes?: Record<string, TabQuote>;
   account_link?: AccountLink;
   status_version?: number;
+  aidi_build?: string;
+  network?: {
+    outbound_ip?: string;
+    outbound_ipv4_stack?: string;
+    register_on_upbit?: string;
+    saved_access_key?: string;
+  };
   all_trades?: TradeEvent[];
   ok?: boolean;
   message?: string;

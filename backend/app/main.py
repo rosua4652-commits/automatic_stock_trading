@@ -136,6 +136,7 @@ async def _build_status() -> dict:
     ).model_dump()
     payload["config"] = config_for_response(engine.config)
     payload["status_version"] = engine._status_version
+    payload["aidi_build"] = AIDI_BUILD
     payload["all_trades"] = [t.model_dump() for t in portfolio.trades[-50:]]
     outbound = await get_outbound_public_ip()
     ip4 = await outbound_ipv4_via_same_stack()

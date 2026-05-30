@@ -298,6 +298,9 @@ export default function App() {
   const running = isRunning(data.bot.status);
   const stopping = data.bot.status === "stopping";
   const isPaper = data.config.trade_mode === "paper";
+  const buildId = data.aidi_build || "";
+  const buildStale =
+    !buildId || buildId !== "2026-03-30-pc-dongil3-final";
   const canTrade = !stopping;
   const activeRec =
     editableRecs.find((r) => r.symbol === activeSymbol) ?? null;
@@ -391,6 +394,12 @@ export default function App() {
     <div className="app">
       <div className="app-top">
         <div className={`mode-banner ${isPaper ? "paper" : "live"}`}>
+          {buildStale ? (
+            <strong style={{ display: "block", marginBottom: 4 }}>
+              ⚠ 구버전 서버 — API 연동 불가 · run.bat 끄고 최신 ZIP으로 폴더 덮어쓴 뒤 재실행
+              {buildId ? ` (현재 ${buildId})` : " (빌드 ID 없음)"}
+            </strong>
+          ) : null}
           {isPaper
             ? `모의투자 · ${fmtKrw(data.portfolio.total_value_krw)}원`
             : data.account_link?.linked
