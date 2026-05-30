@@ -1,5 +1,5 @@
 @echo off
-setlocal
+setlocal EnableDelayedExpansion
 cd /d "%~dp0"
 set "PORT=8000"
 if not "%PORT_OVERRIDE%"=="" set "PORT=%PORT_OVERRIDE%"
@@ -9,33 +9,46 @@ echo  AIDI - Windows
 echo  ===============
 echo.
 
-set "PYEXE=python"
-where python >nul 2>&1
-if errorlevel 1 goto :no_python
-
-where py >nul 2>&1
-if not errorlevel 1 (
-  py -3.12 -c "import sys" >nul 2>&1
-  if not errorlevel 1 set "PYEXE=py -3.12"
-)
-
-call :check_py_version %PYEXE%
-if errorlevel 1 goto :bad_python
-
 if not exist "backend\app\main.py" goto :no_root
 
+set "PY312="
+where py >nul 2>&1
+if not errorlevel 1 (
+  for /f "delims=" %%i in ('py -3.12 -c "import sys; print(sys.executable)" 2^>nul') do set "PY312=%%i"
+)
+
+if not defined PY312 (
+  where python >nul 2>&1
+  if errorlevel 1 goto :no_python
+  for /f "delims=" %%i in ('python -c "import sys; print(sys.executable)" 2^>nul') do set "PY312=%%i"
+  "%PY312%" -c "import sys; v=sys.version_info; raise SystemExit(0 if v[:2]==(3,12) else 1)" 2>nul
+  if errorlevel 1 goto :bad_python
+)
+
+if not defined PY312 goto :bad_python
+
+echo Using Python: %PY312%
+"%PY312%" --version
+if errorlevel 1 goto :bad_python
+
 if exist "backend\.venv\Scripts\python.exe" (
-  call :check_py_version "backend\.venv\Scripts\python.exe"
+  "backend\.venv\Scripts\python.exe" -c "import sys; raise SystemExit(0 if sys.version_info[:2]==(3,12) else 1)" 2>nul
   if errorlevel 1 (
-    echo Removing old venv - wrong Python version...
+    echo Removing old venv - not Python 3.12...
     rmdir /s /q "backend\.venv"
   )
 )
 
 if not exist "backend\.venv\Scripts\python.exe" (
-  echo Creating venv with %PYEXE% ...
-  %PYEXE% -m venv backend\.venv
+  echo Creating venv with Python 3.12...
+  "%PY312%" -m venv backend\.venv
   if errorlevel 1 goto :venv_fail
+)
+
+"backend\.venv\Scripts\python.exe" -c "import sys; raise SystemExit(0 if sys.version_info[:2]==(3,12) else 1)" 2>nul
+if errorlevel 1 (
+  echo ERROR: venv is not Python 3.12. Delete backend\.venv and retry.
+  goto :bad_python
 )
 
 echo Installing Python packages...
@@ -75,33 +88,27 @@ cd /d "%~dp0backend"
 "%~dp0backend\.venv\Scripts\python.exe" -m uvicorn app.main:app --host 0.0.0.0 --port %PORT%
 goto :eof
 
-:check_py_version
-%1 -c "import sys; v=sys.version_info; raise SystemExit(0 if (3,11)<=v[:2]<(3,14) else 1)"
-exit /b %errorlevel%
-
 :no_python
 echo ERROR: Python not found.
 echo Install Python 3.12 from https://www.python.org/downloads/
-echo Check "Add python.exe to PATH" during install.
 pause
 exit /b 1
 
 :bad_python
 echo.
-echo ERROR: Need Python 3.11 or 3.12 only.
-echo Python 3.14 is NOT supported - pydantic install fails.
+echo ERROR: Python 3.12 required.
+echo   py -3.12 --version  must work.
+echo   Do NOT use Python 3.14.
 echo.
-echo Fix:
-echo   1. Install Python 3.12 from python.org
-echo   2. cmd: rmdir /s /q backend\.venv
-echo   3. Run run.bat again
-echo.
-echo Check version: python --version
+echo Fix now:
+echo   rmdir /s /q backend\.venv
+echo   py -3.12 -m venv backend\.venv
+echo   run.bat
 pause
 exit /b 1
 
 :no_root
-echo ERROR: Run this from the project folder - backend\app\main.py not found.
+echo ERROR: Run from project folder - backend\app\main.py not found.
 pause
 exit /b 1
 
@@ -113,14 +120,12 @@ exit /b 1
 :pip_fail
 echo.
 echo ERROR: pip install failed.
-echo If you saw pydantic-core / Python 3.14 error:
-echo   Use Python 3.12, delete backend\.venv, run again.
+echo Check: backend\.venv\Scripts\python.exe --version  must be 3.12.x
 pause
 exit /b 1
 
 :no_npm
 echo ERROR: frontend\dist missing and npm not found.
-echo Install Node.js from https://nodejs.org/ OR use zip with dist included.
 pause
 exit /b 1
 
