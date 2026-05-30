@@ -2,6 +2,7 @@
 
 from typing import Any
 
+from app.market.network_info import get_outbound_public_ip
 from app.market.binance_live import binance_live
 from app.market.upbit_client import symbol_to_upbit, upbit_client, upbit_to_symbol
 from app.models import AppConfig

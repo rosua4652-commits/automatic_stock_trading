@@ -8,15 +8,23 @@ from urllib.parse import urlencode
 import httpx
 import jwt
 
+from app.market.network_info import get_outbound_public_ip
+
 UPBIT_API = "https://api.upbit.com"
 
 
-def _parse_upbit_error(text: str) -> RuntimeError:
+async def _parse_upbit_error(text: str) -> RuntimeError:
     if "no_authorization_ip" in text:
+        ip = await get_outbound_public_ip()
+        ip_hint = (
+            f" 지금 이 PC에서 업비트로 나가는 IP: {ip} — 업비트 Open API 키에 이 주소(IPv4)를 등록하세요."
+            if ip
+            else " cmd에서 curl ifconfig.me 로 공인 IP 확인 후 업비트에 등록하세요."
+        )
         return RuntimeError(
-            "업비트 API: 허용 IP가 등록되지 않았습니다. "
-            "업비트 → 마이페이지 → Open API 관리 → 해당 키에 "
-            "지금 사용 중인 PC(집) 공인 IP를 등록한 뒤 다시 시도하세요."
+            "업비트 API: 허용 IP가 등록되지 않았습니다."
+            + ip_hint
+            + " (VPN/핫스팟 사용 중이면 IP가 달라집니다. 등록 후 1~2분 기다린 뒤 설정 → 연결 테스트)"
         )
     if "invalid_access_key" in text:
         return RuntimeError("업비트 API: Access Key가 올바르지 않습니다.")
@@ -72,7 +80,7 @@ class UpbitClient:
         headers = {"Authorization": f"Bearer {self._token(params)}"}
         resp = await client.get(path, params=params, headers=headers)
         if resp.status_code >= 400:
-            raise _parse_upbit_error(resp.text)
+            raise await _parse_upbit_error(resp.text)
         return resp.json()
 
     async def _auth_post(self, path: str, body: dict) -> Any:
@@ -82,7 +90,7 @@ class UpbitClient:
         headers = {"Authorization": f"Bearer {self._token(body)}"}
         resp = await client.post(path, json=body, headers=headers)
         if resp.status_code >= 400:
-            raise _parse_upbit_error(resp.text)
+            raise await _parse_upbit_error(resp.text)
         return resp.json()
 
     async def test_connection(self) -> dict[str, Any]:
