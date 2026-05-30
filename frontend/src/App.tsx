@@ -300,82 +300,75 @@ export default function App() {
     data.bot.candidates.find((c) => c.symbol === activeSymbol)?.pair_label ||
     `${activeSymbol.replace("USDT", "")}/USDT`;
 
+  const applyRecs = async (symbols: string[]) => {
+    setTradeBusy(true);
+    try {
+      const s = await applyRecommendations(symbols);
+      applyPayload(s);
+      showToast(s.message || "매수 완료");
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "매수 실패");
+    } finally {
+      setTradeBusy(false);
+    }
+  };
+
   return (
     <div className="app">
-      <div className={`mode-banner ${isPaper ? "paper" : "live"}`}>
-        {isPaper
-          ? `모의투자 — 시뮬 자금 ${fmtKrw(data.portfolio.total_value_krw)}원 (실거래와 분리)`
-          : data.account_link?.linked
-            ? `실거래 · ${data.account_link.message}${
-                data.account_link.total_assets_krw
-                  ? ` · 총자산 ${fmtKrw(data.account_link.total_assets_krw)}원`
-                  : ""
-              }`
-            : `실거래 — ${data.account_link?.message || "API 연동 필요"}`}
-      </div>
+      <div className="app-top">
+        <div className={`mode-banner ${isPaper ? "paper" : "live"}`}>
+          {isPaper
+            ? `모의투자 · ${fmtKrw(data.portfolio.total_value_krw)}원`
+            : data.account_link?.linked
+              ? `실거래 · 총자산 ${fmtKrw(data.account_link.total_assets_krw ?? data.portfolio.total_value_krw)}원`
+              : `실거래 — ${data.account_link?.message || "API 연동 필요"}`}
+        </div>
 
-      <header className="topbar">
-        <div className="brand">
-          <span className="logo">AIDI</span>
-          <span className="tagline">AI 자동투자</span>
-        </div>
-        <div className="top-actions">
-          <button
-            type="button"
-            className="btn-ghost"
-            onClick={() => {
-              setConfigDraft(data.config);
-              setSettingsOpen(true);
-            }}
-          >
-            설정
-          </button>
-          <button
-            type="button"
-            className={`btn-primary ${running || stopping ? "stop" : ""}`}
-            onClick={toggleBot}
-            disabled={botBusy || stopping}
-          >
-            {stopping ? "중지 중..." : running ? "분석 중지" : "분석 시작"}
-          </button>
-        </div>
-      </header>
+        <header className="topbar topbar-compact">
+          <div className="brand">
+            <span className="logo">AIDI</span>
+          </div>
+          <div className="hero-metrics hero-inline">
+            <div className="metric">
+              <span className="m-label">목표</span>
+              <span className="m-value">{fmtKrw(data.config.target_profit_krw)}</span>
+            </div>
+            <div className="metric">
+              <span className="m-label">달성</span>
+              <span className="m-value accent">{data.portfolio.progress_pct.toFixed(0)}%</span>
+            </div>
+            <div className="metric">
+              <span className="m-label">총자산</span>
+              <span className="m-value">{fmtKrw(data.portfolio.total_value_krw)}</span>
+            </div>
+            <div className="metric">
+              <span className="m-label">현금</span>
+              <span className="m-value dim">{fmtKrw(data.portfolio.cash_krw)}</span>
+            </div>
+          </div>
+          <div className="top-actions">
+            <button
+              type="button"
+              className="btn-ghost btn-settings"
+              onClick={() => {
+                setConfigDraft(data.config);
+                setSettingsOpen(true);
+              }}
+            >
+              설정
+            </button>
+            <button
+              type="button"
+              className={`btn-primary ${running || stopping ? "stop" : ""}`}
+              onClick={toggleBot}
+              disabled={botBusy || stopping}
+            >
+              {stopping ? "중지 중..." : running ? "분석 중지" : "분석 시작"}
+            </button>
+          </div>
+        </header>
 
-      <div className="hero-metrics">
-        <div className="metric">
-          <span className="m-label">목표 수익</span>
-          <span className="m-value">{fmtKrw(data.config.target_profit_krw)}원</span>
-        </div>
-        <div className="metric">
-          <span className="m-label">달성</span>
-          <span className="m-value accent">{data.portfolio.progress_pct.toFixed(0)}%</span>
-        </div>
-        <div className="metric">
-          <span className="m-label">총 자산</span>
-          <span className="m-value">{fmtKrw(data.portfolio.total_value_krw)}원</span>
-        </div>
-      </div>
-
-      <RecommendationsPanel
-        recommendations={data.bot.recommendations ?? []}
-        botStatus={data.bot.status}
-        cashKrw={data.portfolio.cash_krw}
-        busy={tradeBusy}
-        onApply={async (symbols) => {
-          setTradeBusy(true);
-          try {
-            const s = await applyRecommendations(symbols);
-            applyPayload(s);
-            showToast(s.message || "매수 완료");
-          } catch (e) {
-            showToast(e instanceof Error ? e.message : "매수 실패");
-          } finally {
-            setTradeBusy(false);
-          }
-        }}
-      />
-
-      <nav className="main-nav">
+        <nav className="main-nav">
         <button
           type="button"
           className={`nav-btn ${mainView === "chart" ? "active" : ""}`}
@@ -390,10 +383,11 @@ export default function App() {
         >
           자금 · 매매
         </button>
-      </nav>
+        </nav>
+      </div>
 
       {mainView === "chart" && (
-        <>
+        <div className="chart-screen">
           <CoinTabs
             tabs={tabs}
             selected={activeSymbol}
@@ -401,42 +395,64 @@ export default function App() {
             candidates={data.bot.candidates}
             onSelect={handleSelectCoin}
           />
-          <CoinDetailBar
-            view={view}
-            botStatus={data.bot.status}
-            botMessage={data.bot.message}
-            canTrade={canTrade}
-            busy={tradeBusy}
-            cashKrw={data.portfolio.cash_krw}
-            onBuy={handleManualBuy}
-            onSell={handleManualSell}
-          />
-          <main className="layout">
-            <PortfolioPanel
-              portfolio={data.portfolio}
-              candidates={data.bot.candidates}
-              trades={data.all_trades ?? data.bot.recent_trades}
-              selected={activeSymbol}
-              onSelect={handleSelectCoin}
-              canTrade={canTrade}
-              busy={tradeBusy}
-              onQuickBuy={handleQuickBuy}
-            />
-            <ChartPanel
-              symbol={activeSymbol}
-              pairLabel={pairLabel}
-              chartInterval={chartInterval}
-              candles={candles}
-              chartLoading={chartLoading}
-              chartError={chartError}
-              onIntervalChange={setChartInterval}
-            />
+          <main className="layout chart-layout">
+            <aside className="side-panel">
+              <RecommendationsPanel
+                variant="sidebar"
+                recommendations={data.bot.recommendations ?? []}
+                botStatus={data.bot.status}
+                cashKrw={data.portfolio.cash_krw}
+                busy={tradeBusy}
+                onApply={applyRecs}
+              />
+              <div className="side-panel-scroll">
+                <PortfolioPanel
+                  portfolio={data.portfolio}
+                  candidates={data.bot.candidates}
+                  trades={data.all_trades ?? data.bot.recent_trades}
+                  selected={activeSymbol}
+                  onSelect={handleSelectCoin}
+                  canTrade={canTrade}
+                  busy={tradeBusy}
+                  onQuickBuy={handleQuickBuy}
+                />
+              </div>
+            </aside>
+            <div className="chart-column">
+              <CoinDetailBar
+                view={view}
+                botStatus={data.bot.status}
+                botMessage={data.bot.message}
+                canTrade={canTrade}
+                busy={tradeBusy}
+                cashKrw={data.portfolio.cash_krw}
+                onBuy={handleManualBuy}
+                onSell={handleManualSell}
+              />
+              <ChartPanel
+                symbol={activeSymbol}
+                pairLabel={pairLabel}
+                chartInterval={chartInterval}
+                candles={candles}
+                chartLoading={chartLoading}
+                chartError={chartError}
+                onIntervalChange={setChartInterval}
+              />
+            </div>
           </main>
-        </>
+        </div>
       )}
 
       {mainView === "funds" && (
-        <main className="layout funds-layout">
+        <div className="funds-screen">
+          <RecommendationsPanel
+            variant="full"
+            recommendations={data.bot.recommendations ?? []}
+            botStatus={data.bot.status}
+            cashKrw={data.portfolio.cash_krw}
+            busy={tradeBusy}
+            onApply={applyRecs}
+          />
           <FundsTab
             portfolio={data.portfolio}
             trades={data.all_trades ?? data.bot.recent_trades}
@@ -459,7 +475,7 @@ export default function App() {
             }}
             busy={tradeBusy}
           />
-        </main>
+        </div>
       )}
 
       {toast && <div className="toast">{toast}</div>}

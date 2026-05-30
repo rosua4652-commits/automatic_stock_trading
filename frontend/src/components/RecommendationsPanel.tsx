@@ -8,6 +8,7 @@ type Props = {
   cashKrw: number;
   busy: boolean;
   onApply: (symbols: string[]) => Promise<void>;
+  variant?: "full" | "sidebar";
 };
 
 export default function RecommendationsPanel({
@@ -16,7 +17,9 @@ export default function RecommendationsPanel({
   cashKrw,
   busy,
   onApply,
+  variant = "full",
 }: Props) {
+  const sidebar = variant === "sidebar";
   const [selected, setSelected] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
@@ -47,21 +50,19 @@ export default function RecommendationsPanel({
 
   if (list.length === 0) {
     return (
-      <section className="rec-panel empty">
-        <h3>AI 투자 제안</h3>
+      <section className={`rec-panel empty ${sidebar ? "rec-sidebar" : ""}`}>
+        <h3>투자 제안</h3>
         <p className="empty">
-          {running
-            ? "시장 분석 중… 잠시 후 제안 목록이 채워집니다."
-            : "「분석 시작」을 누르면 시장에서 코인을 골라 비중·금액을 제안합니다."}
+          {running ? "분석 중…" : "분석 시작 → 제안 생성"}
         </p>
       </section>
     );
   }
 
   return (
-    <section className="rec-panel">
+    <section className={`rec-panel ${sidebar ? "rec-sidebar" : ""}`}>
       <div className="rec-head">
-        <h3>AI 투자 제안</h3>
+        <h3>투자 제안</h3>
         <span className="rec-meta">
           현금 {fmtKrw(cashKrw)}원 · 선택 {picked.length}건 · 합계 {fmtKrw(total)}원
         </span>
@@ -86,43 +87,64 @@ export default function RecommendationsPanel({
         <p className="warn">선택 금액이 현금보다 큽니다. 일부만 선택하세요.</p>
       )}
       <div className="rec-table-wrap">
-        <table className="rec-table">
-          <thead>
-            <tr>
-              <th />
-              <th>코인</th>
-              <th>시장</th>
-              <th>차트</th>
-              <th>비중</th>
-              <th>제안 금액</th>
-              <th>24h</th>
-              <th>근거</th>
-            </tr>
-          </thead>
-          <tbody>
+        {sidebar ? (
+          <ul className="rec-list-compact">
             {list.map((r) => (
-              <tr key={r.symbol} className={selected[r.symbol] ? "" : "dim"}>
-                <td>
+              <li key={r.symbol} className={selected[r.symbol] ? "" : "dim"}>
+                <label className="rec-row-compact">
                   <input
                     type="checkbox"
                     checked={selected[r.symbol] !== false}
                     onChange={() => toggle(r.symbol)}
                   />
-                </td>
-                <td>
-                  <strong>{r.name_ko}</strong>
-                  <span className="dim">{r.pair_label}</span>
-                </td>
-                <td>{r.market_score}</td>
-                <td>{r.entry_score}</td>
-                <td>{r.weight_pct}%</td>
-                <td className="amount">{fmtKrw(r.amount_krw)}원</td>
-                <td className={r.change_24h >= 0 ? "up" : "down"}>{fmtPct(r.change_24h)}</td>
-                <td className="rec-reason">{r.entry_detail}</td>
-              </tr>
+                  <span className="rec-row-name">{r.name_ko}</span>
+                  <span className="rec-row-amt">{fmtKrw(r.amount_krw)}</span>
+                  <span className="rec-row-pct">{r.weight_pct}%</span>
+                </label>
+              </li>
             ))}
-          </tbody>
-        </table>
+          </ul>
+        ) : (
+          <table className="rec-table">
+            <thead>
+              <tr>
+                <th />
+                <th>코인</th>
+                <th>시장</th>
+                <th>차트</th>
+                <th>비중</th>
+                <th>제안 금액</th>
+                <th>24h</th>
+                <th>근거</th>
+              </tr>
+            </thead>
+            <tbody>
+              {list.map((r) => (
+                <tr key={r.symbol} className={selected[r.symbol] ? "" : "dim"}>
+                  <td>
+                    <input
+                      type="checkbox"
+                      checked={selected[r.symbol] !== false}
+                      onChange={() => toggle(r.symbol)}
+                    />
+                  </td>
+                  <td>
+                    <strong>{r.name_ko}</strong>
+                    <span className="dim">{r.pair_label}</span>
+                  </td>
+                  <td>{r.market_score}</td>
+                  <td>{r.entry_score}</td>
+                  <td>{r.weight_pct}%</td>
+                  <td className="amount">{fmtKrw(r.amount_krw)}원</td>
+                  <td className={r.change_24h >= 0 ? "up" : "down"}>
+                    {fmtPct(r.change_24h)}
+                  </td>
+                  <td className="rec-reason">{r.entry_detail}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </div>
     </section>
   );

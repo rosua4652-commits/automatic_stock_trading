@@ -26,7 +26,7 @@ export default function PortfolioPanel({
   const pnlClass = pnl >= 0 ? "up" : "down";
 
   return (
-    <aside className="side-panel">
+    <div className="portfolio-panel">
       <section className="panel-block">
         <h3>포트폴리오</h3>
         <div className="stat-grid">
@@ -153,6 +153,6 @@ export default function PortfolioPanel({
           </ul>
         </section>
       )}
-    </aside>
+    </div>
   );
 }
