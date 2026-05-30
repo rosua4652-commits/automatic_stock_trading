@@ -299,8 +299,7 @@ export default function App() {
   const stopping = data.bot.status === "stopping";
   const isPaper = data.config.trade_mode === "paper";
   const buildId = data.aidi_build || "";
-  const buildStale =
-    !buildId || !buildId.includes("upbit-only");
+  const buildStale = !buildId;
   const canTrade = !stopping;
   const activeRec =
     editableRecs.find((r) => r.symbol === activeSymbol) ?? null;
@@ -396,8 +395,7 @@ export default function App() {
         <div className={`mode-banner ${isPaper ? "paper" : "live"}`}>
           {buildStale ? (
             <strong style={{ display: "block", marginBottom: 4 }}>
-              ⚠ 구버전 서버 — API 연동 불가 · run.bat 끄고 최신 ZIP으로 폴더 덮어쓴 뒤 재실행
-              {buildId ? ` (현재 ${buildId})` : " (빌드 ID 없음)"}
+              ⚠ 서버 빌드 정보 없음 — run.bat 재시작 또는 최신 ZIP 적용 후 Ctrl+F5
             </strong>
           ) : null}
           {isPaper

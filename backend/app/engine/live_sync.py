@@ -3,7 +3,7 @@
 import time
 from typing import Any
 
-from app.market.upbit_data import market
+from app.market.upbit_data import market as upbit_feed
 from app.market.binance_live import binance_live
 from app.market.coin_registry import coin_meta
 from app.market.upbit_client import symbol_to_upbit, upbit_client, upbit_to_symbol
@@ -44,7 +44,7 @@ async def _sync_upbit(
     upbit_client.configure(access_key, secret_key)
     allowed_markets = await get_upbit_krw_markets()
     accounts = await upbit_client.accounts()
-    portfolio.usdt_krw = await market.usdt_krw_rate()
+    portfolio.usdt_krw = await upbit_feed.usdt_krw_rate()
     meta_map: dict = live_meta.get("positions_meta", {})
 
     krw_cash = 0.0
@@ -60,24 +60,24 @@ async def _sync_upbit(
         if cur == "KRW":
             krw_cash = total
             continue
-        market = f"KRW-{cur}"
-        if market not in allowed_markets:
+        krw_market = f"KRW-{cur}"
+        if krw_market not in allowed_markets:
             continue
-        holdings[market] = total
+        holdings[krw_market] = total
 
     tickers = await upbit_client.tickers(list(holdings.keys()))
     new_positions: dict[str, Position] = {}
 
-    for market, total_qty in holdings.items():
-        t = tickers.get(market)
+    for krw_market, total_qty in holdings.items():
+        t = tickers.get(krw_market)
         if not t:
             continue
         price_krw = float(t.get("trade_price", 0))
         if price_krw <= 0:
             continue
         price_usdt = price_krw / portfolio.usdt_krw
-        symbol = upbit_to_symbol(market)
-        base = market.replace("KRW-", "")
+        symbol = upbit_to_symbol(krw_market)
+        base = krw_market.replace("KRW-", "")
         pm = meta_map.get(symbol, {})
 
         auto_q = min(float(pm.get("auto_quantity", 0)), total_qty)
@@ -164,8 +164,8 @@ async def _sync_binance(
     )
 
     account = await binance_live.account()
-    tickers = await market.tickers_24h()
-    portfolio.usdt_krw = await market.usdt_krw_rate()
+    tickers = await upbit_feed.tickers_24h()
+    portfolio.usdt_krw = await upbit_feed.usdt_krw_rate()
     meta_map: dict = live_meta.get("positions_meta", {})
 
     usdt_free = 0.0
