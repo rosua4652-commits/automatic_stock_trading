@@ -12,124 +12,161 @@ import ChartPanel from "./components/ChartPanel";
 import CoinDetailBar from "./components/CoinDetailBar";
 import CoinTabs from "./components/CoinTabs";
 import PortfolioPanel from "./components/PortfolioPanel";
-import type { Candle, StatusPayload } from "./types";
-import { fmtKrw, isRunning, mergeStatus } from "./utils";
+import SettingsModal from "./components/SettingsModal";
+import type { AppConfig, Candle, StatusPayload } from "./types";
+import { DEFAULT_CONFIG, fmtKrw, isRunning, mergeWsPayload } from "./utils";
 
 export default function App() {
   const [data, setData] = useState<StatusPayload | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [targetInput, setTargetInput] = useState("2000000");
-  const [interval, setInterval] = useState("1h");
+  const [configDraft, setConfigDraft] = useState<AppConfig>(DEFAULT_CONFIG);
+  const [chartInterval, setChartInterval] = useState("1h");
+  const [activeSymbol, setActiveSymbol] = useState("BTCUSDT");
   const [candles, setCandles] = useState<Candle[]>([]);
   const [chartLoading, setChartLoading] = useState(false);
+  const [chartError, setChartError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [botBusy, setBotBusy] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
 
-  const viewSymbol = data?.bot.view_symbol ?? "BTCUSDT";
-  const viewLockRef = useRef<string | null>(null);
-  const running = data ? isRunning(data.bot.status) : false;
-  const stopping = data?.bot.status === "stopping";
+  const botLockVersionRef = useRef(0);
+  const activeSymbolRef = useRef(activeSymbol);
+  activeSymbolRef.current = activeSymbol;
 
-  const applyStatus = useCallback((payload: StatusPayload) => {
-    setData((prev) => mergeStatus(prev, payload, viewLockRef.current));
+  const applyPayload = useCallback((incoming: StatusPayload, lockBot = false) => {
+    setData((prev) => {
+      const base = prev && lockBot
+        ? mergeWsPayload(prev, incoming, botLockVersionRef.current)
+        : incoming;
+      return base;
+    });
+    // 서버 view_symbol은 탭 클릭 시에만 동기화 — WS로 activeSymbol 덮지 않음
   }, []);
 
   useEffect(() => {
     fetchStatus()
       .then((s) => {
-        applyStatus(s);
-        setTargetInput(String(s.config.target_profit_krw));
+        applyPayload(s);
+        setActiveSymbol(s.bot.view_symbol || "BTCUSDT");
+        setConfigDraft(s.config);
       })
+      .catch((e) => setToast(String(e)))
       .finally(() => setLoading(false));
-    return connectWs(applyStatus);
-  }, [applyStatus]);
 
+    return connectWs((msg) => {
+      setData((prev) => {
+        if (!prev) return msg;
+        return mergeWsPayload(prev, msg, botLockVersionRef.current);
+      });
+    });
+  }, [applyPayload]);
+
+  // 차트 로드 — setInterval 이름 충돌 수정 (window.setInterval 사용)
   useEffect(() => {
     let cancelled = false;
+    const sym = activeSymbol;
+
     const load = async () => {
       setChartLoading(true);
+      setChartError(null);
       try {
-        const c = await fetchChart(viewSymbol, interval);
-        if (!cancelled) setCandles(c);
-      } catch {
-        if (!cancelled) setCandles([]);
+        const res = await fetchChart(sym, chartInterval);
+        if (!cancelled && activeSymbolRef.current === sym) {
+          setCandles(res.candles || []);
+        }
+      } catch (e) {
+        if (!cancelled && activeSymbolRef.current === sym) {
+          setCandles([]);
+          setChartError(e instanceof Error ? e.message : "차트 로드 실패");
+        }
       } finally {
         if (!cancelled) setChartLoading(false);
       }
     };
+
     load();
-    const t = setInterval(load, 12000);
+    const timerId = window.setInterval(load, 12000);
     return () => {
       cancelled = true;
-      clearInterval(t);
+      window.clearInterval(timerId);
     };
-  }, [viewSymbol, interval]);
+  }, [activeSymbol, chartInterval]);
 
-  const handleSelect = useCallback(
+  const handleSelectCoin = useCallback(
     async (sym: string) => {
-      viewLockRef.current = sym;
-      setChartLoading(true);
+      setActiveSymbol(sym);
       setCandles([]);
+      setChartError(null);
       try {
         const status = await setViewSymbol(sym);
-        applyStatus(status);
-      } catch {
-        setData((prev) =>
-          prev
-            ? {
-                ...prev,
-                bot: { ...prev.bot, view_symbol: sym },
-              }
-            : prev
-        );
+        applyPayload(status);
+        // view 객체를 선택한 코인으로 맞춤
+        if (status.view?.meta?.symbol === sym) {
+          setData(status);
+        }
+      } catch (e) {
+        setToast(e instanceof Error ? e.message : "코인 전환 실패");
       }
-      setTimeout(() => {
-        viewLockRef.current = null;
-      }, 3000);
     },
-    [applyStatus]
+    [applyPayload]
   );
 
   const toggleBot = async () => {
-    if (botBusy) return;
+    if (botBusy || !data) return;
     setBotBusy(true);
+    botLockVersionRef.current = (data.status_version ?? 0) + 1000;
+
     try {
-      if (running || stopping) {
-        setData((prev) =>
-          prev
-            ? {
-                ...prev,
-                bot: {
-                  ...prev.bot,
-                  status: "stopping",
-                  message: "중지 요청 처리 중...",
-                },
-              }
-            : prev
-        );
+      if (isRunning(data.bot.status)) {
+        setData({
+          ...data,
+          bot: { ...data.bot, status: "stopping", message: "중지 요청 중..." },
+        });
         const s = await stopBot();
-        applyStatus(s);
+        botLockVersionRef.current = s.status_version ?? botLockVersionRef.current;
+        setData(s);
+        showToast("자동투자가 중지되었습니다");
       } else {
+        setData({
+          ...data,
+          bot: { ...data.bot, status: "running", message: "시작 중..." },
+        });
         const s = await startBot();
-        applyStatus(s);
+        botLockVersionRef.current = s.status_version ?? botLockVersionRef.current;
+        setData(s);
+        if (s.ok === false) {
+          showToast(s.message || "시작할 수 없습니다");
+        } else {
+          showToast("자동투자를 시작했습니다");
+        }
       }
     } catch (e) {
-      console.error(e);
+      showToast(e instanceof Error ? e.message : "요청 실패");
       const s = await fetchStatus();
-      applyStatus(s);
+      applyPayload(s);
     } finally {
       setBotBusy(false);
     }
   };
 
-  const applySettings = async () => {
-    const target = Math.max(
-      100000,
-      Number(targetInput.replace(/,/g, "")) || 0
-    );
-    const s = await saveConfig({ target_profit_krw: target });
-    applyStatus(s);
-    setSettingsOpen(false);
+  const showToast = (msg: string) => {
+    setToast(msg);
+    window.setTimeout(() => setToast(null), 3500);
+  };
+
+  const handleSaveSettings = async () => {
+    setSaving(true);
+    try {
+      const s = await saveConfig(configDraft);
+      applyPayload(s);
+      setSettingsOpen(false);
+      showToast("설정이 저장되었습니다");
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "저장 실패");
+    } finally {
+      setSaving(false);
+    }
   };
 
   if (loading) {
@@ -141,15 +178,85 @@ export default function App() {
     );
   }
 
-  if (!data) return null;
+  if (!data) {
+    return (
+      <div className="app loading-screen">
+        <p>서버 연결 실패</p>
+        <button type="button" className="btn-primary" onClick={() => location.reload()}>
+          새로고침
+        </button>
+      </div>
+    );
+  }
 
+  const running = isRunning(data.bot.status);
+  const stopping = data.bot.status === "stopping";
+  const isPaper = data.config.trade_mode === "paper";
   const tabs =
     data.tabs?.length > 0
       ? data.tabs
-      : [viewSymbol, ...data.portfolio.positions.map((p) => p.symbol)];
+      : [
+          activeSymbol,
+          ...data.portfolio.positions.map((p) => p.symbol),
+        ];
+
+  const view =
+    data.view?.meta?.symbol === activeSymbol
+      ? data.view
+      : (() => {
+          const pos = data.portfolio.positions.find((p) => p.symbol === activeSymbol);
+          const cand = data.bot.candidates.find((c) => c.symbol === activeSymbol);
+          const base = activeSymbol.replace("USDT", "");
+          const meta = pos
+            ? {
+                symbol: pos.symbol,
+                base: pos.base,
+                quote: "USDT",
+                name_ko: pos.name_ko,
+                name_en: pos.name_en,
+                pair_label: pos.pair_label,
+                display: pos.display,
+              }
+            : cand
+              ? {
+                  symbol: cand.symbol,
+                  base: cand.base,
+                  quote: "USDT",
+                  name_ko: cand.name_ko,
+                  name_en: cand.name_en,
+                  pair_label: cand.pair_label,
+                  display: cand.display,
+                }
+              : {
+                  symbol: activeSymbol,
+                  base,
+                  quote: "USDT",
+                  name_ko: base,
+                  name_en: base,
+                  pair_label: `${base}/USDT`,
+                  display: `${base} (${base})`,
+                };
+          return {
+            meta,
+            price_usdt: pos?.current_price ?? 0,
+            change_24h: cand?.change_24h ?? 0,
+            in_portfolio: !!pos,
+            position: pos ?? null,
+            candidate: cand ?? null,
+          };
+        })();
+
+  const pairLabel =
+    data.portfolio.positions.find((p) => p.symbol === activeSymbol)?.pair_label ||
+    data.bot.candidates.find((c) => c.symbol === activeSymbol)?.pair_label ||
+    `${activeSymbol.replace("USDT", "")}/USDT`;
 
   return (
     <div className="app">
+      <div className={`mode-banner ${isPaper ? "paper" : "live"}`}>
+        {isPaper ? "모의투자 모드 — 실제 주문 없음" : "실거래 모드 — 실제 자금 사용"}
+      </div>
+
       <header className="topbar">
         <div className="brand">
           <span className="logo">AIDI</span>
@@ -159,10 +266,12 @@ export default function App() {
           <button
             type="button"
             className="btn-ghost"
-            onClick={() => setSettingsOpen(true)}
-            aria-label="설정"
+            onClick={() => {
+              setConfigDraft(data.config);
+              setSettingsOpen(true);
+            }}
           >
-            ⚙
+            설정
           </button>
           <button
             type="button"
@@ -170,11 +279,7 @@ export default function App() {
             onClick={toggleBot}
             disabled={botBusy || stopping}
           >
-            {stopping
-              ? "중지 중..."
-              : running
-                ? "자동투자 중지"
-                : "자동투자 시작"}
+            {stopping ? "중지 중..." : running ? "자동투자 중지" : "자동투자 시작"}
           </button>
         </div>
       </header>
@@ -186,28 +291,24 @@ export default function App() {
         </div>
         <div className="metric">
           <span className="m-label">달성</span>
-          <span className="m-value accent">
-            {data.portfolio.progress_pct.toFixed(0)}%
-          </span>
+          <span className="m-value accent">{data.portfolio.progress_pct.toFixed(0)}%</span>
         </div>
         <div className="metric">
           <span className="m-label">총 자산</span>
-          <span className="m-value">
-            {fmtKrw(data.portfolio.total_value_krw)}원
-          </span>
+          <span className="m-value">{fmtKrw(data.portfolio.total_value_krw)}원</span>
         </div>
       </div>
 
       <CoinTabs
         tabs={tabs}
-        selected={viewSymbol}
+        selected={activeSymbol}
         portfolio={data.portfolio}
         candidates={data.bot.candidates}
-        onSelect={handleSelect}
+        onSelect={handleSelectCoin}
       />
 
       <CoinDetailBar
-        view={data.view}
+        view={view}
         botStatus={data.bot.status}
         botMessage={data.bot.message}
       />
@@ -217,61 +318,31 @@ export default function App() {
           portfolio={data.portfolio}
           candidates={data.bot.candidates}
           trades={data.bot.recent_trades}
-          selected={viewSymbol}
-          onSelect={handleSelect}
+          selected={activeSymbol}
+          onSelect={handleSelectCoin}
         />
         <ChartPanel
-          symbol={viewSymbol}
-          pairLabel={data.view.meta.pair_label}
-          interval={interval}
+          symbol={activeSymbol}
+          pairLabel={pairLabel}
+          chartInterval={chartInterval}
           candles={candles}
           chartLoading={chartLoading}
-          onIntervalChange={setInterval}
+          chartError={chartError}
+          onIntervalChange={setChartInterval}
         />
       </main>
 
-      <footer className="disclaimer">
-        모의투자(Paper) · 실제 주문 없음 · 익절·손절 AI 자동
-      </footer>
+      {toast && <div className="toast">{toast}</div>}
 
       {settingsOpen && (
-        <div
-          className="modal-backdrop"
-          onClick={() => setSettingsOpen(false)}
-          role="presentation"
-        >
-          <div
-            className="modal"
-            onClick={(e) => e.stopPropagation()}
-            role="dialog"
-          >
-            <h2>설정</h2>
-            <p className="modal-desc">
-              목표 수익만 설정하세요. 매매·익절·손절은 AI가 처리합니다.
-            </p>
-            <label className="field">
-              <span>목표 수익 (원)</span>
-              <input
-                type="text"
-                inputMode="numeric"
-                value={targetInput}
-                onChange={(e) => setTargetInput(e.target.value)}
-              />
-            </label>
-            <div className="modal-actions">
-              <button
-                type="button"
-                className="btn-ghost wide"
-                onClick={() => setSettingsOpen(false)}
-              >
-                취소
-              </button>
-              <button type="button" className="btn-primary" onClick={applySettings}>
-                저장
-              </button>
-            </div>
-          </div>
-        </div>
+        <SettingsModal
+          config={data.config}
+          draft={configDraft}
+          onChange={setConfigDraft}
+          onSave={handleSaveSettings}
+          onClose={() => setSettingsOpen(false)}
+          saving={saving}
+        />
       )}
     </div>
   );

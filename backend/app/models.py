@@ -1,7 +1,7 @@
 from enum import Enum
 from typing import Optional
 
-from pydantic import BaseModel, Field, computed_field
+from pydantic import BaseModel, Field, computed_field, field_validator
 
 
 class BotStatus(str, Enum):
@@ -10,8 +10,27 @@ class BotStatus(str, Enum):
     STOPPING = "stopping"
 
 
+class TradeMode(str, Enum):
+    PAPER = "paper"
+    LIVE = "live"
+
+
 class AppConfig(BaseModel):
+    trade_mode: TradeMode = TradeMode.PAPER
     target_profit_krw: float = Field(default=2_000_000, ge=100_000, le=1_000_000_000)
+    initial_balance_krw: float = Field(default=10_000_000, ge=100_000, le=1_000_000_000)
+    max_positions: int = Field(default=6, ge=1, le=15)
+    stop_loss_pct: float = Field(default=6.0, ge=1.0, le=25.0)
+    take_profit_pct: float = Field(default=12.0, ge=2.0, le=50.0)
+    scan_interval_sec: int = Field(default=45, ge=15, le=300)
+    min_buy_score: float = Field(default=40.0, ge=20.0, le=90.0)
+    binance_api_key: str = ""
+    binance_api_secret: str = ""
+
+    @field_validator("binance_api_key", "binance_api_secret", mode="before")
+    @classmethod
+    def strip_secrets(cls, v):
+        return (v or "").strip()
 
 
 class CoinMeta(BaseModel):
@@ -56,11 +75,6 @@ class Position(BaseModel):
         if self.avg_price <= 0:
             return 0.0
         return (self.current_price - self.avg_price) / self.avg_price * 100
-
-    @computed_field
-    @property
-    def value_krw_hint(self) -> float:
-        return self.value
 
 
 class PortfolioSnapshot(BaseModel):
@@ -124,3 +138,4 @@ class StatusResponse(BaseModel):
     portfolio: PortfolioSnapshot
     config: AppConfig
     view: CoinView
+    tabs: list[str] = Field(default_factory=list)

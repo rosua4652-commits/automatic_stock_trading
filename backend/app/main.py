@@ -2,9 +2,9 @@ import asyncio
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.engine.portfolio import PortfolioManager
@@ -19,6 +19,8 @@ engine = TradingEngine(portfolio)
 _ws_clients: set[WebSocket] = set()
 _broadcast_task: asyncio.Task | None = None
 _ticker_cache: tuple[float, dict] | None = None
+
+api = APIRouter(prefix="/api")
 
 
 async def _get_tickers() -> dict:
@@ -43,8 +45,9 @@ async def _build_status() -> dict:
         portfolio=snap,
         config=engine.config,
         view=view,
+        tabs=engine.tab_symbols(),
     ).model_dump()
-    payload["tabs"] = engine.tab_symbols()
+    payload["status_version"] = engine._status_version
     return payload
 
 
@@ -53,9 +56,6 @@ async def _broadcast_loop() -> None:
         if _ws_clients:
             try:
                 payload = await _build_status()
-            except Exception:
-                payload = None
-            if payload:
                 dead: list[WebSocket] = []
                 for ws in _ws_clients:
                     try:
@@ -64,6 +64,8 @@ async def _broadcast_loop() -> None:
                         dead.append(ws)
                 for ws in dead:
                     _ws_clients.discard(ws)
+            except Exception:
+                pass
         await asyncio.sleep(2)
 
 
@@ -78,7 +80,7 @@ async def lifespan(app: FastAPI):
     await binance.close()
 
 
-app = FastAPI(title="AIDI Auto Invest", version="1.1.0", lifespan=lifespan)
+app = FastAPI(title="AIDI Auto Invest", version="1.2.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -87,42 +89,54 @@ app.add_middleware(
 )
 
 
-@app.get("/api/status")
+@api.get("/status")
 async def get_status():
     return await _build_status()
 
 
-@app.post("/api/config")
+@api.post("/config")
 async def set_config(cfg: AppConfig):
     engine.update_config(cfg)
     return await _build_status()
 
 
-@app.post("/api/bot/start")
+@api.post("/bot/start")
 async def bot_start():
-    await engine.start()
-    return await _build_status()
+    ok, msg = await engine.start()
+    status = await _build_status()
+    status["ok"] = ok
+    status["message"] = msg
+    return status
 
 
-@app.post("/api/bot/stop")
+@api.post("/bot/stop")
 async def bot_stop():
     await engine.stop()
-    return await _build_status()
+    status = await _build_status()
+    status["ok"] = True
+    return status
 
 
-@app.get("/api/chart/{symbol}")
+@api.get("/chart/{symbol}")
 async def chart(symbol: str, interval: str = "1h"):
-    return await engine.get_candles(symbol.upper(), interval)
+    data = await engine.get_candles(symbol.upper(), interval)
+    return {"symbol": symbol.upper(), "interval": interval, "candles": data}
 
 
-@app.post("/api/view/{symbol}")
+@api.post("/view/{symbol}")
 async def set_view(symbol: str):
-    sym = engine.set_view_symbol(symbol.upper())
+    engine.set_view_symbol(symbol.upper())
     return await _build_status()
 
 
-@app.websocket("/ws")
-async def websocket_endpoint(ws: WebSocket):
+# 하위 호환
+@api.post("/chart/select/{symbol}")
+async def legacy_select(symbol: str):
+    engine.set_view_symbol(symbol.upper())
+    return await _build_status()
+
+
+async def _ws_handler(ws: WebSocket):
     await ws.accept()
     _ws_clients.add(ws)
     try:
@@ -137,20 +151,48 @@ async def websocket_endpoint(ws: WebSocket):
         _ws_clients.discard(ws)
 
 
+@api.websocket("/ws")
+async def websocket_api(ws: WebSocket):
+    await _ws_handler(ws)
+
+
+app.include_router(api)
+
+# WebSocket 하위 호환 (/ws)
+@app.websocket("/ws")
+async def websocket_root(ws: WebSocket):
+    await _ws_handler(ws)
+
+
+@app.get("/api/ws")
+async def ws_hint():
+    return JSONResponse({"use": "WebSocket at /api/ws"})
+
+
 if STATIC_DIR.exists():
     app.mount("/assets", StaticFiles(directory=STATIC_DIR / "assets"), name="assets")
 
+    @app.get("/")
+    async def index():
+        return FileResponse(
+            STATIC_DIR / "index.html",
+            headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
+        )
+
     @app.get("/{full_path:path}")
     async def spa(full_path: str):
-        if full_path.startswith("api") or full_path.startswith("ws"):
-            return {"error": "not found"}
+        if full_path.startswith("api"):
+            return JSONResponse({"error": "not found"}, status_code=404)
         file_path = STATIC_DIR / full_path
         if file_path.is_file():
             return FileResponse(file_path)
-        return FileResponse(STATIC_DIR / "index.html")
+        return FileResponse(
+            STATIC_DIR / "index.html",
+            headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
+        )
 
 else:
 
     @app.get("/")
     async def root():
-        return {"name": "AIDI Auto Invest API", "build_frontend": True}
+        return {"name": "AIDI", "build": "cd frontend && npm run build"}

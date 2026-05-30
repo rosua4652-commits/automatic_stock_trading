@@ -14,6 +14,12 @@ class PortfolioManager:
         self.trades: list[TradeEvent] = []
         self.usdt_krw = 1350.0
 
+    def apply_config(self, config: AppConfig) -> None:
+        """포지션 없을 때 초기 자금 설정 반영."""
+        if not self.positions and not self.trades:
+            self.cash_krw = config.initial_balance_krw
+            self.realized_pnl_krw = 0.0
+
     def set_fx(self, rate: float) -> None:
         self.usdt_krw = rate
 

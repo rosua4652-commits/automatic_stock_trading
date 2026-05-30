@@ -10,9 +10,10 @@ import type { Candle } from "../types";
 type Props = {
   symbol: string;
   pairLabel: string;
-  interval: string;
+  chartInterval: string;
   candles: Candle[];
   chartLoading: boolean;
+  chartError: string | null;
   onIntervalChange: (v: string) => void;
 };
 
@@ -26,21 +27,27 @@ const INTERVALS = [
 export default function ChartPanel({
   symbol,
   pairLabel,
-  interval,
+  chartInterval,
   candles,
   chartLoading,
+  chartError,
   onIntervalChange,
 }: Props) {
-  const containerRef = useRef<HTMLDivElement>(null);
+  const wrapRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candleRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
   const volRef = useRef<ISeriesApi<"Histogram"> | null>(null);
 
+  // symbol 바뀔 때 차트 전체 재생성
   useEffect(() => {
-    if (!containerRef.current) return;
-    const chart = createChart(containerRef.current, {
+    const el = wrapRef.current;
+    if (!el) return;
+
+    const chart = createChart(el, {
+      width: el.clientWidth || 600,
+      height: el.clientHeight || 400,
       layout: {
-        background: { type: ColorType.Solid, color: "transparent" },
+        background: { type: ColorType.Solid, color: "#121820" },
         textColor: "#94a3b8",
       },
       grid: {
@@ -50,8 +57,8 @@ export default function ChartPanel({
       rightPriceScale: { borderVisible: false },
       timeScale: { borderVisible: false, timeVisible: true },
       crosshair: { mode: 1 },
-      autoSize: true,
     });
+
     const candlesSeries = chart.addCandlestickSeries({
       upColor: "#22d3a5",
       downColor: "#f87171",
@@ -64,7 +71,7 @@ export default function ChartPanel({
       priceScaleId: "vol",
     });
     chart.priceScale("vol").applyOptions({
-      scaleMargins: { top: 0.8, bottom: 0 },
+      scaleMargins: { top: 0.82, bottom: 0 },
     });
 
     chartRef.current = chart;
@@ -72,20 +79,22 @@ export default function ChartPanel({
     volRef.current = volSeries;
 
     const ro = new ResizeObserver(() => {
-      if (containerRef.current)
-        chart.applyOptions({
-          width: containerRef.current.clientWidth,
-          height: containerRef.current.clientHeight,
-        });
+      if (!wrapRef.current) return;
+      chart.applyOptions({
+        width: wrapRef.current.clientWidth,
+        height: wrapRef.current.clientHeight,
+      });
     });
-    ro.observe(containerRef.current);
+    ro.observe(el);
 
     return () => {
       ro.disconnect();
       chart.remove();
       chartRef.current = null;
+      candleRef.current = null;
+      volRef.current = null;
     };
-  }, []);
+  }, [symbol, chartInterval]);
 
   useEffect(() => {
     if (!candleRef.current || !volRef.current) return;
@@ -95,14 +104,14 @@ export default function ChartPanel({
       return;
     }
     const cs = candles.map((c) => ({
-      time: c.time as unknown as import("lightweight-charts").Time,
+      time: c.time as import("lightweight-charts").UTCTimestamp,
       open: c.open,
       high: c.high,
       low: c.low,
       close: c.close,
     }));
     const vs = candles.map((c) => ({
-      time: c.time as unknown as import("lightweight-charts").Time,
+      time: c.time as import("lightweight-charts").UTCTimestamp,
       value: c.volume,
       color:
         c.close >= c.open
@@ -112,7 +121,7 @@ export default function ChartPanel({
     candleRef.current.setData(cs);
     volRef.current.setData(vs);
     chartRef.current?.timeScale().fitContent();
-  }, [candles, symbol]);
+  }, [candles]);
 
   return (
     <div className="chart-panel">
@@ -123,7 +132,7 @@ export default function ChartPanel({
             <button
               key={i.v}
               type="button"
-              className={`tool-btn ${interval === i.v ? "active" : ""}`}
+              className={`tool-btn ${chartInterval === i.v ? "active" : ""}`}
               onClick={() => onIntervalChange(i.v)}
             >
               {i.label}
@@ -132,8 +141,16 @@ export default function ChartPanel({
         </div>
       </div>
       <div className="chart-canvas-wrap">
-        {chartLoading && <div className="chart-overlay">차트 불러오는 중...</div>}
-        <div className="chart-canvas" ref={containerRef} />
+        {chartLoading && (
+          <div className="chart-overlay">차트 불러오는 중...</div>
+        )}
+        {!chartLoading && chartError && (
+          <div className="chart-overlay error">{chartError}</div>
+        )}
+        {!chartLoading && !chartError && candles.length === 0 && (
+          <div className="chart-overlay">차트 데이터 없음</div>
+        )}
+        <div className="chart-canvas" ref={wrapRef} />
       </div>
     </div>
   );

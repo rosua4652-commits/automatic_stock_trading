@@ -1,12 +1,22 @@
-import type { AppConfig, Candle, StatusPayload } from "./types";
+import type { AppConfig, ChartResponse, StatusPayload } from "./types";
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
-  const r = await fetch(url, init);
+  const r = await fetch(url, {
+    ...init,
+    headers: {
+      Accept: "application/json",
+      ...(init?.headers || {}),
+    },
+  });
+  const text = await r.text();
   if (!r.ok) {
-    const text = await r.text();
     throw new Error(text || `HTTP ${r.status}`);
   }
-  return r.json();
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    throw new Error("서버 응답 오류 (HTML 반환됨). 페이지를 새로고침하세요.");
+  }
 }
 
 export async function fetchStatus(): Promise<StatusPayload> {
@@ -32,8 +42,10 @@ export async function stopBot(): Promise<StatusPayload> {
 export async function fetchChart(
   symbol: string,
   interval: string
-): Promise<Candle[]> {
-  return request(`/api/chart/${encodeURIComponent(symbol)}?interval=${interval}`);
+): Promise<ChartResponse> {
+  return request(
+    `/api/chart/${encodeURIComponent(symbol)}?interval=${encodeURIComponent(interval)}`
+  );
 }
 
 export async function setViewSymbol(symbol: string): Promise<StatusPayload> {
@@ -57,12 +69,12 @@ export function connectWs(
 
   ws.onerror = () => onError?.();
 
-  const ping = setInterval(() => {
+  const pingId = window.setInterval(() => {
     if (ws.readyState === WebSocket.OPEN) ws.send("ping");
   }, 25000);
 
   return () => {
-    clearInterval(ping);
+    window.clearInterval(pingId);
     ws.close();
   };
 }

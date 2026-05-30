@@ -1,4 +1,18 @@
 export type BotStatus = "stopped" | "running" | "stopping";
+export type TradeMode = "paper" | "live";
+
+export interface AppConfig {
+  trade_mode: TradeMode;
+  target_profit_krw: number;
+  initial_balance_krw: number;
+  max_positions: number;
+  stop_loss_pct: number;
+  take_profit_pct: number;
+  scan_interval_sec: number;
+  min_buy_score: number;
+  binance_api_key: string;
+  binance_api_secret: string;
+}
 
 export interface CoinMeta {
   symbol: string;
@@ -81,16 +95,15 @@ export interface BotState {
   recent_trades: TradeEvent[];
 }
 
-export interface AppConfig {
-  target_profit_krw: number;
-}
-
 export interface StatusPayload {
   bot: BotState;
   portfolio: Portfolio;
   config: AppConfig;
   view: CoinView;
   tabs: string[];
+  status_version?: number;
+  ok?: boolean;
+  message?: string;
 }
 
 export interface Candle {
@@ -100,4 +113,10 @@ export interface Candle {
   low: number;
   close: number;
   volume: number;
+}
+
+export interface ChartResponse {
+  symbol: string;
+  interval: string;
+  candles: Candle[];
 }

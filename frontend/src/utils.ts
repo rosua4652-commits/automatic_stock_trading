@@ -1,4 +1,4 @@
-import type { CoinCandidate, Portfolio, Position, StatusPayload } from "./types";
+import type { CoinCandidate, Portfolio, StatusPayload } from "./types";
 
 export function fmtKrw(n: number) {
   return new Intl.NumberFormat("ko-KR").format(Math.round(n));
@@ -44,22 +44,31 @@ export function displayForSymbol(
   return `${base} (${base})`;
 }
 
-export function mergeStatus(
-  prev: StatusPayload | null,
-  next: StatusPayload,
-  lockedView: string | null
+/** WebSocket으로 bot 상태가 덮어쓰이지 않도록 (시작/중지 직후) */
+export function mergeWsPayload(
+  local: StatusPayload,
+  incoming: StatusPayload,
+  botLockVersion: number
 ): StatusPayload {
-  if (!lockedView) return next;
-  if (next.bot.view_symbol === lockedView) return next;
-  return {
-    ...next,
-    bot: { ...next.bot, view_symbol: lockedView },
-  };
+  const incomingVer = incoming.status_version ?? 0;
+  if (incomingVer < botLockVersion) {
+    return {
+      ...incoming,
+      bot: { ...incoming.bot, status: local.bot.status, message: local.bot.message },
+    };
+  }
+  return incoming;
 }
 
-export function findPosition(
-  portfolio: Portfolio,
-  symbol: string
-): Position | undefined {
-  return portfolio.positions.find((p) => p.symbol === symbol);
-}
+export const DEFAULT_CONFIG = {
+  trade_mode: "paper" as const,
+  target_profit_krw: 2_000_000,
+  initial_balance_krw: 10_000_000,
+  max_positions: 6,
+  stop_loss_pct: 6,
+  take_profit_pct: 12,
+  scan_interval_sec: 45,
+  min_buy_score: 40,
+  binance_api_key: "",
+  binance_api_secret: "",
+};
