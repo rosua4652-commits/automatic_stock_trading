@@ -5,7 +5,7 @@ from typing import Any
 import numpy as np
 
 from app.config import settings
-from app.market.binance import binance
+from app.market.upbit_data import is_safe_krw_base, market
 from app.market.coin_registry import coin_meta
 from app.models import CoinCandidate
 
@@ -98,7 +98,7 @@ async def _analyze_one(
         return None
     try:
         need = settings.scan_kline_min
-        raw = await binance.klines(symbol, "1h", max(need, 80))
+        raw = await market.klines(symbol, "1h", max(need, 80))
         if not is_running() or len(raw) < need:
             return None
         closes = np.array([float(r[4]) for r in raw], dtype=float)
@@ -180,22 +180,18 @@ async def top_usdt_symbols(
     limit: int | None = None,
     is_running: Callable[[], bool] | None = None,
 ) -> list[str]:
-    """거래대금 상위 USDT 페어 (차트 분석 없이 탭·탐색용)."""
+    """거래대금 상위 업비트 KRW 마켓 (내부 심볼 *USDT)."""
     running = is_running or (lambda: True)
     if not running():
         return []
-    symbols_info, tickers = await binance.exchange_info(), await binance.tickers_24h()
+    tickers = await market.tickers_24h()
     if not running():
         return []
-    safe = [s for s in symbols_info if binance.is_safe_usdt_pair(s)]
+    min_vol = settings.min_quote_volume_usdt
     ranked: list[tuple[str, float]] = []
-    for info in safe:
-        symbol = info["symbol"]
-        t = tickers.get(symbol)
-        if not t:
-            continue
+    for symbol, t in tickers.items():
         quote_vol = float(t.get("quoteVolume", 0))
-        if quote_vol < settings.min_quote_volume_usdt:
+        if quote_vol < min_vol:
             continue
         ranked.append((symbol, quote_vol))
     ranked.sort(key=lambda x: x[1], reverse=True)
@@ -211,18 +207,15 @@ async def scan_market(
     if not running():
         return []
 
-    symbols_info, tickers = await binance.exchange_info(), await binance.tickers_24h()
+    tickers = await market.tickers_24h()
     if not running():
         return []
 
-    safe = [s for s in symbols_info if binance.is_safe_usdt_pair(s)]
     candidates: list[tuple[str, str, float, float]] = []
 
-    for info in safe:
-        symbol = info["symbol"]
-        base = info["baseAsset"]
-        t = tickers.get(symbol)
-        if not t:
+    for symbol, t in tickers.items():
+        base = symbol.replace("USDT", "")
+        if not is_safe_krw_base(base):
             continue
         quote_vol = float(t.get("quoteVolume", 0))
         if quote_vol < settings.min_quote_volume_usdt:

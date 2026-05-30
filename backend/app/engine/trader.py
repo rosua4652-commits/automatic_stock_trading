@@ -6,7 +6,7 @@ from app.engine.live_orders import live_market_buy, live_market_sell
 from app.engine.portfolio import PortfolioManager
 from app.engine.portfolio_store import store
 from app.engine.recommendations import build_recommendations, cap_apply_amounts
-from app.market.binance import binance
+from app.market.upbit_data import market
 from app.market.coin_registry import coin_meta
 from app.market.entry_analyzer import analyze_entry, format_entry_detail
 from app.market.scanner import build_ticker_candidates, scan_market, top_usdt_symbols
@@ -115,7 +115,7 @@ class TradingEngine:
                 if not has_auto:
                     continue
                 try:
-                    tickers = await binance.tickers_24h()
+                    tickers = await market.tickers_24h()
                     await self._monitor_positions(tickers)
                     if not self._is_live():
                         self._persist()
@@ -200,7 +200,7 @@ class TradingEngine:
         self._link_message = switch_msg
         self.ensure_auto_guard()
         try:
-            tickers = await binance.tickers_24h()
+            tickers = await market.tickers_24h()
             await self._monitor_positions(tickers)
             if not self._is_live():
                 self._persist()
@@ -242,7 +242,7 @@ class TradingEngine:
             return False, "잠시 후 다시 시도하세요."
 
         self.bind_portfolio()
-        self.portfolio.usdt_krw = await binance.usdt_krw_rate()
+        self.portfolio.usdt_krw = await market.usdt_krw_rate()
         symbol = req.symbol.upper()
 
         if self._is_live():
@@ -254,7 +254,7 @@ class TradingEngine:
             self._notify()
             return ok, msg
 
-        tickers = await binance.tickers_24h()
+        tickers = await market.tickers_24h()
         t = tickers.get(symbol)
         if not t:
             return False, "코인 시세를 찾을 수 없습니다"
@@ -289,7 +289,7 @@ class TradingEngine:
             return False, "잠시 후 다시 시도하세요."
 
         self.bind_portfolio()
-        self.portfolio.usdt_krw = await binance.usdt_krw_rate()
+        self.portfolio.usdt_krw = await market.usdt_krw_rate()
         symbol = req.symbol.upper()
         if symbol not in self.portfolio.positions:
             return False, "보유하지 않은 코인입니다"
@@ -307,7 +307,7 @@ class TradingEngine:
             self._notify()
             return ok, msg
 
-        tickers = await binance.tickers_24h()
+        tickers = await market.tickers_24h()
         t = tickers.get(symbol)
         if not t:
             return False, "시세 조회 실패"
@@ -371,7 +371,7 @@ class TradingEngine:
                     if tick > 0 and tick % 5 == 0:
                         try:
                             self.bind_portfolio()
-                            tix = await binance.tickers_24h()
+                            tix = await market.tickers_24h()
                             await self._monitor_positions(tix)
                             if self._is_live():
                                 self.bind_portfolio()
@@ -404,19 +404,13 @@ class TradingEngine:
                 self.bot.message = f"연동 오류: {e}"
                 return
 
-        self.portfolio.usdt_krw = await binance.usdt_krw_rate()
+        self.portfolio.usdt_krw = await market.usdt_krw_rate()
         from app.config import settings as app_settings
 
-        tickers = await binance.tickers_24h()
+        tickers = await market.tickers_24h()
         self.bot.liquid_symbols = await top_usdt_symbols(
             app_settings.tab_symbol_limit, is_running=self.is_running
         )
-        if self._is_live() and (self.config.exchange or "upbit").lower() == "upbit":
-            from app.market.upbit_markets import filter_symbols_for_upbit
-
-            self.bot.liquid_symbols = await filter_symbols_for_upbit(
-                self.bot.liquid_symbols
-            )
         if not self.is_running():
             return
         deep = await scan_market(is_running=self.is_running)
@@ -501,7 +495,7 @@ class TradingEngine:
         if pos and pos.current_price > 0:
             return pos.current_price
         try:
-            raw = await binance.klines(sym, "1m", 5)
+            raw = await market.klines(sym, "1m", 5)
             if raw:
                 return float(raw[-1][4])
         except Exception:
@@ -532,7 +526,7 @@ class TradingEngine:
     ) -> tuple[bool, str]:
         """사용자 승인 후 제안 매수 실행 (금액 조절 가능, 익절·손절 자동)."""
         self.bind_portfolio()
-        self.portfolio.usdt_krw = await binance.usdt_krw_rate()
+        self.portfolio.usdt_krw = await market.usdt_krw_rate()
 
         if not self.bot.recommendations:
             return False, "먼저 「분석 시작」으로 투자 제안을 받으세요"
@@ -563,7 +557,7 @@ class TradingEngine:
         if not capped_amts:
             return False, "현금이 부족해 승인 매수할 수 없습니다"
 
-        tickers = await binance.tickers_24h()
+        tickers = await market.tickers_24h()
         sl_pct = self.config.stop_loss_pct / 100
         tp_pct = self.config.take_profit_pct / 100
         ok_n = 0
@@ -729,7 +723,7 @@ class TradingEngine:
                 self.bot.message = f"{sym} {reason} 자동 매도 실패: {msg}"
                 self._notify()
         else:
-            tickers = await binance.tickers_24h()
+            tickers = await market.tickers_24h()
             px = await self._price_for_symbol(sym, tickers)
             if px <= 0:
                 pos = self.portfolio.positions.get(sym)
@@ -748,7 +742,7 @@ class TradingEngine:
         iv = interval.lower()
         limits = {"1s": 300, "1m": 500, "15m": 300, "1h": 200, "4h": 200, "1d": 200}
         limit = limits.get(iv, 200)
-        raw = await binance.klines(symbol, iv, limit)
+        raw = await market.klines(symbol, iv, limit)
         candles = [
             {
                 "time": int(r[0] // 1000),
@@ -771,11 +765,11 @@ class TradingEngine:
 
     async def tab_quotes_map(self, limit: int = 120) -> dict[str, dict]:
         """탭 UI용 시세 (USDT·원화·24h)."""
-        tickers = await binance.tickers_24h()
+        tickers = await market.tickers_24h()
         self.bind_portfolio()
         rate = self.portfolio.usdt_krw
         if rate <= 0:
-            rate = await binance.usdt_krw_rate()
+            rate = await market.usdt_krw_rate()
             self.portfolio.usdt_krw = rate
         out: dict[str, dict] = {}
         for sym in self.tab_symbols()[:limit]:
@@ -793,7 +787,7 @@ class TradingEngine:
         return out
 
     async def prices_map(self) -> dict[str, float]:
-        tickers = await binance.tickers_24h()
+        tickers = await market.tickers_24h()
         out: dict[str, float] = {}
         for sym in self.portfolio.positions:
             t = tickers.get(sym)

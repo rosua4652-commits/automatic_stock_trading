@@ -19,7 +19,7 @@ findstr /C:"AIDI_BUILD" "backend\app\main.py" >nul 2>&1
 if errorlevel 1 (
   echo [Disk] FAIL - 구버전 main.py ^(AIDI_BUILD 없음^)
 ) else (
-  findstr /C:"2026-03-30-pc-dongil3-final" "backend\app\main.py" >nul 2>&1
+  findstr /C:"upbit-only" "backend\app\main.py" >nul 2>&1
   if errorlevel 1 (
     echo [Disk] WARN - AIDI_BUILD 있으나 최신 빌드 ID 아님
     findstr "AIDI_BUILD" "backend\app\main.py"
@@ -75,7 +75,7 @@ if "!OLD_SRV!"=="1" (
   goto :need_update
 )
 
-echo !VER_LINE! | findstr /i "2026-03-30-pc-dongil3-final" >nul 2>&1
+echo !VER_LINE! | findstr /i "upbit-only" >nul 2>&1
 if errorlevel 1 (
   echo WARN: 서버 build ID 가 최신이 아닐 수 있음. run.bat 재시작.
 ) else (

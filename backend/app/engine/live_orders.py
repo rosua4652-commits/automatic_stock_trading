@@ -6,7 +6,7 @@ from typing import Optional
 from app.engine.live_sync import export_live_meta, sync_live_portfolio
 from app.engine.portfolio import PortfolioManager
 from app.engine.portfolio_store import store
-from app.market.binance_live import binance_live
+from app.market.upbit_data import market
 from app.market.coin_registry import coin_meta
 from app.market.upbit_client import symbol_to_upbit, upbit_client
 from app.models import AppConfig, Position, TradeEvent
@@ -38,6 +38,8 @@ async def live_market_buy(
     portfolio = store.live
     sym = symbol.upper()
     exchange = (config.exchange or "upbit").lower()
+    if exchange != "upbit":
+        return False, "AIDI는 업비트(KRW) 실거래만 지원합니다."
 
     if amount_krw < MIN_BUY_KRW:
         return False, f"최소 주문 금액은 {int(MIN_BUY_KRW):,}원입니다"
@@ -48,35 +50,19 @@ async def live_market_buy(
     executed_qty = 0.0
     fills_price = 0.0
     try:
-        if exchange == "upbit":
-            from app.market.upbit_markets import get_upbit_krw_markets, resolve_upbit_market
+        from app.market.upbit_markets import get_upbit_krw_markets, resolve_upbit_market
 
-            ak, sk = get_active_keys(config)
-            upbit_client.configure(ak, sk)
-            markets = await get_upbit_krw_markets()
-            market = resolve_upbit_market(sym, markets)
-            if not market:
-                return (
-                    False,
-                    f"업비트 미상장 종목 ({sym}). 바이낸스 전용·밈코인은 업비트 실거래 불가.",
-                )
-            order = await upbit_client.market_buy_krw(market, amount_krw)
-            executed_qty = float(order.get("executed_volume", 0))
-            portfolio.usdt_krw = portfolio.usdt_krw or 1350
-            fills_price = (amount_krw / max(executed_qty, 1e-12)) / portfolio.usdt_krw
-            quote_usdt = amount_krw / portfolio.usdt_krw
-        else:
-            portfolio.usdt_krw = portfolio.usdt_krw or 1350
-            quote_usdt = portfolio.krw_to_usdt(amount_krw)
-            if quote_usdt < 5:
-                return False, "최소 주문 금액 미달"
-            ak, sk = get_active_keys(config)
-            binance_live.configure(ak, sk, testnet=getattr(config, "use_testnet", False))
-            order = await binance_live.market_buy_quote(sym, quote_usdt)
-            executed_qty = float(order.get("executedQty", 0))
-            fills_price = float(order.get("cummulativeQuoteQty", quote_usdt)) / max(
-                executed_qty, 1e-12
-            )
+        ak, sk = get_active_keys(config)
+        upbit_client.configure(ak, sk)
+        markets = await get_upbit_krw_markets()
+        upbit_market = resolve_upbit_market(sym, markets)
+        if not upbit_market:
+            return False, f"업비트 미상장 종목 ({sym})"
+        order = await upbit_client.market_buy_krw(upbit_market, amount_krw)
+        executed_qty = float(order.get("executed_volume", 0))
+        portfolio.usdt_krw = portfolio.usdt_krw or await market.usdt_krw_rate()
+        fills_price = (amount_krw / max(executed_qty, 1e-12)) / portfolio.usdt_krw
+        quote_usdt = amount_krw / portfolio.usdt_krw
     except Exception as e:
         return False, str(e)
 
@@ -121,7 +107,7 @@ async def live_market_buy(
     )
 
     _persist_live(portfolio)
-    label = "업비트" if exchange == "upbit" else "Binance"
+    label = "업비트"
     mode = "AI 자동" if as_auto else "수동"
     return True, f"[{label}] 실거래 {mode} 매수 · {executed_qty:.6f}"
 
@@ -150,35 +136,29 @@ async def live_market_sell(
         return False, "매도 수량 없음"
 
     exchange = (config.exchange or "upbit").lower()
+    if exchange != "upbit":
+        return False, "AIDI는 업비트(KRW) 실거래만 지원합니다."
 
     quote_krw = 0.0
     quote = 0.0
     executed_qty = 0.0
     price = pos.current_price or pos.avg_price
     try:
-        if exchange == "upbit":
-            from app.market.upbit_markets import get_upbit_krw_markets, resolve_upbit_market
+        from app.market.upbit_markets import get_upbit_krw_markets, resolve_upbit_market
 
-            ak, sk = get_active_keys(config)
-            upbit_client.configure(ak, sk)
-            markets = await get_upbit_krw_markets()
-            market = resolve_upbit_market(sym, markets)
-            if not market:
-                return False, f"업비트 미상장 종목 ({sym}) — 매도 스킵"
-            order = await upbit_client.market_sell(market, sell_qty)
-            executed_qty = float(order.get("executed_volume", sell_qty))
-            quote_krw = executed_qty * pos.current_price * portfolio.usdt_krw
-            if order.get("trades"):
-                quote_krw = sum(float(t.get("funds", 0)) for t in order["trades"])
-            price = quote_krw / max(executed_qty, 1e-12) / max(portfolio.usdt_krw, 1)
-            quote = quote_krw / max(portfolio.usdt_krw, 1)
-        else:
-            ak, sk = get_active_keys(config)
-            binance_live.configure(ak, sk, testnet=getattr(config, "use_testnet", False))
-            order = await binance_live.market_sell_qty(sym, sell_qty)
-            executed_qty = float(order.get("executedQty", sell_qty))
-            quote = float(order.get("cummulativeQuoteQty", 0))
-            price = quote / max(executed_qty, 1e-12)
+        ak, sk = get_active_keys(config)
+        upbit_client.configure(ak, sk)
+        markets = await get_upbit_krw_markets()
+        upbit_market = resolve_upbit_market(sym, markets)
+        if not upbit_market:
+            return False, f"업비트 미상장 종목 ({sym}) — 매도 스킵"
+        order = await upbit_client.market_sell(upbit_market, sell_qty)
+        executed_qty = float(order.get("executed_volume", sell_qty))
+        quote_krw = executed_qty * pos.current_price * portfolio.usdt_krw
+        if order.get("trades"):
+            quote_krw = sum(float(t.get("funds", 0)) for t in order["trades"])
+        price = quote_krw / max(executed_qty, 1e-12) / max(portfolio.usdt_krw, 1)
+        quote = quote_krw / max(portfolio.usdt_krw, 1)
     except Exception as e:
         return False, str(e)
 
@@ -201,9 +181,7 @@ async def live_market_sell(
             side="SELL",
             price=price,
             quantity=executed_qty,
-            amount_krw=round(
-                quote_krw if exchange == "upbit" else quote * portfolio.usdt_krw, 0
-            ),
+            amount_krw=round(quote_krw, 0),
             amount_usdt=round(quote, 4),
             reason=reason,
             is_auto=auto_only,
@@ -211,6 +189,6 @@ async def live_market_sell(
     )
 
     _persist_live(portfolio)
-    label = "업비트" if exchange == "upbit" else "Binance"
+    label = "업비트"
     kind = "AI" if auto_only else "수동"
     return True, f"[{label}] 실거래 {kind} 매도 · {executed_qty:.6f}"

@@ -3,7 +3,7 @@
 import time
 from typing import Any
 
-from app.market.binance import binance
+from app.market.upbit_data import market
 from app.market.binance_live import binance_live
 from app.market.coin_registry import coin_meta
 from app.market.upbit_client import symbol_to_upbit, upbit_client, upbit_to_symbol
@@ -27,9 +27,9 @@ async def sync_live_portfolio(
         raise RuntimeError("API 키를 설정하세요")
 
     exchange = (config.exchange or "upbit").lower()
-    if exchange == "upbit":
-        return await _sync_upbit(portfolio, config, live_meta, ak, sk)
-    return await _sync_binance(portfolio, config, live_meta, ak, sk)
+    if exchange != "upbit":
+        raise RuntimeError("AIDI는 업비트(KRW)만 지원합니다.")
+    return await _sync_upbit(portfolio, config, live_meta, ak, sk)
 
 
 async def _sync_upbit(
@@ -44,7 +44,7 @@ async def _sync_upbit(
     upbit_client.configure(access_key, secret_key)
     allowed_markets = await get_upbit_krw_markets()
     accounts = await upbit_client.accounts()
-    portfolio.usdt_krw = await binance.usdt_krw_rate()
+    portfolio.usdt_krw = await market.usdt_krw_rate()
     meta_map: dict = live_meta.get("positions_meta", {})
 
     krw_cash = 0.0
@@ -164,8 +164,8 @@ async def _sync_binance(
     )
 
     account = await binance_live.account()
-    tickers = await binance.tickers_24h()
-    portfolio.usdt_krw = await binance.usdt_krw_rate()
+    tickers = await market.tickers_24h()
+    portfolio.usdt_krw = await market.usdt_krw_rate()
     meta_map: dict = live_meta.get("positions_meta", {})
 
     usdt_free = 0.0

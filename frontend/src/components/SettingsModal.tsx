@@ -228,17 +228,10 @@ export default function SettingsModal({
 
         {draft.trade_mode === "live" && (
           <section className="settings-section">
-            <h3>거래소 API</h3>
-            <label className="field">
-              <span>거래소</span>
-              <select
-                value={exchange}
-                onChange={(e) => set("exchange", e.target.value)}
-              >
-                <option value="upbit">업비트 (KRW)</option>
-                <option value="binance">Binance (USDT)</option>
-              </select>
-            </label>
+            <h3>업비트 Open API</h3>
+            <p className="warn subtle">
+              시세·스캔·차트·실거래 모두 <strong>업비트 KRW 마켓</strong>만 사용합니다.
+            </p>
             <label className="field">
               <span>Access Key</span>
               <input
@@ -280,16 +273,6 @@ export default function SettingsModal({
                 새 API 키 발급 시 Access·Secret <strong>둘 다</strong> 입력 후 [저장] → 연결
                 테스트. 빈 칸이면 예전 저장 키가 쓰입니다.
               </p>
-            )}
-            {exchange === "binance" && (
-              <label className="field checkbox-field">
-                <input
-                  type="checkbox"
-                  checked={draft.use_testnet}
-                  onChange={(e) => set("use_testnet", e.target.checked)}
-                />
-                <span>Binance 테스트넷 사용 (연습용)</span>
-              </label>
             )}
             <div className="modal-actions" style={{ marginTop: 12, padding: 0 }}>
               <button

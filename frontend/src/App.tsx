@@ -300,7 +300,7 @@ export default function App() {
   const isPaper = data.config.trade_mode === "paper";
   const buildId = data.aidi_build || "";
   const buildStale =
-    !buildId || buildId !== "2026-03-30-pc-dongil3-final";
+    !buildId || !buildId.includes("upbit-only");
   const canTrade = !stopping;
   const activeRec =
     editableRecs.find((r) => r.symbol === activeSymbol) ?? null;

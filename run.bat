@@ -84,7 +84,7 @@ echo  Build check...
 if errorlevel 1 (
   echo   WARNING: Old code - no AIDI_BUILD. Use update-windows.bat or latest ZIP from GitHub.
 ) else (
-  "backend\.venv\Scripts\python.exe" -c "from app.main import AIDI_BUILD; import sys; sys.exit(0 if AIDI_BUILD=='2026-03-30-pc-dongil3-final' else 1)" 2>nul
+  "backend\.venv\Scripts\python.exe" -c "from app.main import AIDI_BUILD; import sys; sys.exit(0 if 'upbit-only' in AIDI_BUILD else 1)" 2>nul
   if errorlevel 1 (
     echo   WARNING: This folder is not the latest build. Run update-windows.bat
   )

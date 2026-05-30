@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from app.engine.portfolio_store import store
 from app.engine.trader import TradingEngine
 from app.config import settings as app_settings
-from app.market.binance import binance
+from app.market.upbit_data import market
 from app.market.scanner import top_usdt_symbols
 from app.models import (
     AccountLinkInfo,
@@ -41,7 +41,7 @@ STATIC_DIR = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
 # PC에서 run.bat 시작 시 표시 — GitHub 최신과 비교용
-AIDI_BUILD = "2026-03-30-pc-dongil3-final"
+AIDI_BUILD = "2026-03-30-upbit-only"
 
 
 def _load_pc_path_hint() -> str:
@@ -75,7 +75,7 @@ async def _get_tickers() -> dict:
     now = time.time()
     if _ticker_cache and now - _ticker_cache[0] < 5:
         return _ticker_cache[1]
-    t = await binance.tickers_24h()
+    t = await market.tickers_24h()
     _ticker_cache = (now, t)
     return t
 
@@ -200,7 +200,7 @@ async def lifespan(app: FastAPI):
         engine._guard_task.cancel()
     await engine.stop()
     store.persist_active(engine.config.trade_mode)
-    await binance.close()
+    await market.close()
     await close_all()
 
 
@@ -236,8 +236,9 @@ async def get_status():
 
 @api.post("/config")
 async def set_config(cfg: AppConfig):
+    cfg.exchange = "upbit"
     body_ak, body_sk = get_keys_from_body(cfg)
-    ex = (cfg.exchange or "upbit").lower()
+    ex = "upbit"
     if body_ak and body_sk:
         save_credentials(ex, body_ak, body_sk, merge=False)
     elif body_ak or body_sk:

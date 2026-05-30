@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from app.market.binance import binance
+from app.market.upbit_data import market
 
 
 @dataclass
@@ -137,8 +137,8 @@ def _analyze_closes(closes: np.ndarray, volumes: np.ndarray) -> tuple[float, str
 async def analyze_entry(symbol: str, min_score: float = 45.0) -> EntrySignal:
     """15m·1h 차트 — 단타·빠른 진입·청산용 (기준 완화)."""
     try:
-        raw_15m = await binance.klines(symbol, "15m", 120)
-        raw_1h = await binance.klines(symbol, "1h", 80)
+        raw_15m = await market.klines(symbol, "15m", 120)
+        raw_1h = await market.klines(symbol, "1h", 80)
     except Exception:
         return EntrySignal(
             ok=False,
