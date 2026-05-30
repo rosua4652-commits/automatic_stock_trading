@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import type { AppConfig } from "../types";
 import type { ApplyItem, EditableRecommendation } from "../hooks/useRecommendationAmounts";
-import { fmtKrw, fmtUsd } from "../utils";
+import { fmtKrw, fmtPctSetting, fmtUsd } from "../utils";
 import RecommendationAmountField from "./RecommendationAmountField";
 
 type Props = {
@@ -60,8 +60,8 @@ export default function EntryAlertModal({
           </button>
         </header>
         <p className="entry-modal-sub">
-          금액 조절 후 승인 · 익절 {config.take_profit_pct}% / 손절{" "}
-          {config.stop_loss_pct}% 자동 매도
+          금액 조절 후 승인 · 익절 {fmtPctSetting(config.take_profit_pct)} / 손절{" "}
+          {fmtPctSetting(config.stop_loss_pct)} 자동 매도
         </p>
         <ul className="entry-modal-list">
           {top.map((r) => (

@@ -26,6 +26,12 @@ from app.config import settings
 from app.storage.credentials import has_api_keys
 
 
+def _fmt_pct_setting(n: float) -> str:
+    v = round(float(n), 2)
+    text = f"{v:.2f}".rstrip("0").rstrip(".")
+    return f"{text}%"
+
+
 class TradingEngine:
     def __init__(self) -> None:
         self.config = AppConfig()
@@ -570,8 +576,8 @@ class TradingEngine:
                 fail_msgs.append(f"{rec.base}: 배분 제외(현금 부족)")
                 continue
             amt = round(capped_amts[sym], -3)
-            tp_label = f"익절{self.config.take_profit_pct:g}%"
-            sl_label = f"손절{self.config.stop_loss_pct:g}%"
+            tp_label = f"익절{_fmt_pct_setting(self.config.take_profit_pct)}"
+            sl_label = f"손절{_fmt_pct_setting(self.config.stop_loss_pct)}"
             buy_reason = (
                 f"AI 승인 · {int(amt):,}원 · {tp_label}/{sl_label} 자동"
             )

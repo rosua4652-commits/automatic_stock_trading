@@ -22,6 +22,18 @@ export function fmtPct(n: number) {
   return `${sign}${n.toFixed(2)}%`;
 }
 
+/** 설정 익절·손절 % (소수 둘째 자리) */
+export function roundPct2(n: number) {
+  return Math.round(n * 100) / 100;
+}
+
+/** 설정 익절·손절 % 표시 (최대 소수 둘째, 불필요한 0 제거) */
+export function fmtPctSetting(n: number) {
+  const v = roundPct2(Number.isFinite(n) ? n : 0);
+  const s = v.toFixed(2).replace(/\.?0+$/, "");
+  return `${s}%`;
+}
+
 export function isRunning(status: string) {
   return status === "running" || status === "stopping";
 }

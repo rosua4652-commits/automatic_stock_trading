@@ -1,6 +1,6 @@
 import type { AppConfig } from "../types";
 import type { ApplyItem, EditableRecommendation } from "../hooks/useRecommendationAmounts";
-import { fmtKrw, fmtUsd } from "../utils";
+import { fmtKrw, fmtPctSetting, fmtUsd } from "../utils";
 import RecommendationAmountField from "./RecommendationAmountField";
 
 type Props = {
@@ -60,8 +60,9 @@ export default function EntryOpportunitiesPanel({
         </span>
       </div>
       <p className="panel-hint">
-        AI 제안 금액을 수정할 수 있습니다 · 승인 시 익절 {config.take_profit_pct}% /
-        손절 {config.stop_loss_pct}% 자동 매도
+        AI 제안 금액을 수정할 수 있습니다 · 승인 시 익절{" "}
+        {fmtPctSetting(config.take_profit_pct)} / 손절{" "}
+        {fmtPctSetting(config.stop_loss_pct)} 자동 매도
       </p>
       <ul className="entry-opp-list">
         {rows.map((r) => (

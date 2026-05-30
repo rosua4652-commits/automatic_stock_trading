@@ -25,8 +25,8 @@ class AppConfig(BaseModel):
         le=30,
         description="0이면 보유 코인 수 제한 없음",
     )
-    stop_loss_pct: float = Field(default=3.0, ge=0.1, le=25.0)
-    take_profit_pct: float = Field(default=5.0, ge=0.1, le=50.0)
+    stop_loss_pct: float = Field(default=3.0, ge=0.01, le=25.0)
+    take_profit_pct: float = Field(default=5.0, ge=0.01, le=50.0)
     trading_fee_pct: float = Field(
         default=0.05,
         ge=0.0,
@@ -53,6 +53,13 @@ class AppConfig(BaseModel):
     @classmethod
     def strip_secrets(cls, v):
         return (v or "").strip()
+
+    @field_validator("stop_loss_pct", "take_profit_pct", mode="before")
+    @classmethod
+    def round_tp_sl_pct(cls, v):
+        if v is None or v == "":
+            return v
+        return round(float(v), 2)
 
     def model_post_init(self, __context) -> None:
         if self.binance_api_key and not self.api_access_key:

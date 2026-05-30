@@ -32,6 +32,7 @@ import {
   isRunning,
   mergeWsPayload,
   MIN_BUY_KRW,
+  roundPct2,
 } from "./utils";
 
 export default function App() {
@@ -257,7 +258,13 @@ export default function App() {
   const handleSaveSettings = async () => {
     setSaving(true);
     try {
-      const s = await saveConfig(configDraft);
+      const toSave: AppConfig = {
+        ...configDraft,
+        stop_loss_pct: roundPct2(configDraft.stop_loss_pct),
+        take_profit_pct: roundPct2(configDraft.take_profit_pct),
+      };
+      setConfigDraft(toSave);
+      const s = await saveConfig(toSave);
       applyPayload(s);
       setSettingsOpen(false);
       showToast("설정이 저장되었습니다");

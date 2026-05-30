@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { testCredentials } from "../api";
 import type { AppConfig } from "../types";
-import { fmtKrw } from "../utils";
+import { fmtKrw, roundPct2 } from "../utils";
 
 type Props = {
   config: AppConfig;
@@ -140,25 +140,35 @@ export default function SettingsModal({
           <h3>매매 전략</h3>
           <div className="field-grid">
             <label className="field">
-              <span>손절 (%) · 소수 가능</span>
+              <span>손절 (%) · 소수 둘째 자리</span>
               <input
                 type="number"
-                min={0.1}
+                min={0.01}
                 max={25}
-                step={0.1}
+                step={0.01}
                 value={draft.stop_loss_pct}
-                onChange={(e) => set("stop_loss_pct", Number(e.target.value))}
+                onChange={(e) =>
+                  set("stop_loss_pct", roundPct2(Number(e.target.value)))
+                }
+                onBlur={(e) =>
+                  set("stop_loss_pct", roundPct2(Number(e.target.value)))
+                }
               />
             </label>
             <label className="field">
-              <span>익절 (%) · 소수 가능</span>
+              <span>익절 (%) · 소수 둘째 자리</span>
               <input
                 type="number"
-                min={0.1}
+                min={0.01}
                 max={50}
-                step={0.1}
+                step={0.01}
                 value={draft.take_profit_pct}
-                onChange={(e) => set("take_profit_pct", Number(e.target.value))}
+                onChange={(e) =>
+                  set("take_profit_pct", roundPct2(Number(e.target.value)))
+                }
+                onBlur={(e) =>
+                  set("take_profit_pct", roundPct2(Number(e.target.value)))
+                }
               />
             </label>
             <label className="field">

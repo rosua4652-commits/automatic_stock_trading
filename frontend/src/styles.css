@@ -2439,6 +2439,10 @@ main.layout.chart-layout {
 }
 
 .nav-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
   padding: 0.5rem 1.1rem;
   border-radius: 8px;
   border: 1px solid var(--border);
