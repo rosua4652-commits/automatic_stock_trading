@@ -77,6 +77,7 @@ python run.py
 | `npm` 인식 안 됨 | Node 설치 또는 dist 포함 zip 사용 |
 | `frontend\dist 없음` | `run.bat`이 npm 빌드 시도 / Node 설치 |
 | `pydantic-core` / Python 3.14 오류 | **Python 3.12** 설치 → `rmdir /s /q backend\.venv` → `run.bat` 다시 |
+| `'l'` / `'exist'` 명령 오류, 경로 없음 | **안쪽 프로젝트 폴더**에서 실행 / 최신 ZIP / **`SETUP_PC.bat`** 또는 **`run.ps1`** |
 | `run.bat` 한글 깨짐·이상한 명령 오류 | **`run.ps1`** 사용 |
 | 태블릿에서 접속 안 됨 | 같은 Wi‑Fi, 방화벽 허용, PC IP 확인 |
 
