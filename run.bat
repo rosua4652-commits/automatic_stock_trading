@@ -22,7 +22,7 @@ if not exist "backend\.venv\Scripts\python.exe" (
 
 echo Installing Python packages...
 "backend\.venv\Scripts\python.exe" -m pip install -q --upgrade pip
-"backend\.venv\Scripts\pip.exe" install -q -r backend\requirements.txt
+"backend\.venv\Scripts\pip.exe" install -q --no-cache-dir -r backend\requirements.txt
 if errorlevel 1 goto :pip_fail
 
 if exist "frontend\dist\index.html" goto :have_dist

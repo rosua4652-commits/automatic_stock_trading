@@ -30,7 +30,7 @@ if (-not (Test-Path $venvPy)) {
 
 Write-Host "Installing Python packages..."
 & $venvPy -m pip install -q --upgrade pip
-& "backend\.venv\Scripts\pip.exe" install -q -r backend\requirements.txt
+& "backend\.venv\Scripts\pip.exe" install -q --no-cache-dir -r backend\requirements.txt
 
 if (-not (Test-Path "frontend\dist\index.html")) {
     if (-not (Get-Command npm -ErrorAction SilentlyContinue)) {
