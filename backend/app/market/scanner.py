@@ -105,7 +105,7 @@ async def _analyze_one(
         if closes.std() / (closes.mean() + 1e-9) > 0.35:
             return None
         score, trend, rsi, reason = _score_symbol(closes, volumes, change)
-        if score < 18:
+        if score < 10:
             return None
         meta = coin_meta(symbol, base)
         return CoinCandidate(
@@ -126,8 +126,34 @@ async def _analyze_one(
         return None
 
 
+async def top_usdt_symbols(
+    limit: int = 50,
+    is_running: Callable[[], bool] | None = None,
+) -> list[str]:
+    """거래대금 상위 USDT 페어 (차트 분석 없이 탭·탐색용)."""
+    running = is_running or (lambda: True)
+    if not running():
+        return []
+    symbols_info, tickers = await binance.exchange_info(), await binance.tickers_24h()
+    if not running():
+        return []
+    safe = [s for s in symbols_info if binance.is_safe_usdt_pair(s)]
+    ranked: list[tuple[str, float]] = []
+    for info in safe:
+        symbol = info["symbol"]
+        t = tickers.get(symbol)
+        if not t:
+            continue
+        quote_vol = float(t.get("quoteVolume", 0))
+        if quote_vol < settings.min_quote_volume_usdt:
+            continue
+        ranked.append((symbol, quote_vol))
+    ranked.sort(key=lambda x: x[1], reverse=True)
+    return [s for s, _ in ranked[:limit]]
+
+
 async def scan_market(
-    limit: int = 40,
+    limit: int = 60,
     is_running: Callable[[], bool] | None = None,
 ) -> list[CoinCandidate]:
     running = is_running or (lambda: True)
@@ -154,7 +180,7 @@ async def scan_market(
         candidates.append((symbol, base, quote_vol, change))
 
     candidates.sort(key=lambda x: x[2], reverse=True)
-    top = candidates[:80]
+    top = candidates[:120]
 
     sem = asyncio.Semaphore(10)
 

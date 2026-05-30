@@ -40,7 +40,15 @@ export default function CoinTradeBar({
   return (
     <div className="coin-trade-bar">
       {view.candidate?.entry_detail && (
-        <p className={`entry-detail-box ${view.candidate.entry_ok ? "ok" : "warn"}`}>
+        <p
+          className={`entry-detail-box ${
+            view.candidate.entry_ok
+              ? "ok"
+              : view.candidate.entry_scalp_ok
+                ? "scalp"
+                : "warn"
+          }`}
+        >
           {view.candidate.entry_detail}
         </p>
       )}

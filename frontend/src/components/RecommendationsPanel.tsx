@@ -53,7 +53,9 @@ export default function RecommendationsPanel({
       <section className={`rec-panel empty ${sidebar ? "rec-sidebar" : ""}`}>
         <h3>투자 제안</h3>
         <p className="empty">
-          {running ? "분석 중…" : "분석 시작 → 제안 생성"}
+          {running
+            ? "분석 중…"
+            : "분석 시작 → 조건 충족 코인만 제안 (단타는 분석 목록에서 직접 매수 가능)"}
         </p>
       </section>
     );
@@ -63,6 +65,7 @@ export default function RecommendationsPanel({
     <section className={`rec-panel ${sidebar ? "rec-sidebar" : ""}`}>
       <div className="rec-head">
         <h3>투자 제안</h3>
+        <p className="panel-hint">자동 추천·단타 가능 코인만 금액 제안 (전체 탭과 다름)</p>
         <span className="rec-meta">
           현금 {fmtKrw(cashKrw)}원 · 선택 {picked.length}건 · 합계 {fmtKrw(total)}원
         </span>

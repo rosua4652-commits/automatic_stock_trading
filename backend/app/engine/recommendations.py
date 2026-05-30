@@ -18,15 +18,17 @@ def build_recommendations(
         return []
 
     pool: list[CoinCandidate] = []
-    entry_floor = config.min_entry_score * 0.88
+    entry_floor = config.min_entry_score * 0.85
     for c in candidates:
         if c.symbol in held_symbols:
             continue
         if c.score < config.min_buy_score:
             continue
-        if not c.entry_ok and c.entry_score < entry_floor:
+        if c.entry_ok or getattr(c, "entry_scalp_ok", False):
+            pool.append(c)
             continue
-        pool.append(c)
+        if c.entry_score >= entry_floor:
+            pool.append(c)
 
     pool.sort(key=lambda c: (c.entry_score + c.score), reverse=True)
     pool = pool[:15]

@@ -29,7 +29,7 @@ class AppConfig(BaseModel):
     take_profit_pct: float = Field(default=5.0, ge=0.5, le=50.0)
     scan_interval_sec: int = Field(default=30, ge=15, le=300)
     min_buy_score: float = Field(default=28.0, ge=15.0, le=90.0)
-    min_entry_score: float = Field(default=45.0, ge=25.0, le=90.0)
+    min_entry_score: float = Field(default=38.0, ge=25.0, le=90.0)
     exchange: str = Field(default="upbit", description="upbit | binance")
     api_access_key: str = ""
     api_secret_key: str = ""
@@ -162,6 +162,7 @@ class CoinCandidate(BaseModel):
     reason: str
     entry_score: float = 0.0
     entry_ok: bool = False
+    entry_scalp_ok: bool = False
     entry_outlook: str = ""
     entry_pattern: str = ""
     entry_detail: str = ""
@@ -225,6 +226,10 @@ class BotState(BaseModel):
     last_scan: Optional[float] = None
     message: str = "대기 중"
     candidates: list[CoinCandidate] = Field(default_factory=list)
+    liquid_symbols: list[str] = Field(
+        default_factory=list,
+        description="거래대금 상위 종목 (탭 표시용, 추천과 별개)",
+    )
     recommendations: list[InvestmentRecommendation] = Field(default_factory=list)
     recent_trades: list[TradeEvent] = Field(default_factory=list)
     manual_mode: bool = True

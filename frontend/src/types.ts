@@ -105,6 +105,7 @@ export interface CoinCandidate {
   reason: string;
   entry_score: number;
   entry_ok: boolean;
+  entry_scalp_ok?: boolean;
   entry_outlook: string;
   entry_detail?: string;
   entry_pattern?: string;

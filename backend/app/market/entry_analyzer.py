@@ -10,6 +10,7 @@ from app.market.binance import binance
 @dataclass
 class EntrySignal:
     ok: bool
+    scalp_ok: bool
     score: float
     outlook: str
     pattern: str
@@ -141,6 +142,7 @@ async def analyze_entry(symbol: str, min_score: float = 45.0) -> EntrySignal:
     except Exception:
         return EntrySignal(
             ok=False,
+            scalp_ok=False,
             score=0,
             outlook="데이터 부족",
             pattern="-",
@@ -151,8 +153,14 @@ async def analyze_entry(symbol: str, min_score: float = 45.0) -> EntrySignal:
 
     if len(raw_15m) < 40:
         return EntrySignal(
-            ok=False, score=0, outlook="데이터 부족", pattern="-",
-            reasons=["캔들 부족"], rsi=50, trend="-",
+            ok=False,
+            scalp_ok=False,
+            score=0,
+            outlook="데이터 부족",
+            pattern="-",
+            reasons=["캔들 부족"],
+            rsi=50,
+            trend="-",
         )
 
     c15 = np.array([float(r[4]) for r in raw_15m], dtype=float)
@@ -172,13 +180,19 @@ async def analyze_entry(symbol: str, min_score: float = 45.0) -> EntrySignal:
     trend = t15 if s15 >= s1h else t1h
     rsi = (rsi15 + rsi1h) / 2
 
-    # 단타: 점수·횡보·약반등 허용, 극과열·깊은 하락만 제외
-    ok = combined >= min_score and rsi < 82
-    if trend == "하락" and combined < min_score + 5:
-        ok = False
+    # 자동 추천(엄격) vs 단타 수동(완화) — 보류여도 단타는 가능하게 분리
+    scalp_floor = max(28.0, min_score - 12.0)
+    auto_ok = combined >= min_score and rsi < 82
+    scalp_ok = combined >= scalp_floor and rsi < 88
+    if trend == "하락":
+        if combined < min_score + 2:
+            auto_ok = False
+        if combined < scalp_floor + 3:
+            scalp_ok = False
 
     return EntrySignal(
-        ok=ok,
+        ok=auto_ok,
+        scalp_ok=scalp_ok,
         score=round(combined, 1),
         outlook=outlook,
         pattern=pattern,
@@ -217,7 +231,14 @@ def format_entry_detail(
 
     if signal.ok:
         pos = ", ".join(signal.reasons[:5]) if signal.reasons else signal.outlook
-        return f"✓ 단타 진입 가능 — {signal.outlook} · {pos}"
+        return f"✓ 자동 추천 적합 — {signal.outlook} · {pos}"
+
+    if signal.scalp_ok:
+        pos = ", ".join(signal.reasons[:5]) if signal.reasons else signal.outlook
+        return (
+            f"△ 단타 수동 가능 ({signal.score:.0f}점) — {signal.outlook} · {pos}"
+            " · 하단 「이 코인 매수」로 진입"
+        )
 
     if signal.score >= min_entry_score - 8:
         head = "진입 보류 (근접)"

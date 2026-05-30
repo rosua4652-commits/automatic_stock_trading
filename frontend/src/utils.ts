@@ -79,7 +79,7 @@ export const DEFAULT_CONFIG = {
   take_profit_pct: 5,
   scan_interval_sec: 30,
   min_buy_score: 28,
-  min_entry_score: 45,
+  min_entry_score: 38,
   exchange: "upbit",
   api_access_key: "",
   api_secret_key: "",

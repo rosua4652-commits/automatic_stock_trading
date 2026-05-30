@@ -9,7 +9,7 @@ from app.engine.recommendations import build_recommendations
 from app.market.binance import binance
 from app.market.coin_registry import coin_meta
 from app.market.entry_analyzer import analyze_entry, format_entry_detail
-from app.market.scanner import scan_market
+from app.market.scanner import scan_market, top_usdt_symbols
 from app.models import (
     AppConfig,
     BotState,
@@ -257,7 +257,12 @@ class TradingEngine:
                 return
 
         self.portfolio.usdt_krw = await binance.usdt_krw_rate()
-        candidates = await scan_market(limit=40, is_running=self.is_running)
+        self.bot.liquid_symbols = await top_usdt_symbols(
+            50, is_running=self.is_running
+        )
+        if not self.is_running():
+            return
+        candidates = await scan_market(limit=60, is_running=self.is_running)
         if not self.is_running():
             return
 
@@ -269,6 +274,7 @@ class TradingEngine:
             signal = await analyze_entry(cand.symbol, self.config.min_entry_score)
             cand.entry_score = signal.score
             cand.entry_ok = signal.ok
+            cand.entry_scalp_ok = signal.scalp_ok
             cand.entry_outlook = signal.outlook
             cand.entry_pattern = signal.pattern
             cand.entry_reasons = signal.reasons
@@ -286,7 +292,7 @@ class TradingEngine:
             candidates,
             key=lambda c: (c.entry_ok, c.score),
             reverse=True,
-        )[:40]
+        )[:60]
         self.bot.last_scan = time.time()
 
         held = {
@@ -303,8 +309,13 @@ class TradingEngine:
         )
         mode = "모의" if self.config.trade_mode == TradeMode.PAPER else "실거래"
         total_rec = sum(r.amount_krw for r in self.bot.recommendations)
+        scalp_only = sum(
+            1 for c in candidates if c.entry_scalp_ok and not c.entry_ok
+        )
+        scalp_total = len(enriched) + scalp_only
         self.bot.message = (
-            f"[{mode}] 분석 {len(candidates)}종 · 진입가능 {len(enriched)}종 · "
+            f"[{mode}] 분석 {len(candidates)}종 · 자동추천 {len(enriched)}종 · "
+            f"단타가능 {scalp_total}종 · "
             f"제안 {len(self.bot.recommendations)}건 · 합계 {total_rec:,.0f}원"
         )
         self._notify()
@@ -525,10 +536,30 @@ class TradingEngine:
         )
 
     def tab_symbols(self) -> list[str]:
+        majors = (
+            "BTCUSDT",
+            "ETHUSDT",
+            "SOLUSDT",
+            "XRPUSDT",
+            "BNBUSDT",
+            "DOGEUSDT",
+            "ADAUSDT",
+            "AVAXUSDT",
+            "LINKUSDT",
+            "SUIUSDT",
+        )
         seen: set[str] = set()
         tabs: list[str] = [self.bot.view_symbol]
         seen.add(self.bot.view_symbol)
         for sym in self.portfolio.positions:
+            if sym not in seen:
+                tabs.append(sym)
+                seen.add(sym)
+        for sym in self.bot.liquid_symbols:
+            if sym not in seen:
+                tabs.append(sym)
+                seen.add(sym)
+        for sym in majors:
             if sym not in seen:
                 tabs.append(sym)
                 seen.add(sym)

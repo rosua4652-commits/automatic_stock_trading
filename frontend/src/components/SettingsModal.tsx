@@ -176,7 +176,7 @@ export default function SettingsModal({
                 value={draft.min_entry_score}
                 onChange={(e) => set("min_entry_score", Number(e.target.value))}
               />
-              <small>낮을수록 단타 진입 많음 (기본 45)</small>
+              <small>낮을수록 단타·자동 추천 많음 (기본 38)</small>
             </label>
             <label className="field">
               <span>시장 스캔 주기 (초)</span>

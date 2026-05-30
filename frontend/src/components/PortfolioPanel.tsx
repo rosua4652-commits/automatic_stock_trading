@@ -88,12 +88,15 @@ export default function PortfolioPanel({
       </section>
 
       <section className="panel-block scroll">
-        <h3>AI 분석 · 진입 판단</h3>
+        <h3>분석 코인 · 진입 판단</h3>
+        <p className="panel-hint">
+          상단 탭은 거래대금 상위+분석 종목 · 투자 제안은 그중 조건 충족분만
+        </p>
         {candidates.length === 0 ? (
-          <p className="empty">자동투자 실행 시 시장 스캔·차트 분석 결과가 표시됩니다</p>
+          <p className="empty">「분석 시작」 후 스캔·차트 분석 결과가 표시됩니다</p>
         ) : (
           <ul className="candidate-list">
-            {candidates.slice(0, 12).map((c) => (
+            {candidates.slice(0, 30).map((c) => (
               <li key={c.symbol} className="cand-item">
                 <button
                   type="button"
@@ -103,8 +106,16 @@ export default function PortfolioPanel({
                   <div className="pos-info">
                     <span className="pos-name">{c.name_ko}</span>
                     <span className="pos-pair">{c.pair_label}</span>
-                    <span className={`cand-tag ${c.entry_ok ? "ok" : "no"}`}>
-                      {c.entry_ok ? "진입가능" : "진입보류"}
+                    <span
+                      className={`cand-tag ${
+                        c.entry_ok ? "ok" : c.entry_scalp_ok ? "scalp" : "no"
+                      }`}
+                    >
+                      {c.entry_ok
+                        ? "자동추천"
+                        : c.entry_scalp_ok
+                          ? "단타가능"
+                          : "보류"}
                     </span>
                   </div>
                   <span className="cand-score">{c.score}점</span>
