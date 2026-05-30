@@ -77,6 +77,149 @@ class PortfolioManager:
             )
         return out
 
+    @staticmethod
+    def position_snap(pos: Optional[Position]) -> dict[str, float]:
+        if not pos:
+            return {
+                "total": 0.0,
+                "auto": 0.0,
+                "manual": 0.0,
+                "auto_cost": 0.0,
+                "man_cost": 0.0,
+                "cost": 0.0,
+            }
+        return {
+            "total": pos.quantity,
+            "auto": pos.auto_quantity,
+            "manual": pos.manual_quantity,
+            "auto_cost": pos.auto_cost_basis_krw,
+            "man_cost": pos.manual_cost_basis_krw,
+            "cost": pos.cost_basis_krw,
+        }
+
+    def apply_live_buy_after_sync(
+        self,
+        pos: Position,
+        before: dict[str, float],
+        delta_qty: float,
+        fill_price_usdt: float,
+        amount_krw: float,
+        auto_managed: bool,
+        config: AppConfig,
+        *,
+        reason: str = "",
+        entry_reason: str = "",
+        entry_score: float = 0,
+        score: float = 0,
+        entry_outlook: str = "",
+    ) -> None:
+        """실거래 체결 후 포지션 메타 — 모의투자 buy()와 동일 규칙."""
+        delta = max(0.0, delta_qty)
+        if auto_managed:
+            new_auto = min(pos.quantity, before["auto"] + delta)
+            pos.auto_quantity = new_auto
+            pos.manual_quantity = max(0.0, pos.quantity - new_auto)
+            pos.excluded_from_auto = False
+            pos.auto_cost_basis_krw = before["auto_cost"] + amount_krw
+            if pos.auto_quantity > 0:
+                pos.auto_avg_price = (
+                    pos.auto_cost_basis_krw / self.usdt_krw / pos.auto_quantity
+                )
+            sl = config.stop_loss_pct / 100
+            tp = config.take_profit_pct / 100
+            pos.stop_loss = fill_price_usdt * (1 - sl)
+            pos.take_profit = fill_price_usdt * (1 + tp)
+            pos.trailing_high = max(pos.trailing_high or 0.0, fill_price_usdt)
+            pos.entry_reason = entry_reason or reason
+            pos.entry_score = entry_score
+            pos.score = score
+            pos.entry_outlook = entry_outlook or "AI 자동투자"
+        else:
+            pos.auto_quantity = min(before["auto"], pos.quantity)
+            new_manual = min(pos.quantity - pos.auto_quantity, before["manual"] + delta)
+            pos.manual_quantity = max(0.0, new_manual)
+            pos.manual_cost_basis_krw = before["man_cost"] + amount_krw
+            if pos.manual_quantity > 0:
+                pos.manual_avg_price = (
+                    pos.manual_cost_basis_krw / self.usdt_krw / pos.manual_quantity
+                )
+            pos.stop_loss = 0.0
+            pos.take_profit = 0.0
+            pos.trailing_high = 0.0
+            pos.entry_reason = entry_reason or reason
+            pos.excluded_from_auto = False
+        pos.cost_basis_krw = pos.auto_cost_basis_krw + pos.manual_cost_basis_krw
+        self._recalc_avg(pos)
+
+    def apply_live_sell_after_sync(
+        self,
+        pos: Optional[Position],
+        before: dict[str, float],
+        executed_qty: float,
+        fill_price_usdt: float,
+        auto_only: bool,
+    ) -> float:
+        """실거래 매도 후 메타·실현손익 — 모의투자 sell()과 동일 규칙. 반환: 실현손익(원)."""
+        sell_qty = max(0.0, executed_qty)
+        if sell_qty <= 1e-12:
+            return 0.0
+
+        sym = pos.symbol if pos else ""
+
+        if auto_only:
+            base_qty = before["auto"]
+            if base_qty <= 1e-12:
+                return 0.0
+            sq = min(sell_qty, base_qty)
+            cost_portion = before["auto_cost"] * (sq / base_qty)
+            proceeds_krw = self.usdt_to_krw(sq * fill_price_usdt)
+            pnl = proceeds_krw - cost_portion
+            if pos:
+                pos.auto_quantity = max(0.0, min(pos.quantity, base_qty - sq))
+                pos.auto_cost_basis_krw = max(0.0, before["auto_cost"] - cost_portion)
+                if pos.auto_quantity <= 1e-12:
+                    pos.auto_quantity = 0.0
+                    pos.auto_cost_basis_krw = 0.0
+                    pos.auto_avg_price = 0.0
+                    pos.stop_loss = 0.0
+                    pos.take_profit = 0.0
+                    pos.trailing_high = 0.0
+        else:
+            total_q = before["total"]
+            if total_q <= 1e-12:
+                return 0.0
+            sq = min(sell_qty, total_q)
+            cost_portion = before["cost"] * (sq / total_q)
+            proceeds_krw = self.usdt_to_krw(sq * fill_price_usdt)
+            pnl = proceeds_krw - cost_portion
+            if pos:
+                auto_part = min(sq, before["auto"])
+                man_part = sq - auto_part
+                if auto_part > 0 and before["auto"] > 0:
+                    cost_a = before["auto_cost"] * (auto_part / before["auto"])
+                    pos.auto_quantity = max(0.0, before["auto"] - auto_part)
+                    pos.auto_cost_basis_krw = max(0.0, before["auto_cost"] - cost_a)
+                    if pos.auto_quantity <= 1e-12:
+                        pos.auto_quantity = 0.0
+                        pos.auto_cost_basis_krw = 0.0
+                        pos.auto_avg_price = 0.0
+                if man_part > 0 and before["manual"] > 0:
+                    cost_m = before["man_cost"] * (man_part / before["manual"])
+                    pos.manual_quantity = max(0.0, before["manual"] - man_part)
+                    pos.manual_cost_basis_krw = max(0.0, before["man_cost"] - cost_m)
+                    if pos.manual_quantity <= 1e-12:
+                        pos.manual_quantity = 0.0
+                        pos.manual_cost_basis_krw = 0.0
+                        pos.manual_avg_price = 0.0
+
+        if pos:
+            pos.manual_quantity = max(0.0, pos.quantity - pos.auto_quantity)
+            pos.cost_basis_krw = pos.auto_cost_basis_krw + pos.manual_cost_basis_krw
+            self._recalc_avg(pos)
+            if pos.quantity <= 1e-12:
+                self.positions.pop(sym, None)
+        return pnl
+
     def set_exclude(self, symbol: str, exclude: bool) -> Optional[Position]:
         pos = self.positions.get(symbol)
         if not pos:

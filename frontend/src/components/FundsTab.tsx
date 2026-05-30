@@ -173,7 +173,7 @@ export default function FundsTab({
   const [buySymbol, setBuySymbol] = useState("BTCUSDT");
   const [buyAmount, setBuyAmount] = useState(500_000);
   const running = isRunning(botStatus);
-  const canTrade = manualMode && !running;
+  const canTrade = botStatus !== "stopping";
   const maxKrw = maxBuyKrw(portfolio.cash_krw);
 
   useEffect(() => {

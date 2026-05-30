@@ -512,6 +512,10 @@ class TradingEngine:
                     amt,
                     f"{buy_reason} · {entry_txt}",
                     as_auto=True,
+                    score=rec.market_score,
+                    entry_score=rec.entry_score,
+                    entry_reason=f"{entry_txt} · {tp_label}/{sl_label} 자동매도",
+                    entry_outlook="AI 자동투자",
                 )
                 if ok:
                     ok_n += 1
@@ -616,6 +620,8 @@ class TradingEngine:
             if ok:
                 self.bind_portfolio()
                 self.bot.recent_trades = self.portfolio.trades[-30:]
+                self._bump_version()
+                self._notify()
         else:
             tickers = await binance.tickers_24h()
             t = tickers.get(symbol)
@@ -623,6 +629,8 @@ class TradingEngine:
             if self.portfolio.sell(symbol, px, reason, auto_only=True):
                 self._persist()
                 self.bot.recent_trades = self.portfolio.trades[-30:]
+                self._bump_version()
+                self._notify()
 
     async def get_candles(self, symbol: str, interval: str = "1h") -> list[dict]:
         iv = interval.lower()

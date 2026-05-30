@@ -97,6 +97,10 @@ export default function SettingsModal({
               모의투자 잔고는 앱 내부 시뮬이며, 실거래 계정과 무관합니다.
             </p>
           )}
+          <p className="warn subtle">
+            AI 승인 매수·익절/손절·자동투자 제외·분석 중지 후 감시는 모의/실거래
+            동일합니다. 실거래만 거래소 주문·잔고 동기화가 추가됩니다.
+          </p>
         </section>
 
         <section className="settings-section">
