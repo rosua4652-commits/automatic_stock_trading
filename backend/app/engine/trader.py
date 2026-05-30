@@ -411,6 +411,12 @@ class TradingEngine:
         self.bot.liquid_symbols = await top_usdt_symbols(
             app_settings.tab_symbol_limit, is_running=self.is_running
         )
+        if self._is_live() and (self.config.exchange or "upbit").lower() == "upbit":
+            from app.market.upbit_markets import filter_symbols_for_upbit
+
+            self.bot.liquid_symbols = await filter_symbols_for_upbit(
+                self.bot.liquid_symbols
+            )
         if not self.is_running():
             return
         deep = await scan_market(is_running=self.is_running)

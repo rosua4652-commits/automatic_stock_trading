@@ -118,14 +118,25 @@ class UpbitClient:
     async def tickers(self, markets: list[str]) -> dict[str, dict]:
         if not markets:
             return {}
+        from app.market.upbit_markets import get_upbit_krw_markets
+
+        allowed = await get_upbit_krw_markets()
+        valid = [m for m in markets if m in allowed]
+        if not valid:
+            return {}
         client = await self._ensure()
-        resp = await client.get(
-            "/v1/ticker",
-            params={"markets": ",".join(markets)},
-        )
-        resp.raise_for_status()
-        rows = resp.json()
-        return {r["market"]: r for r in rows}
+        out: dict[str, dict] = {}
+        chunk = 100
+        for i in range(0, len(valid), chunk):
+            part = valid[i : i + chunk]
+            resp = await client.get(
+                "/v1/ticker",
+                params={"markets": ",".join(part)},
+            )
+            resp.raise_for_status()
+            for r in resp.json():
+                out[r["market"]] = r
+        return out
 
     async def market_buy_krw(self, market: str, price_krw: float) -> dict:
         body = {

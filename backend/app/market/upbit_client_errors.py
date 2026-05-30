@@ -35,6 +35,11 @@ async def parse_upbit_error(text: str, access_hint: str = "") -> RuntimeError:
         return RuntimeError(f"업비트 API: {name} — {msg}{key_note}")
     if name in ("invalid_query_payload", "jwt_verification", "expired_access_key"):
         return RuntimeError(f"업비트 API: {name} — {msg}{key_note}")
+    if name in ("not_found_market",) or "notfoundmarket" in (name or "").lower():
+        return RuntimeError(
+            f"업비트에 없는 코인(마켓)입니다 — {msg}{key_note} "
+            "AIDI는 바이낸스 USDT 목록도 보지만, 업비트 실거래는 KRW 상장 종목만 주문합니다."
+        )
     if name:
         return RuntimeError(f"업비트 API [{name}]: {msg}{key_note}")
     return RuntimeError(f"Upbit: {msg or text}{key_note}")

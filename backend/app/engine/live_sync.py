@@ -39,7 +39,10 @@ async def _sync_upbit(
     access_key: str,
     secret_key: str,
 ) -> str:
+    from app.market.upbit_markets import get_upbit_krw_markets
+
     upbit_client.configure(access_key, secret_key)
+    allowed_markets = await get_upbit_krw_markets()
     accounts = await upbit_client.accounts()
     portfolio.usdt_krw = await binance.usdt_krw_rate()
     meta_map: dict = live_meta.get("positions_meta", {})
@@ -58,6 +61,8 @@ async def _sync_upbit(
             krw_cash = total
             continue
         market = f"KRW-{cur}"
+        if market not in allowed_markets:
+            continue
         holdings[market] = total
 
     tickers = await upbit_client.tickers(list(holdings.keys()))

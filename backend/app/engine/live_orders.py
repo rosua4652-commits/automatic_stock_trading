@@ -49,9 +49,17 @@ async def live_market_buy(
     fills_price = 0.0
     try:
         if exchange == "upbit":
+            from app.market.upbit_markets import get_upbit_krw_markets, resolve_upbit_market
+
             ak, sk = get_active_keys(config)
             upbit_client.configure(ak, sk)
-            market = symbol_to_upbit(sym)
+            markets = await get_upbit_krw_markets()
+            market = resolve_upbit_market(sym, markets)
+            if not market:
+                return (
+                    False,
+                    f"업비트 미상장 종목 ({sym}). 바이낸스 전용·밈코인은 업비트 실거래 불가.",
+                )
             order = await upbit_client.market_buy_krw(market, amount_krw)
             executed_qty = float(order.get("executed_volume", 0))
             portfolio.usdt_krw = portfolio.usdt_krw or 1350
@@ -149,9 +157,14 @@ async def live_market_sell(
     price = pos.current_price or pos.avg_price
     try:
         if exchange == "upbit":
+            from app.market.upbit_markets import get_upbit_krw_markets, resolve_upbit_market
+
             ak, sk = get_active_keys(config)
             upbit_client.configure(ak, sk)
-            market = symbol_to_upbit(sym)
+            markets = await get_upbit_krw_markets()
+            market = resolve_upbit_market(sym, markets)
+            if not market:
+                return False, f"업비트 미상장 종목 ({sym}) — 매도 스킵"
             order = await upbit_client.market_sell(market, sell_qty)
             executed_qty = float(order.get("executed_volume", sell_qty))
             quote_krw = executed_qty * pos.current_price * portfolio.usdt_krw
