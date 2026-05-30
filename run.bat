@@ -115,7 +115,7 @@ if errorlevel 1 (
   echo   WARNING: Could not read AIDI_BUILD. Check backend\app\main.py
   popd
 ) else (
-  ".venv\Scripts\python.exe" -c "from app.main import AIDI_BUILD; b=AIDI_BUILD; import sys; ok=('sl-tp-pct' in b or 'chart-fix' in b or 'sl-tp-manual' in b); print('  ', 'OK latest' if ok else 'WARNING old build'); sys.exit(0 if ok else 1)" 2>nul
+  ".venv\Scripts\python.exe" -c "from app.main import AIDI_BUILD; b=AIDI_BUILD; import sys; ok=('sl-tp-pct' in b); print('  ', 'OK latest' if ok else 'WARNING old build'); sys.exit(0 if ok else 1)" 2>nul
   if errorlevel 1 (
     echo   WARNING: Old code - overwrite folder from GitHub ZIP then run again
     echo   Need: AIDI_BUILD contains chart-fix or sl-tp-manual

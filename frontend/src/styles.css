@@ -2598,18 +2598,82 @@ main.layout.chart-layout {
 
 .exit-plan-preview {
   flex: 1 1 100%;
-  margin: 0;
-  font-size: 0.8rem;
-  line-height: 1.4;
+  margin: 0.5rem 0 0;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--muted);
 }
 
-.exit-plan-inputs input {
-  width: 5.5rem;
-  padding: 0.4rem 0.5rem;
+.exit-plan-preview strong {
+  color: var(--accent);
+}
+
+.exit-pct-control {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  width: 100%;
+}
+
+.exit-pct-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.exit-pct-title {
+  font-size: 0.82rem;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.exit-pct-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.exit-pct-presets .preset-btn {
+  min-width: 3rem;
+  padding: 0.35rem 0.5rem;
+  font-size: 0.8rem;
+}
+
+.exit-pct-input-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.exit-pct-input-row input[type="range"] {
+  flex: 1;
+  min-width: 6rem;
+  accent-color: var(--accent);
+}
+
+.exit-pct-num {
+  width: 4.2rem;
+  padding: 0.35rem 0.45rem;
   border-radius: 8px;
   border: 1px solid var(--border);
   background: var(--surface2);
   color: var(--text);
+  text-align: right;
+}
+
+.exit-pct-unit {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.exit-plan-inputs {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.exit-pct-apply {
+  width: 100%;
+  margin-top: 0.25rem;
 }
 
 .fg-item-wide {

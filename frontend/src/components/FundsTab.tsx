@@ -19,6 +19,7 @@ import {
   roundPct2,
 } from "../utils";
 import BuyAmountControl, { maxBuyKrw } from "./BuyAmountControl";
+import ExitPctControl from "./ExitPctControl";
 import SellPctControl from "./SellPctControl";
 
 type Props = {
@@ -262,60 +263,34 @@ function PositionCard({
             손익절 수동 지정
             <span className="exclude-hint dim">
               {customSlTp
-                ? " — 체크됨: 아래 가격 도달 시 전량 자동 매도"
+                ? " — 체크됨: 아래 % 도달 시 전량 자동 매도 (가격은 평단 기준 자동 계산)"
                 : ` — 해제 시 설정 손절 ${fmtPctSetting(stopLossPct)} / 익절 ${fmtPctSetting(takeProfitPct)} 자동`}
             </span>
           </span>
         </label>
         {customSlTp && (
           <div className="exit-plan-inputs">
-            <label>
-              손절 (%)
-              <input
-                type="number"
-                step="0.1"
-                min={0.1}
-                max={50}
-                value={slPctIn}
-                disabled={busy}
-                onChange={(e) =>
-                  setSlPctIn(parseFloat(e.target.value) || stopLossPct)
-                }
-              />
-            </label>
-            <label>
-              익절 (%)
-              <input
-                type="number"
-                step="0.1"
-                min={0.1}
-                max={100}
-                value={tpPctIn}
-                disabled={busy}
-                onChange={(e) =>
-                  setTpPctIn(parseFloat(e.target.value) || takeProfitPct)
-                }
-              />
-            </label>
+            <ExitPctControl
+              stopLossPct={slPctIn}
+              takeProfitPct={tpPctIn}
+              onStopLossChange={setSlPctIn}
+              onTakeProfitChange={setTpPctIn}
+              disabled={busy}
+              previewSlKrw={
+                preview && fxKrw > 0 ? preview.stop_loss * fxKrw : undefined
+              }
+              previewTpKrw={
+                preview && fxKrw > 0 ? preview.take_profit * fxKrw : undefined
+              }
+            />
             <button
               type="button"
-              className="btn-primary btn-sm"
-              disabled={
-                busy || slPctIn <= 0 || tpPctIn <= 0 || entry <= 0
-              }
+              className="btn-primary exit-pct-apply"
+              disabled={busy || slPctIn <= 0 || tpPctIn <= 0 || entry <= 0}
               onClick={() => applyExitPlan(true, slPctIn, tpPctIn)}
             >
-              손익절 적용
+              손절 -{fmtPctSetting(slPctIn)} / 익절 +{fmtPctSetting(tpPctIn)} 적용
             </button>
-            {preview && entry > 0 && (
-              <p className="exit-plan-preview dim">
-                평단 ${fmtUsd(entry)} 기준 → 손절 ${fmtUsd(preview.stop_loss)}
-                {fxKrw > 0 ? ` (${fmtKrw(preview.stop_loss * fxKrw)}원)` : ""}
-                {" / "}
-                익절 ${fmtUsd(preview.take_profit)}
-                {fxKrw > 0 ? ` (${fmtKrw(preview.take_profit * fxKrw)}원)` : ""}
-              </p>
-            )}
           </div>
         )}
       </div>
