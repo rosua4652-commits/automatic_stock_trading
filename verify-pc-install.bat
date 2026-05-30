@@ -44,8 +44,11 @@ if not errorlevel 1 (
 
 curl -s http://127.0.0.1:8000/api/version 2>nul | findstr /i "not found error" >nul 2>&1
 if not errorlevel 1 (
-  echo [FAIL] Server: OLD - returns error not found
-  echo        Ctrl+C run.bat, copy latest files, run.bat again
+  echo [FAIL] Server: OLD process still on port 8000
+  echo        Disk is OK - you only need to RESTART the server:
+  echo        1. stop-aidi.bat  or  run.bat window Ctrl+C
+  echo        2. restart-aidi.bat  or  run.bat again
+  echo        3. verify-pc-install.bat again
   goto fix
 )
 
