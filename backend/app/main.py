@@ -38,9 +38,27 @@ from app.market.network_info import get_outbound_public_ip
 from app.storage.credentials import load_credentials, mask_key
 
 STATIC_DIR = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
 # PC에서 run.bat 시작 시 표시 — GitHub 최신과 비교용
-AIDI_BUILD = "2026-03-24-upbit-hs512"
+AIDI_BUILD = "2026-03-30-pc-dongil3-final"
+
+
+def _load_pc_path_hint() -> str:
+    hint_file = REPO_ROOT / "pc-path.txt"
+    if not hint_file.is_file():
+        return ""
+    try:
+        for line in hint_file.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if line and not line.startswith("#"):
+                return line
+    except OSError:
+        pass
+    return ""
+
+
+PC_PATH_HINT = _load_pc_path_hint()
 
 engine = TradingEngine()
 _ws_clients: set[WebSocket] = set()
@@ -200,10 +218,12 @@ async def api_version():
         "build": AIDI_BUILD,
         "app": app.version,
         "ok": True,
+        "pc_path_hint": PC_PATH_HINT,
         "features": {
             "network_routes": True,
             "upbit_probe": True,
             "status_network_field": True,
+            "upbit_hs512": True,
         },
     }
 

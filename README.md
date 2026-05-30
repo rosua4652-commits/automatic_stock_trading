@@ -8,12 +8,16 @@
 
 ### Windows
 
+**PC 최종본 폴더** (dongil-3): `pc-path.txt` · **`PC_최종본_설치.txt`** 참고
+
 1. [Python 3.12](https://www.python.org/downloads/) 설치 (PATH 추가) — **3.14 사용 금지**
-2. 프로젝트 폴더에서 **`run.bat`** 더블클릭  
+2. **`sync-pc-from-github.bat`** 로 최신 코드 받기 (또는 GitHub ZIP)
+3. **`SETUP_PC.bat`** 또는 **`run.bat`** 더블클릭  
    - 한글 깨짐/명령 오류 나면 **`run.ps1`** (PowerShell) 사용  
    자세한 내용: **`WINDOWS_설치안내.md`**
 
-브라우저: http://localhost:8000
+브라우저: http://localhost:8000  
+빌드 확인: `check-build.bat` → `2026-03-30-pc-dongil3-final`
 
 ### Mac / Linux
 

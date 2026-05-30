@@ -16,11 +16,18 @@
 
 3. 프로젝트 받기  
    - GitHub ZIP 다운로드 후 압축 해제  
-   - 또는 `git clone` 후 폴더로 이동
+   - 또는 `git clone` 후 폴더로 이동  
+
+**dongil-3 PC 공식 폴더** (`pc-path.txt`):
+
+```text
+C:\Users\dongil-3\Downloads\automatic_stock_trading-main (3)\automatic_stock_trading-main
+```
 
 ## 2. 실행 (가장 쉬움)
 
-탐색기에서 프로젝트 폴더 → **`run.bat`** 더블클릭
+1. **`sync-pc-from-github.bat`** (최신 코드)  
+2. 탐색기에서 **`SETUP_PC.bat`** 또는 **`run.bat`** 더블클릭
 
 **`run.bat`에서 한글 깨지고 `'꼍'`, `'npmfail'` 같은 오류가 나면**  
 → **`run.ps1`** 사용 (아래 PowerShell 방법)

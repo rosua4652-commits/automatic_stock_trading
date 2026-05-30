@@ -48,8 +48,9 @@ goto :eof
 
 :wrongfolder
 echo [ERROR] backend\app\main.py not found.
-echo         Open the INNER folder that contains run.bat, for example:
-echo         ...\automatic_stock_trading-main\automatic_stock_trading-main
+echo         Open the INNER folder that contains run.bat:
+if exist "pc-path.txt" type "pc-path.txt"
+if not exist "pc-path.txt" echo         ...\automatic_stock_trading-main (3)\automatic_stock_trading-main
 echo.
 goto endpause
 

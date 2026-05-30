@@ -1,0 +1,26 @@
+AIDI PC 최종본 — dongil-3 / automatic_stock_trading-main (3)
+============================================================
+
+1) 이 폴더가 맞는지
+   C:\Users\dongil-3\Downloads\automatic_stock_trading-main (3)\automatic_stock_trading-main
+   안에 run.bat, backend\app\main.py 가 있어야 합니다.
+
+2) GitHub 최신 코드 받기
+   A) sync-pc-from-github.bat  (Git 설치된 경우)
+   B) 없으면 https://github.com/rosua4652-commits/automatic_stock_trading
+      → Code → Download ZIP → 압축 해제 후 (3) 폴더에 덮어쓰기
+      → credentials.json 만 백업 후 복원
+
+3) 실행
+   SETUP_PC.bat  또는  run.bat
+   브라우저: http://127.0.0.1:8000
+
+4) 업비트
+   - 설정: Access + Secret → 저장 → 연결 테스트
+   - probe-upbit.bat
+   - check-upbit-ip.bat (서버 켠 뒤)
+
+5) 최신 빌드 ID
+   2026-03-30-pc-dongil3-final
+
+============================================================

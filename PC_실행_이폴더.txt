@@ -1,47 +1,39 @@
 ========================================
-  AIDI — PC 폴더 (6) 에서 실행할 때
+  AIDI — PC 최종본 (폴더 3)
 ========================================
 
-올바른 폴더 (run.bat 이 있는 곳):
-  C:\Users\dongil-3\Downloads\automatic_stock_trading-main (6)\automatic_stock_trading-main
+공식 PC 프로젝트 폴더 (run.bat 이 있는 곳):
+  C:\Users\dongil-3\Downloads\automatic_stock_trading-main (3)\automatic_stock_trading-main
 
-※ 상위 "(6)" 폴더가 아니라, 안쪽 automatic_stock_trading-main 에서 run.bat 실행
+※ 상위 "(3)" ZIP 폴더가 아니라, 안쪽 automatic_stock_trading-main 에서 실행
+※ 경로는 pc-path.txt 와 동일해야 합니다.
 
 
-[증상] 'l' / 'exist' 은 명령이 아닙니다 / 지정된 경로를 찾을 수 없습니다
-→ run.bat 이 있는 폴더가 아니거나, 예전 ZIP(줄바꿈 LF) 배치 파일입니다.
-→ 해결: GitHub 최신 ZIP 다시 받기 후 SETUP_PC.bat 또는 run.bat 실행
-→ 같은 오류면 PowerShell: powershell -ExecutionPolicy Bypass -File run.ps1
+[PC에 최종본 맞추기 — 순서]
+
+  1. run.bat 이 돌아가 중이면 Ctrl+C 로 종료
+  2. sync-pc-from-github.bat 더블클릭 (git 있으면 pull)
+     - git 없으면: GitHub ZIP 받아 이 (3) 폴더에 덮어쓰기
+  3. SETUP_PC.bat 또는 run.bat 실행
+  4. check-build.bat → build: 2026-03-30-pc-dongil3-final
+  5. probe-upbit.bat → 업비트 연동 확인
+  6. 설정 → Access + Secret 저장 → 연결 테스트
+
+  backend\data\credentials.json 은 덮어쓰지 마세요 (API 키).
+
+
+[증상] 'l' / 'exist' 명령 오류
+→ 잘못된 폴더이거나 예전 LF 배치 파일
+→ GitHub 최신 받은 뒤 SETUP_PC.bat / run.ps1
 
 
 [증상] check-upbit-ip 에서 {"error":"not found"}
-→ 이 ZIP/폴더가 예전 버전입니다. IP/API가 맞아도 AIDI 코드가 구버전이면 연동 실패합니다.
-
-
-[해결 1] 같은 폴더에서 업데이트 (git 설치된 경우)
-  1. run.bat 창 Ctrl+C 로 종료
-  2. update-windows.bat 더블클릭
-  3. run.bat 다시 실행
-  4. check-build.bat → build 가 2026-03-24-upbit-hs512 인지 확인
-
-
-[해결 2] ZIP 새로 받기 (가장 확실)
-  1. https://github.com/rosua4652-commits/automatic_stock_trading
-     → Code → Download ZIP
-  2. 압축 해제 후 frontend\dist 가 있는지 확인
-  3. 예전 (6) 폴더 대신 새 폴더에서 run.bat 실행
-  4. backend\data\credentials.json 만 필요하면 복사 (키 파일)
-
-
-[업비트 키]
-  1. 설정 → Access + Secret 둘 다 붙여넣기 → 저장
-  2. 연결 테스트
-  3. probe-upbit.bat (서버 꺼져 있어도 됨) → saved_access_key 가 업비트 키와 같은지
+→ 구버전 코드. sync-pc-from-github.bat 후 run.bat 재시작
 
 
 [빌드 확인]
   - check-build.bat
-  - 브라우저: http://127.0.0.1:8000/api/version
-    → "build":"2026-03-24-upbit-hs512" 이어야 최신
+  - http://127.0.0.1:8000/api/version
+    → "build":"2026-03-30-pc-dongil3-final"
 
 ========================================

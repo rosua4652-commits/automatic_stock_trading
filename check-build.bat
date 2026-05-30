@@ -36,6 +36,6 @@ echo [Server /api/network/outbound-ip]
 curl -s http://127.0.0.1:8000/api/network/outbound-ip
 echo.
 echo.
-echo OK if version shows build 2026-03-24-upbit-hs512 and outbound_ip JSON not error not_found
+echo OK if version shows build 2026-03-30-pc-dongil3-final and outbound_ip JSON not error not_found
 echo.
 pause
