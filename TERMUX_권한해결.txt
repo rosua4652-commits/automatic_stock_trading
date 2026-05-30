@@ -3,8 +3,12 @@
 ═══════════════════════════════════════════════════
 
 ■ 원인
-  • zip을 다운로드/SD카드에 풀면 → chmod·실행·venv 전부 막힘
-  • run-tablet.sh 에 chmod 할 필요 없음
+  • zip을 다운로드/SD카드(/storage/emulated/0/...)에 풀면
+    chmod·실행·venv 전부 막힘
+  • 아래 오류 = SD에 .venv 만들려다 실패한 것:
+    Permission denied: 'lib' -> '.../.venv/lib64'
+
+  → 반드시 Termux 홈 ~/aidi 에서만 실행
 
 ■ 해결 (복사해서 한 줄씩)
 
