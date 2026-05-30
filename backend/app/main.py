@@ -411,8 +411,15 @@ if STATIC_DIR.exists():
 
     @app.get("/{full_path:path}")
     async def spa(full_path: str):
-        if full_path.startswith("api"):
-            return JSONResponse({"error": "not found"}, status_code=404)
+        if full_path.startswith("api/") or full_path == "api":
+            return JSONResponse(
+                {
+                    "error": "api_not_found",
+                    "detail": "API 경로 없음. run.bat 종료 후 최신 코드로 다시 실행하세요.",
+                    "try": "/api/status 또는 /api/network/diagnose",
+                },
+                status_code=404,
+            )
         file_path = STATIC_DIR / full_path
         if file_path.is_file():
             return FileResponse(file_path)
