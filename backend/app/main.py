@@ -32,6 +32,9 @@ from app.storage.credentials import (
     save_credentials,
 )
 from app.market.live_exchange import close_all, test_exchange_connection
+from app.market.ipv4_http import outbound_ipv4_via_same_stack, upbit_resolved_ipv4
+from app.market.network_info import get_outbound_public_ip
+from app.storage.credentials import load_credentials, mask_key
 
 STATIC_DIR = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
 
@@ -168,7 +171,9 @@ async def get_status():
 @api.post("/config")
 async def set_config(cfg: AppConfig):
     ak, sk = get_active_keys(cfg)
-    if ak or sk:
+    if ak and sk:
+        save_credentials(cfg.exchange or "upbit", ak, sk, merge=False)
+    elif ak or sk:
         save_credentials(cfg.exchange or "upbit", ak, sk, merge=True)
     merged = apply_credentials_to_config(cfg)
     msg = await engine.update_config(merged)
@@ -185,32 +190,47 @@ async def credentials_test(cfg: AppConfig):
     saved = apply_credentials_to_config(draft)
     ak_d, sk_d = get_active_keys(draft)
     ak_s, sk_s = get_active_keys(saved)
-    ak = ak_d or ak_s
-    sk = sk_d or sk_s
+
+    if ak_d or sk_d:
+        if not (ak_d and sk_d):
+            return {
+                "ok": False,
+                "message": "Access Key와 Secret Key를 둘 다 입력하세요. (새 키 발급 시 두 값 모두 붙여넣기 → 저장)",
+            }
+        ak, sk = ak_d, sk_d
+        key_source = "입력한 키"
+    elif ak_s and sk_s:
+        ak, sk = ak_s, sk_s
+        key_source = "PC에 저장된 키"
+    else:
+        return {"ok": False, "message": "Access Key와 Secret Key를 입력하세요"}
+
     draft.api_access_key = ak
     draft.api_secret_key = sk
-    if not has_api_keys(draft):
-        return {"ok": False, "message": "Access Key와 Secret Key를 입력하세요"}
     outbound = await get_outbound_public_ip()
-    key_hint = f"...{ak[-4:]}" if len(ak) >= 4 else "****"
+    key_hint = mask_key(ak, 4)
     try:
         result = await test_exchange_connection(draft)
         if outbound:
             result["outbound_ip"] = outbound
         result["access_key_hint"] = key_hint
+        result["key_source"] = key_source
         return result
     except Exception as e:
         body: dict = {
             "ok": False,
             "message": str(e),
             "access_key_hint": key_hint,
+            "key_source": key_source,
         }
         if outbound:
             body["outbound_ip"] = outbound
+            body["registered_ip_example"] = "61.43.16.54"
             if "no_authorization_ip" in str(e) or "허용 IP" in str(e):
                 body["hint"] = (
-                    f"업비트에서 Access Key 끝 4자리 [{ak[-4:]}] 키의 허용 IP에 "
-                    f"[{outbound}] 가 등록돼 있는지 확인 (61.43.16.54 와 다르면 그 IP 등록)"
+                    f"업비트 Open API에서 Access Key [{key_hint}] 키의 허용 IP에 "
+                    f"[{outbound}] 를 등록하세요. "
+                    f"({key_source} — 저장된 예전 키면 새 키를 입력·저장 후 다시 테스트)"
                 )
         return body
 
@@ -218,7 +238,29 @@ async def credentials_test(cfg: AppConfig):
 @api.get("/network/outbound-ip")
 async def outbound_ip():
     ip = await get_outbound_public_ip()
-    return {"outbound_ip": ip or ""}
+    ip4 = await outbound_ipv4_via_same_stack()
+    return {
+        "outbound_ip": ip or "",
+        "outbound_ipv4_stack": ip4 or "",
+        "upbit_ipv4_targets": upbit_resolved_ipv4(),
+    }
+
+
+@api.get("/network/diagnose")
+async def network_diagnose():
+    cred = load_credentials()
+    ak = cred.get("api_access_key") or ""
+    return {
+        "outbound_ip": await get_outbound_public_ip(),
+        "outbound_ipv4_stack": await outbound_ipv4_via_same_stack(),
+        "upbit_ipv4_targets": upbit_resolved_ipv4(),
+        "saved_access_key": mask_key(ak, 4) if ak else "",
+        "steps": [
+            "1. outbound_ipv4_stack 를 업비트 Open API 허용 IP에 등록",
+            "2. AIDI 설정에 새 Access·Secret 둘 다 입력 후 [저장]",
+            "3. 연결 테스트 — key_source 가 '입력한 키' 인지 확인",
+        ],
+    }
 
 
 @api.post("/bot/start")

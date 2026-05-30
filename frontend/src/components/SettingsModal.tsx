@@ -54,7 +54,8 @@ export default function SettingsModal({
         setTestOk(false);
         const parts = [res.message || "연결 실패"];
         if (res.outbound_ip) parts.push(`AIDI 나가는 IP: ${res.outbound_ip}`);
-        if (res.access_key_hint) parts.push(`사용 중 Access Key: ${res.access_key_hint}`);
+        if (res.access_key_hint) parts.push(`키: ${res.access_key_hint}`);
+        if (res.key_source) parts.push(`(${res.key_source})`);
         if (res.hint) parts.push(res.hint);
         setTestMsg(parts.join(" · "));
       }
@@ -273,7 +274,8 @@ export default function SettingsModal({
             </label>
             {hasSaved && (
               <p className="warn subtle">
-                키는 이 PC에만 저장됩니다. 변경 시에만 다시 입력하세요.
+                새 API 키 발급 시 Access·Secret <strong>둘 다</strong> 입력 후 [저장] → 연결
+                테스트. 빈 칸이면 예전 저장 키가 쓰입니다.
               </p>
             )}
             {exchange === "binance" && (

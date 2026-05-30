@@ -8,6 +8,7 @@ from urllib.parse import urlencode
 import httpx
 import jwt
 
+from app.market.ipv4_http import ipv4_async_client
 from app.market.network_info import get_outbound_public_ip
 
 UPBIT_API = "https://api.upbit.com"
@@ -49,10 +50,9 @@ class UpbitClient:
 
     async def _ensure(self) -> httpx.AsyncClient:
         if self._client is None:
-            self._client = httpx.AsyncClient(
+            self._client = ipv4_async_client(
                 base_url=UPBIT_API,
                 timeout=25.0,
-                trust_env=False,
             )
         return self._client
 

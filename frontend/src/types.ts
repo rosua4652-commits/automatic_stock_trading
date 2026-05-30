@@ -39,6 +39,7 @@ export interface CredentialsTestResult {
   accounts?: number;
   outbound_ip?: string;
   access_key_hint?: string;
+  key_source?: string;
   hint?: string;
 }
 
