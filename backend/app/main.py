@@ -43,7 +43,7 @@ STATIC_DIR = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
 # PC에서 run.bat 시작 시 표시 — GitHub 최신과 비교용
-AIDI_BUILD = "2026-03-30-sl-tp-manual"
+AIDI_BUILD = "2026-03-30-chart-fix"
 
 
 def _load_pc_path_hint() -> str:
@@ -440,18 +440,43 @@ async def chart(symbol: str, interval: str = "1h"):
     engine.bind_portfolio()
     sym = symbol.upper()
     iv = interval.lower() if interval.lower() in _CHART_INTERVALS else "1h"
+    from app.market.upbit_data import market as upbit_market
+
     stale = False
+    chart_error = ""
     try:
         data = await engine.get_candles(sym, iv)
+        if not data:
+            cached = upbit_market.get_cached_klines(sym, iv)
+            if cached:
+                stale = True
+                chart_error = "업비트 요청 제한 — 캐시 차트 표시"
+                data = [
+                    {
+                        "time": int(r[0] // 1000),
+                        "open": float(r[1]),
+                        "high": float(r[2]),
+                        "low": float(r[3]),
+                        "close": float(r[4]),
+                        "volume": float(r[5]),
+                    }
+                    for r in cached
+                ]
     except Exception as e:
-        err = str(e)
-        if "429" in err:
-            from app.market.upbit_data import market as upbit_market
-
-            data = upbit_market.get_cached_klines(sym, iv) or []
-            stale = True
-        else:
-            raise
+        chart_error = str(e)[:120]
+        cached = upbit_market.get_cached_klines(sym, iv) or []
+        stale = True
+        data = [
+            {
+                "time": int(r[0] // 1000),
+                "open": float(r[1]),
+                "high": float(r[2]),
+                "low": float(r[3]),
+                "close": float(r[4]),
+                "volume": float(r[5]),
+            }
+            for r in cached
+        ]
     markers = [m.model_dump() for m in engine.portfolio.chart_markers(sym)]
     return {
         "symbol": sym,
@@ -459,6 +484,7 @@ async def chart(symbol: str, interval: str = "1h"):
         "candles": data,
         "markers": markers,
         "stale": stale,
+        "chart_error": chart_error,
     }
 
 

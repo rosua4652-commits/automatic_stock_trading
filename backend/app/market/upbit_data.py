@@ -42,8 +42,30 @@ _TICKERS_TTL_SEC = 25.0
 _TICKER_CHUNK_SIZE = 35
 _TICKER_CHUNK_DELAY_SEC = 0.18
 _KLINES_CACHE: dict[str, tuple[float, list[list]]] = {}
-_KLINES_TTL_SEC = 20.0
 _KLINES_LOCK = asyncio.Lock()
+_CANDLE_SEM = asyncio.Semaphore(1)
+_LAST_CANDLE_REQ = 0.0
+_CANDLE_MIN_GAP_SEC = 0.45
+
+
+def _klines_ttl_sec(interval: str) -> float:
+    iv = interval.lower()
+    if iv == "1s":
+        return 8.0
+    if iv == "1m":
+        return 35.0
+    if iv == "15m":
+        return 50.0
+    return 90.0
+
+
+async def _throttle_candle_api() -> None:
+    global _LAST_CANDLE_REQ
+    now = time.time()
+    wait = _CANDLE_MIN_GAP_SEC - (now - _LAST_CANDLE_REQ)
+    if wait > 0:
+        await asyncio.sleep(wait)
+    _LAST_CANDLE_REQ = time.time()
 
 
 def is_safe_krw_base(base: str) -> bool:
@@ -254,9 +276,10 @@ class UpbitDataClient:
 
         iv = interval.lower()
         cache_key = f"{sym}:{iv}"
+        ttl = _klines_ttl_sec(iv)
         now = time.time()
         cached = _KLINES_CACHE.get(cache_key)
-        if cached and now - cached[0] < _KLINES_TTL_SEC:
+        if cached and now - cached[0] < ttl:
             return cached[1]
 
         path_spec = _INTERVAL_PATHS.get(iv, ("minutes", 60))
@@ -272,27 +295,36 @@ class UpbitDataClient:
             url = f"/v1/candles/minutes/{unit}"
             params = {"market": market, "count": min(limit, 200)}
 
-        async with _KLINES_LOCK:
-            cached = _KLINES_CACHE.get(cache_key)
-            if cached and now - cached[0] < _KLINES_TTL_SEC:
-                return cached[1]
-            resp = await _get_with_retry(client, url, params=params)
-            if resp.status_code == 429:
-                if cached:
+        async with _CANDLE_SEM:
+            async with _KLINES_LOCK:
+                cached = _KLINES_CACHE.get(cache_key)
+                now = time.time()
+                if cached and now - cached[0] < ttl:
                     return cached[1]
-                raise httpx.HTTPStatusError(
-                    "429 Too Many Requests",
-                    request=resp.request,
-                    response=resp,
-                )
-            resp.raise_for_status()
-            rows = resp.json()
-            if not isinstance(rows, list):
-                raw: list[list] = []
-            else:
-                raw = [_candle_row(c) for c in reversed(rows)]
-            _KLINES_CACHE[cache_key] = (time.time(), raw)
-            return raw
+                await _throttle_candle_api()
+                try:
+                    resp = await _get_with_retry(client, url, params=params)
+                except httpx.HTTPStatusError as e:
+                    if cached:
+                        return cached[1]
+                    if e.response is not None and e.response.status_code == 429:
+                        return []
+                    raise
+                if resp.status_code == 429:
+                    if cached:
+                        return cached[1]
+                    return []
+                if resp.status_code >= 400:
+                    if cached:
+                        return cached[1]
+                    resp.raise_for_status()
+                rows = resp.json()
+                if not isinstance(rows, list):
+                    raw: list[list] = []
+                else:
+                    raw = [_candle_row(c) for c in reversed(rows)]
+                _KLINES_CACHE[cache_key] = (time.time(), raw)
+                return raw
 
     async def price(self, symbol: str) -> float:
         t = await self.tickers_for_symbols([symbol.upper()])

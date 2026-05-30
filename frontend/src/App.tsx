@@ -98,8 +98,9 @@ export default function App() {
     });
   }, [applyPayload]);
 
-  // 차트 로드 — 초봉(1s)은 1초마다, 분봉은 3초, 그 외 12초
+  // 차트 탭에서만 로드 (자금/알림 탭에서 BTC 등 불필요 요청 방지)
   useEffect(() => {
+    if (mainView !== "chart") return;
     let cancelled = false;
     let initial = true;
     const sym = activeSymbol;
@@ -114,6 +115,13 @@ export default function App() {
         const res = await fetchChart(sym, iv);
         if (!cancelled && activeSymbolRef.current === sym) {
           setCandles(res.candles || []);
+          if (res.stale) {
+            setChartError(
+              res.chart_error || "업비트 요청 제한 — 잠시 후 자동 갱신됩니다"
+            );
+          } else {
+            setChartError(null);
+          }
         }
       } catch (e) {
         if (!cancelled && activeSymbolRef.current === sym) {
@@ -121,11 +129,9 @@ export default function App() {
           setChartError(e instanceof Error ? e.message : "차트 로드 실패");
         }
       } finally {
-        if (!cancelled) {
-          if (initial) {
-            setChartLoading(false);
-            initial = false;
-          }
+        if (!cancelled && initial) {
+          setChartLoading(false);
+          initial = false;
         }
       }
     };
@@ -136,7 +142,7 @@ export default function App() {
       cancelled = true;
       window.clearInterval(timerId);
     };
-  }, [activeSymbol, chartInterval]);
+  }, [activeSymbol, chartInterval, mainView]);
 
   const handleSelectCoin = useCallback(
     async (sym: string) => {

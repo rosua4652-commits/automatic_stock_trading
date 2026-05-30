@@ -250,4 +250,6 @@ export interface ChartResponse {
   symbol: string;
   interval: string;
   candles: Candle[];
+  stale?: boolean;
+  chart_error?: string;
 }

@@ -86,11 +86,12 @@ if errorlevel 1 (
   echo   WARNING: Could not read AIDI_BUILD. Check backend\app\main.py
   popd
 ) else (
-  ".venv\Scripts\python.exe" -c "from app.main import AIDI_BUILD; import sys; sys.exit(0 if 'upbit-only' in AIDI_BUILD else 1)" 2>nul
+  ".venv\Scripts\python.exe" -c "from app.main import AIDI_BUILD; b=AIDI_BUILD; import sys; ok=('chart-fix' in b or 'sl-tp-manual' in b or 'upbit-truth' in b); print('  ', 'OK latest' if ok else 'WARNING old build'); sys.exit(0 if ok else 1)" 2>nul
   if errorlevel 1 (
-    echo   WARNING: Old build id - get latest ZIP from GitHub
+    echo   WARNING: Old code - overwrite folder from GitHub ZIP then run again
+    echo   Need: AIDI_BUILD contains chart-fix or sl-tp-manual
   ) else (
-    echo   OK - latest Upbit-only build
+    echo   OK - backend up to date
   )
   popd
 )

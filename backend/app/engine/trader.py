@@ -816,7 +816,10 @@ class TradingEngine:
         iv = interval.lower()
         limits = {"1s": 300, "1m": 500, "15m": 300, "1h": 200, "4h": 200, "1d": 200}
         limit = limits.get(iv, 200)
-        raw = await market.klines(symbol, iv, limit)
+        try:
+            raw = await market.klines(symbol, iv, limit)
+        except Exception:
+            raw = market.get_cached_klines(symbol, iv) or []
         candles = [
             {
                 "time": int(r[0] // 1000),
