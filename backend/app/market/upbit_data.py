@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
+import time
 from typing import Any
 
-from app.config import settings
+import httpx
+
 from app.market.upbit_client import symbol_to_upbit, upbit_to_symbol
 from app.market.upbit_markets import get_upbit_krw_markets
 
@@ -30,6 +33,14 @@ _INTERVAL_PATHS: dict[str, tuple[str, str | int]] = {
     "4h": ("minutes", 240),
     "1d": ("days", ""),
 }
+
+# 업비트 REST rate limit — 전 종목 ticker 는 캐시 + 소량 배치
+_TICKERS_CACHE: tuple[float, dict[str, dict[str, Any]]] | None = None
+_TICKERS_LOCK = asyncio.Lock()
+_USDT_KRW_CACHE: tuple[float, float] | None = None
+_TICKERS_TTL_SEC = 25.0
+_TICKER_CHUNK_SIZE = 35
+_TICKER_CHUNK_DELAY_SEC = 0.18
 
 
 def is_safe_krw_base(base: str) -> bool:
@@ -69,51 +80,156 @@ def _candle_row(c: dict[str, Any]) -> list:
     ]
 
 
+def _stale_tickers() -> dict[str, dict[str, Any]] | None:
+    global _TICKERS_CACHE
+    if _TICKERS_CACHE:
+        return _TICKERS_CACHE[1]
+    return None
+
+
+async def _get_with_retry(client: httpx.AsyncClient, url: str, **kwargs) -> httpx.Response:
+    last: httpx.Response | None = None
+    for attempt in range(5):
+        resp = await client.get(url, **kwargs)
+        last = resp
+        if resp.status_code == 429:
+            await asyncio.sleep(min(2.0, 0.35 * (2**attempt)))
+            continue
+        return resp
+    return last  # type: ignore[return-value]
+
+
+async def _fetch_ticker_rows(
+    client: httpx.AsyncClient, market_list: list[str]
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for i in range(0, len(market_list), _TICKER_CHUNK_SIZE):
+        part = market_list[i : i + _TICKER_CHUNK_SIZE]
+        resp = await _get_with_retry(
+            client,
+            "/v1/ticker",
+            params={"markets": ",".join(part)},
+        )
+        if resp.status_code == 429:
+            raise httpx.HTTPStatusError(
+                "429 Too Many Requests",
+                request=resp.request,
+                response=resp,
+            )
+        resp.raise_for_status()
+        data = resp.json()
+        if isinstance(data, list):
+            rows.extend(data)
+        if i + _TICKER_CHUNK_SIZE < len(market_list):
+            await asyncio.sleep(_TICKER_CHUNK_DELAY_SEC)
+    return rows
+
+
 class UpbitDataClient:
     async def close(self) -> None:
         pass
 
     async def usdt_krw_rate(self) -> float:
+        global _USDT_KRW_CACHE
+        now = time.time()
+        if _USDT_KRW_CACHE and now - _USDT_KRW_CACHE[0] < 30:
+            return _USDT_KRW_CACHE[1]
+
         from app.market.ipv4_http import shared_upbit_client
 
         client = shared_upbit_client()
         try:
-            resp = await client.get("/v1/ticker", params={"markets": "KRW-USDT"})
+            resp = await _get_with_retry(
+                client, "/v1/ticker", params={"markets": "KRW-USDT"}
+            )
             resp.raise_for_status()
             rows = resp.json()
             if rows:
-                return float(rows[0].get("trade_price") or 1350.0)
+                rate = float(rows[0].get("trade_price") or 1350.0)
+                _USDT_KRW_CACHE = (now, rate)
+                return rate
         except Exception:
             pass
-        return 1350.0
+        return _USDT_KRW_CACHE[1] if _USDT_KRW_CACHE else 1350.0
 
-    async def tickers_24h(self) -> dict[str, dict[str, Any]]:
+    async def _build_tickers_dict(
+        self, markets: list[str] | None = None
+    ) -> dict[str, dict[str, Any]]:
         from app.market.ipv4_http import shared_upbit_client
 
-        markets = sorted(await get_upbit_krw_markets())
+        if markets is None:
+            markets = sorted(await get_upbit_krw_markets())
         if not markets:
             return {}
+
         rate = await self.usdt_krw_rate()
         client = shared_upbit_client()
         out: dict[str, dict[str, Any]] = {}
-        chunk = 100
-        for i in range(0, len(markets), chunk):
-            part = markets[i : i + chunk]
-            resp = await client.get(
-                "/v1/ticker",
-                params={"markets": ",".join(part)},
-            )
-            resp.raise_for_status()
-            for row in resp.json():
-                market = row.get("market", "")
-                if not market.startswith("KRW-"):
-                    continue
-                base = market.replace("KRW-", "")
-                if not is_safe_krw_base(base):
-                    continue
-                sym = upbit_to_symbol(market)
-                out[sym] = _ticker_to_internal(row, rate)
+        try:
+            rows = await _fetch_ticker_rows(client, markets)
+        except Exception:
+            stale = _stale_tickers()
+            if stale:
+                return stale
+            raise
+
+        for row in rows:
+            market = row.get("market", "")
+            if not market.startswith("KRW-"):
+                continue
+            base = market.replace("KRW-", "")
+            if not is_safe_krw_base(base):
+                continue
+            sym = upbit_to_symbol(market)
+            out[sym] = _ticker_to_internal(row, rate)
         return out
+
+    async def tickers_24h(self) -> dict[str, dict[str, Any]]:
+        global _TICKERS_CACHE
+        now = time.time()
+        if _TICKERS_CACHE and now - _TICKERS_CACHE[0] < _TICKERS_TTL_SEC:
+            return _TICKERS_CACHE[1]
+
+        async with _TICKERS_LOCK:
+            now = time.time()
+            if _TICKERS_CACHE and now - _TICKERS_CACHE[0] < _TICKERS_TTL_SEC:
+                return _TICKERS_CACHE[1]
+            try:
+                out = await self._build_tickers_dict()
+                _TICKERS_CACHE = (time.time(), out)
+                return out
+            except Exception:
+                stale = _stale_tickers()
+                if stale:
+                    return stale
+                raise
+
+    async def tickers_for_symbols(
+        self, symbols: list[str]
+    ) -> dict[str, dict[str, Any]]:
+        """탭·보유 종목만 조회 (전 종목 ticker 호출 방지)."""
+        if not symbols:
+            return {}
+        markets: list[str] = []
+        allowed = await get_upbit_krw_markets()
+        for sym in symbols:
+            m = symbol_to_upbit(sym.upper())
+            if m in allowed:
+                markets.append(m)
+        if not markets:
+            return {}
+        # 소량이면 직접 조회, 많으면 전체 캐시에서 필터
+        if len(markets) <= 25:
+            try:
+                full = await self._build_tickers_dict(markets)
+                return full
+            except Exception:
+                stale = _stale_tickers()
+                if stale:
+                    return {s: stale[s] for s in symbols if s in stale}
+                return {}
+        all_t = await self.tickers_24h()
+        return {s: all_t[s] for s in symbols if s in all_t}
 
     async def klines(
         self, symbol: str, interval: str = "1h", limit: int = 168
@@ -139,7 +255,7 @@ class UpbitDataClient:
             url = f"/v1/candles/minutes/{unit}"
             params = {"market": market, "count": min(limit, 200)}
 
-        resp = await client.get(url, params=params)
+        resp = await _get_with_retry(client, url, params=params)
         resp.raise_for_status()
         rows = resp.json()
         if not isinstance(rows, list):
@@ -148,10 +264,10 @@ class UpbitDataClient:
         return raw
 
     async def price(self, symbol: str) -> float:
-        tickers = await self.tickers_24h()
-        t = tickers.get(symbol.upper())
-        if t:
-            return float(t["lastPrice"])
+        t = await self.tickers_for_symbols([symbol.upper()])
+        row = t.get(symbol.upper())
+        if row:
+            return float(row["lastPrice"])
         return 0.0
 
 

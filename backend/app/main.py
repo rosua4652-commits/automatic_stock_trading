@@ -73,11 +73,16 @@ api = APIRouter(prefix="/api")
 async def _get_tickers() -> dict:
     global _ticker_cache
     now = time.time()
-    if _ticker_cache and now - _ticker_cache[0] < 5:
+    if _ticker_cache and now - _ticker_cache[0] < 20:
         return _ticker_cache[1]
-    t = await market.tickers_24h()
-    _ticker_cache = (now, t)
-    return t
+    try:
+        t = await market.tickers_24h()
+        _ticker_cache = (now, t)
+        return t
+    except Exception:
+        if _ticker_cache:
+            return _ticker_cache[1]
+        return {}
 
 
 async def _build_status() -> dict:

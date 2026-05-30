@@ -765,14 +765,15 @@ class TradingEngine:
 
     async def tab_quotes_map(self, limit: int = 120) -> dict[str, dict]:
         """탭 UI용 시세 (USDT·원화·24h)."""
-        tickers = await market.tickers_24h()
+        syms = self.tab_symbols()[:limit]
+        tickers = await market.tickers_for_symbols(syms)
         self.bind_portfolio()
         rate = self.portfolio.usdt_krw
         if rate <= 0:
             rate = await market.usdt_krw_rate()
             self.portfolio.usdt_krw = rate
         out: dict[str, dict] = {}
-        for sym in self.tab_symbols()[:limit]:
+        for sym in syms:
             t = tickers.get(sym)
             if not t:
                 continue
@@ -787,15 +788,15 @@ class TradingEngine:
         return out
 
     async def prices_map(self) -> dict[str, float]:
-        tickers = await market.tickers_24h()
-        out: dict[str, float] = {}
-        for sym in self.portfolio.positions:
-            t = tickers.get(sym)
-            if t:
-                out[sym] = float(t["lastPrice"])
+        need = list(self.portfolio.positions.keys())
         sym = self.bot.view_symbol
-        if sym in tickers:
-            out[sym] = float(tickers[sym]["lastPrice"])
+        if sym and sym not in need:
+            need.append(sym)
+        tickers = await market.tickers_for_symbols(need)
+        out: dict[str, float] = {}
+        for s, t in tickers.items():
+            if t:
+                out[s] = float(t["lastPrice"])
         return out
 
     def build_coin_view(
