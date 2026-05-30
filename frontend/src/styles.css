@@ -519,9 +519,11 @@ body {
 .layout {
   flex: 1;
   display: grid;
-  grid-template-columns: minmax(260px, 300px) 1fr;
+  grid-template-columns: minmax(260px, 300px) minmax(0, 1fr);
   gap: 0;
   min-height: 0;
+  overflow: hidden;
+  max-height: min(56vh, 520px);
 }
 
 .side-panel {
@@ -720,7 +722,11 @@ body {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  min-width: 0;
+  overflow: hidden;
   padding: 0.75rem 1rem 1rem;
+  height: 100%;
+  max-height: min(56vh, 520px);
 }
 
 .chart-toolbar {
@@ -895,22 +901,55 @@ body {
   margin-top: 0.2rem;
 }
 
+.chart-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(11, 15, 20, 0.75);
+  font-size: 0.85rem;
+  color: var(--muted);
+  pointer-events: none;
+}
+
 .chart-overlay.error {
   color: var(--red);
 }
 
 .chart-canvas {
-  position: relative;
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
-  min-height: 380px;
+  max-width: 100%;
+  overflow: hidden;
 }
 
 .chart-canvas-wrap {
   position: relative;
   flex: 1;
-  min-height: 400px;
-  height: 400px;
+  min-height: 280px;
+  height: clamp(280px, 42vh, 440px);
+  max-height: 440px;
+  overflow: hidden;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+}
+
+.chart-tools-label {
+  font-size: 0.68rem;
+  color: var(--muted);
+  padding: 0 0.25rem;
+  align-self: center;
+}
+
+.chart-tools-divider {
+  width: 1px;
+  height: 1.2rem;
+  background: var(--border);
+  margin: 0 0.15rem;
 }
 
 .main-nav {

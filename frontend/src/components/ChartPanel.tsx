@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   createChart,
   type IChartApi,
@@ -24,6 +24,15 @@ const INTERVALS = [
   { v: "1d", label: "1일" },
 ];
 
+/** 화면에 보여줄 캔들 개수 (고정 범위) */
+const RANGE_OPTIONS = [
+  { bars: 60, label: "60봉" },
+  { bars: 100, label: "100봉" },
+  { bars: 150, label: "150봉" },
+] as const;
+
+const DEFAULT_VISIBLE_BARS = 100;
+
 export default function ChartPanel({
   symbol,
   pairLabel,
@@ -37,6 +46,22 @@ export default function ChartPanel({
   const chartRef = useRef<IChartApi | null>(null);
   const candleRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
   const volRef = useRef<ISeriesApi<"Histogram"> | null>(null);
+  const [visibleBars, setVisibleBarsState] = useState(DEFAULT_VISIBLE_BARS);
+  const candleCountRef = useRef(0);
+
+  const applyVisibleRange = (barCount: number, visibleBars: number) => {
+    const chart = chartRef.current;
+    if (!chart || barCount <= 0) return;
+    const n = Math.min(visibleBars, barCount);
+    if (barCount <= n) {
+      chart.timeScale().fitContent();
+      return;
+    }
+    chart.timeScale().setVisibleLogicalRange({
+      from: barCount - n,
+      to: barCount - 1,
+    });
+  };
 
   // symbol 바뀔 때 차트 전체 재생성
   useEffect(() => {
@@ -54,8 +79,23 @@ export default function ChartPanel({
         vertLines: { color: "rgba(148,163,184,0.08)" },
         horzLines: { color: "rgba(148,163,184,0.08)" },
       },
-      rightPriceScale: { borderVisible: false },
-      timeScale: { borderVisible: false, timeVisible: true },
+      rightPriceScale: {
+        borderVisible: false,
+        autoScale: true,
+        scaleMargins: { top: 0.08, bottom: 0.08 },
+      },
+      timeScale: {
+        borderVisible: false,
+        timeVisible: true,
+        secondsVisible: false,
+        rightOffset: 6,
+        barSpacing: 8,
+        minBarSpacing: 4,
+        fixLeftEdge: true,
+        lockVisibleTimeRangeOnResize: true,
+      },
+      handleScroll: { mouseWheel: true, pressedMouseMove: true },
+      handleScale: { axisPressedMouseMove: true, mouseWheel: true, pinch: true },
       crosshair: { mode: 1 },
     });
 
@@ -80,10 +120,13 @@ export default function ChartPanel({
 
     const ro = new ResizeObserver(() => {
       if (!wrapRef.current) return;
-      chart.applyOptions({
-        width: wrapRef.current.clientWidth,
-        height: wrapRef.current.clientHeight,
-      });
+      const w = wrapRef.current.clientWidth;
+      const h = wrapRef.current.clientHeight;
+      if (w < 10 || h < 10) return;
+      chart.applyOptions({ width: w, height: h });
+      if (candleCountRef.current > 0) {
+        applyVisibleRange(candleCountRef.current, visibleBars);
+      }
     });
     ro.observe(el);
 
@@ -94,7 +137,7 @@ export default function ChartPanel({
       candleRef.current = null;
       volRef.current = null;
     };
-  }, [symbol, chartInterval]);
+  }, [symbol, chartInterval, visibleBars]);
 
   useEffect(() => {
     if (!candleRef.current || !volRef.current) return;
@@ -120,14 +163,31 @@ export default function ChartPanel({
     }));
     candleRef.current.setData(cs);
     volRef.current.setData(vs);
-    chartRef.current?.timeScale().fitContent();
-  }, [candles]);
+    candleCountRef.current = cs.length;
+    applyVisibleRange(cs.length, visibleBars);
+  }, [candles, visibleBars]);
+
+  const setVisibleBars = (bars: number) => {
+    setVisibleBarsState(bars);
+  };
 
   return (
     <div className="chart-panel">
       <div className="chart-toolbar">
         <span className="chart-pair-badge">{pairLabel}</span>
         <div className="chart-tools">
+          <span className="chart-tools-label">구간</span>
+          {RANGE_OPTIONS.map((r) => (
+            <button
+              key={r.bars}
+              type="button"
+              className={`tool-btn ${visibleBars === r.bars ? "active" : ""}`}
+              onClick={() => setVisibleBars(r.bars)}
+            >
+              {r.label}
+            </button>
+          ))}
+          <span className="chart-tools-divider" />
           {INTERVALS.map((i) => (
             <button
               key={i.v}
