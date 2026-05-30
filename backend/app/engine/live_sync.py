@@ -7,7 +7,13 @@ from app.market.upbit_data import market as upbit_feed
 from app.market.binance_live import binance_live
 from app.market.coin_registry import coin_meta
 from app.market.upbit_client import symbol_to_upbit, upbit_client, upbit_to_symbol
-from app.models import AppConfig, Position, TradeEvent
+from app.models import (
+    AppConfig,
+    Position,
+    TradeEvent,
+    UpbitAccountSnapshot,
+    UpbitHoldingRow,
+)
 from app.storage.credentials import get_active_keys
 
 STABLE = {"USDT", "USDC", "BUSD", "FDUSD", "DAI", "TUSD", "KRW"}
@@ -44,10 +50,24 @@ def _resolve_position_costs(
         man_cost = 0.0
 
     total_cost = auto_cost + man_cost
-    if total_cost <= 0 and total_qty > 1e-12:
-        if avg_buy_krw > 0:
-            total_cost = avg_buy_krw * total_qty
-        elif price_krw > 0:
+    if avg_buy_krw > 0 and total_qty > 1e-12:
+        total_cost = avg_buy_krw * total_qty
+        if auto_q > 0 and manual_q > 0:
+            ratio_a = (
+                auto_cost / (auto_cost + man_cost)
+                if (auto_cost + man_cost) > 0
+                else auto_q / total_qty
+            )
+            auto_cost = total_cost * ratio_a
+            man_cost = total_cost - auto_cost
+        elif auto_q > 0:
+            auto_cost = total_cost
+            man_cost = 0.0
+        else:
+            man_cost = total_cost
+            auto_cost = 0.0
+    elif total_cost <= 0 and total_qty > 1e-12:
+        if price_krw > 0:
             total_cost = price_krw * total_qty
         if total_cost > 0:
             if auto_q > 0 and manual_q > 0:
@@ -128,6 +148,8 @@ async def _sync_upbit(
 
     tickers = await upbit_client.tickers(list(holdings.keys()))
     new_positions: dict[str, Position] = {}
+    upbit_rows: list[UpbitHoldingRow] = []
+    synced_at = time.time()
 
     for krw_market, total_qty in holdings.items():
         t = tickers.get(krw_market)
@@ -145,7 +167,10 @@ async def _sync_upbit(
         manual_q = max(0.0, total_qty - auto_q)
         if pm.get("excluded_from_auto"):
             manual_q = total_qty
-            auto_q = min(float(pm.get("auto_quantity", 0)), max(0, total_qty - manual_q))
+            auto_q = 0.0
+        if abs(auto_q + manual_q - total_qty) > 1e-8:
+            manual_q = total_qty
+            auto_q = 0.0
 
         bal = balances_by_currency.get(base, {})
         avg_buy_krw = _parse_avg_buy_krw(bal)
@@ -159,6 +184,8 @@ async def _sync_upbit(
             usdt_krw=portfolio.usdt_krw,
         )
         ref_usdt = auto_avg or manual_avg or price_usdt
+        cost_krw = auto_cost + man_cost
+        valuation_krw = total_qty * price_krw
 
         cm = coin_meta(symbol, base)
         sl = float(pm.get("stop_loss", 0))
@@ -185,16 +212,33 @@ async def _sync_upbit(
             trailing_high=float(pm.get("trailing_high", price_usdt)),
             opened_at=float(pm.get("opened_at", time.time())),
             score=float(pm.get("score", 0)),
-            cost_basis_krw=auto_cost + man_cost,
+            cost_basis_krw=cost_krw,
             auto_cost_basis_krw=auto_cost,
             manual_cost_basis_krw=man_cost,
             entry_reason=pm.get("entry_reason", "업비트 동기화"),
             entry_score=float(pm.get("entry_score", 0)),
             entry_outlook=pm.get("entry_outlook", ""),
             excluded_from_auto=bool(pm.get("excluded_from_auto", False)),
+            data_source="upbit",
+            exchange_quantity=total_qty,
+            avg_buy_price_krw=avg_buy_krw,
+            current_price_krw=price_krw,
+            valuation_krw=valuation_krw,
         )
         if total_qty > 1e-10:
             new_positions[symbol] = pos
+            upbit_rows.append(
+                UpbitHoldingRow(
+                    symbol=symbol,
+                    market=krw_market,
+                    currency=base,
+                    quantity=total_qty,
+                    avg_buy_price_krw=avg_buy_krw,
+                    current_price_krw=price_krw,
+                    valuation_krw=valuation_krw,
+                    cost_basis_krw=cost_krw,
+                )
+            )
 
     portfolio.positions = new_positions
     portfolio.cash_krw = krw_cash
@@ -204,16 +248,29 @@ async def _sync_upbit(
     portfolio.trades = local_trades
 
     n = len(new_positions)
-    coin_value = sum(
-        p.quantity * p.current_price * portfolio.usdt_krw
+    coin_value = sum(p.valuation_krw for p in new_positions.values())
+    invested_principal = sum(
+        (p.avg_buy_price_krw * p.exchange_quantity)
+        if p.avg_buy_price_krw > 0
+        else p.cost_basis_krw
         for p in new_positions.values()
     )
     total_krw = portfolio.cash_krw + coin_value
-    if not live_meta.get("account_principal_krw"):
-        live_meta["account_principal_krw"] = total_krw
+
+    snap = UpbitAccountSnapshot(
+        synced_at=synced_at,
+        krw_balance=krw_cash,
+        coin_valuation_krw=coin_value,
+        total_assets_krw=total_krw,
+        invested_principal_krw=invested_principal,
+        holdings=sorted(upbit_rows, key=lambda r: r.valuation_krw, reverse=True),
+    )
+    live_meta["upbit_snapshot"] = snap.model_dump()
+    live_meta["account_principal_krw"] = invested_principal
+
     return (
-        f"[업비트 실거래] 연동 · 보유 {n}종 · "
-        f"총자산 {total_krw:,.0f}원 (KRW {krw_cash:,.0f})"
+        f"[업비트 API] 보유 {n}종 · 총자산 {total_krw:,.0f}원 "
+        f"(코인 {coin_value:,.0f} + KRW {krw_cash:,.0f}) · 투자원금 {invested_principal:,.0f}원"
     )
 
 
@@ -356,4 +413,6 @@ def export_live_meta(portfolio, preserve: dict[str, Any] | None = None) -> dict[
     if preserve:
         if preserve.get("account_principal_krw"):
             out["account_principal_krw"] = preserve["account_principal_krw"]
+        if preserve.get("upbit_snapshot"):
+            out["upbit_snapshot"] = preserve["upbit_snapshot"]
     return out

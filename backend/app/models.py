@@ -108,6 +108,12 @@ class Position(BaseModel):
     entry_score: float = 0.0
     entry_outlook: str = ""
     excluded_from_auto: bool = False
+    # 실거래: 업비트 API 기준 (잔고·평단·시세·평가)
+    data_source: str = ""
+    exchange_quantity: float = 0.0
+    avg_buy_price_krw: float = 0.0
+    current_price_krw: float = 0.0
+    valuation_krw: float = 0.0
 
     @computed_field
     @property
@@ -158,6 +164,30 @@ class PortfolioSnapshot(BaseModel):
     target_profit_krw: float
     progress_pct: float
     positions: list[Position]
+    data_source: str = "paper"
+    upbit_synced_at: Optional[float] = None
+
+
+class UpbitHoldingRow(BaseModel):
+    symbol: str
+    market: str
+    currency: str
+    quantity: float
+    avg_buy_price_krw: float
+    current_price_krw: float
+    valuation_krw: float
+    cost_basis_krw: float
+
+
+class UpbitAccountSnapshot(BaseModel):
+    """업비트 계정 API 기준 스냅샷 (실거래 표시·검증용)."""
+    source: str = "upbit"
+    synced_at: float
+    krw_balance: float
+    coin_valuation_krw: float
+    total_assets_krw: float
+    invested_principal_krw: float
+    holdings: list[UpbitHoldingRow] = Field(default_factory=list)
 
 
 class CoinCandidate(BaseModel):
@@ -307,3 +337,4 @@ class StatusResponse(BaseModel):
     tabs: list[str] = Field(default_factory=list)
     tab_quotes: dict[str, TabQuote] = Field(default_factory=dict)
     account_link: AccountLinkInfo = Field(default_factory=AccountLinkInfo)
+    upbit_snapshot: Optional[UpbitAccountSnapshot] = None

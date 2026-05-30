@@ -284,16 +284,63 @@ class PortfolioManager:
         self._recalc_avg(pos)
         return pos
 
-    def snapshot(self, prices: dict[str, float], config: AppConfig) -> PortfolioSnapshot:
+    def snapshot(
+        self,
+        prices: dict[str, float],
+        config: AppConfig,
+        *,
+        upbit_truth: bool = False,
+        upbit_synced_at: float | None = None,
+    ) -> PortfolioSnapshot:
         invested = 0.0
         principal = 0.0
         unrealized = 0.0
         pos_list: list[Position] = []
 
         for sym, pos in self.positions.items():
-            px = prices.get(sym, pos.current_price or pos.avg_price)
+            if upbit_truth and pos.current_price_krw > 0:
+                px = pos.current_price_krw / max(self.usdt_krw, 1.0)
+            else:
+                px = prices.get(sym, pos.current_price or pos.avg_price)
             pos.current_price = px
             self._recalc_avg(pos)
+
+            if upbit_truth and pos.exchange_quantity > 0:
+                qty = pos.exchange_quantity
+                px_krw = pos.current_price_krw
+                if sym in prices and prices[sym] > 0:
+                    pos.current_price = prices[sym]
+                    px_krw = prices[sym] * max(self.usdt_krw, 1.0)
+                    pos.current_price_krw = px_krw
+                cost_krw = (
+                    pos.avg_buy_price_krw * qty
+                    if pos.avg_buy_price_krw > 0
+                    else pos.cost_basis_krw
+                )
+                if cost_krw <= 0 and pos.avg_price > 0:
+                    cost_krw = self.usdt_to_krw(qty * pos.avg_price)
+                val_krw = qty * px_krw if px_krw > 0 else pos.valuation_krw
+                pos.valuation_krw = val_krw
+                pnl_krw = val_krw - cost_krw
+                pos.cost_basis_krw = round(cost_krw, 0)
+                pos.current_value_krw = round(val_krw, 0)
+                pos.pnl_krw = round(pnl_krw, 0)
+                if pos.auto_quantity > 0:
+                    aq = pos.auto_quantity / max(qty, 1e-12)
+                    pos.auto_value_krw = round(val_krw * aq, 0)
+                    ac = cost_krw * aq
+                    pos.auto_pnl_krw = round(pos.auto_value_krw - ac, 0)
+                if pos.manual_quantity > 0:
+                    mq = pos.manual_quantity / max(qty, 1e-12)
+                    pos.manual_value_krw = round(val_krw * mq, 0)
+                    mc = cost_krw * mq
+                    pos.manual_pnl_krw = round(pos.manual_value_krw - mc, 0)
+                invested += val_krw
+                principal += cost_krw
+                unrealized += pnl_krw
+                pos_list.append(pos)
+                continue
+
             cost_krw = pos.cost_basis_krw
             if cost_krw <= 0 and pos.quantity > 0 and pos.avg_price > 0:
                 cost_krw = self.usdt_to_krw(pos.quantity * pos.avg_price)
@@ -358,6 +405,8 @@ class PortfolioManager:
             target_profit_krw=config.target_profit_krw,
             progress_pct=round(progress, 1),
             positions=sorted(pos_list, key=lambda p: p.current_value_krw, reverse=True),
+            data_source="upbit" if upbit_truth else "paper",
+            upbit_synced_at=upbit_synced_at,
         )
 
     def buy(

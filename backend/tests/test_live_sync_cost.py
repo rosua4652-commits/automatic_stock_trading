@@ -25,7 +25,8 @@ def test_resolve_costs_from_upbit_avg():
     assert auto_avg == 0.0
 
 
-def test_resolve_costs_keeps_saved_meta():
+def test_resolve_costs_splits_upbit_total_by_meta_ratio():
+    """업비트 평단 총원금 우선, AI/수동 비율은 기존 메타 비중 유지."""
     pm = {
         "auto_cost_basis_krw": 3000,
         "manual_cost_basis_krw": 2000,
@@ -41,8 +42,9 @@ def test_resolve_costs_keeps_saved_meta():
         price_krw=100.0,
         usdt_krw=1350.0,
     )
-    assert auto_cost == 3000
-    assert man_cost == 2000
+    assert auto_cost + man_cost == 9990
+    assert abs(auto_cost - 5994) < 0.01
+    assert abs(man_cost - 3996) < 0.01
     assert auto_avg == 0.5
     assert manual_avg == 0.4
 

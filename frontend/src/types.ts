@@ -93,6 +93,33 @@ export interface Position {
   entry_outlook: string;
   excluded_from_auto: boolean;
   score: number;
+  /** 실거래: 업비트 API 기준 필드 */
+  data_source?: string;
+  exchange_quantity?: number;
+  avg_buy_price_krw?: number;
+  current_price_krw?: number;
+  valuation_krw?: number;
+}
+
+export interface UpbitHoldingRow {
+  symbol: string;
+  market: string;
+  currency: string;
+  quantity: number;
+  avg_buy_price_krw: number;
+  current_price_krw: number;
+  valuation_krw: number;
+  cost_basis_krw: number;
+}
+
+export interface UpbitAccountSnapshot {
+  source: string;
+  synced_at: number;
+  krw_balance: number;
+  coin_valuation_krw: number;
+  total_assets_krw: number;
+  invested_principal_krw: number;
+  holdings: UpbitHoldingRow[];
 }
 
 export interface Portfolio {
@@ -106,6 +133,8 @@ export interface Portfolio {
   target_profit_krw: number;
   progress_pct: number;
   positions: Position[];
+  data_source?: string;
+  upbit_synced_at?: number;
 }
 
 export interface CoinCandidate {
@@ -192,6 +221,7 @@ export interface StatusPayload {
   tabs: string[];
   tab_quotes?: Record<string, TabQuote>;
   account_link?: AccountLink;
+  upbit_snapshot?: UpbitAccountSnapshot;
   status_version?: number;
   aidi_build?: string;
   network?: {

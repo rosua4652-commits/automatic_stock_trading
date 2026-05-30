@@ -1,5 +1,10 @@
 import { useEffect, useState } from "react";
-import type { Portfolio, Position, TradeEvent } from "../types";
+import type {
+  Portfolio,
+  Position,
+  TradeEvent,
+  UpbitAccountSnapshot,
+} from "../types";
 import { fmtKrw, fmtPct, fmtUsd, isRunning, MIN_BUY_KRW } from "../utils";
 import BuyAmountControl, { maxBuyKrw } from "./BuyAmountControl";
 import SellPctControl from "./SellPctControl";
@@ -9,6 +14,8 @@ type Props = {
   trades: TradeEvent[];
   botStatus: string;
   manualMode: boolean;
+  tradeMode?: "paper" | "live";
+  upbitSnapshot?: UpbitAccountSnapshot | null;
   onManualBuy: (symbol: string, amountKrw: number) => Promise<void>;
   onManualSell: (symbol: string, percent: number) => Promise<void>;
   onSellAll?: () => void;
@@ -82,12 +89,26 @@ function PositionCard({
         </div>
         <div className="fg-item">
           <span className="fg-label">평단가</span>
-          <span className="fg-val">${fmtUsd(pos.avg_price)}</span>
+          <span className="fg-val">
+            {pos.data_source === "upbit" && (pos.avg_buy_price_krw ?? 0) > 0
+              ? `${fmtKrw(pos.avg_buy_price_krw!)}원`
+              : `$${fmtUsd(pos.avg_price)}`}
+          </span>
         </div>
         <div className="fg-item">
           <span className="fg-label">현재가</span>
-          <span className="fg-val">${fmtUsd(pos.current_price)}</span>
+          <span className="fg-val">
+            {pos.data_source === "upbit" && (pos.current_price_krw ?? 0) > 0
+              ? `${fmtKrw(pos.current_price_krw!)}원`
+              : `$${fmtUsd(pos.current_price)}`}
+          </span>
         </div>
+        {pos.data_source === "upbit" && (
+          <div className="fg-item">
+            <span className="fg-label">업비트 수량</span>
+            <span className="fg-val">{fmtQty(pos.exchange_quantity ?? pos.quantity)}</span>
+          </div>
+        )}
         <div className="fg-item">
           <span className="fg-label">원금 (매수금액)</span>
           <span className="fg-val">{fmtKrw(pos.cost_basis_krw)}원</span>
@@ -158,11 +179,24 @@ function PositionCard({
   );
 }
 
+function fmtSyncTime(ts?: number) {
+  if (!ts) return "";
+  return new Date(ts * 1000).toLocaleString("ko-KR", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+}
+
 export default function FundsTab({
   portfolio,
   trades,
   botStatus,
   manualMode,
+  tradeMode = "paper",
+  upbitSnapshot,
   onManualBuy,
   onManualSell,
   onSellAll,
@@ -190,6 +224,25 @@ export default function FundsTab({
       {canTrade && (
         <div className="funds-notice ok">
           수동 관리 모드 · 원하는 만큼 매수/매도할 수 있습니다. (자동투자 중지 상태)
+        </div>
+      )}
+      {tradeMode === "live" && (
+        <div className="funds-notice ok">
+          <strong>업비트 API 기준</strong> — 잔고·수량·평단·시세·평가·총자산은 업비트 계정/시세와
+          동기화됩니다
+          {upbitSnapshot?.synced_at
+            ? ` · 마지막 동기화 ${fmtSyncTime(upbitSnapshot.synced_at)}`
+            : portfolio.upbit_synced_at
+              ? ` · 마지막 동기화 ${fmtSyncTime(portfolio.upbit_synced_at)}`
+              : ""}
+          {upbitSnapshot && (
+            <span className="exclude-hint dim">
+              {" "}
+              (총자산 {fmtKrw(upbitSnapshot.total_assets_krw)}원 = KRW{" "}
+              {fmtKrw(upbitSnapshot.krw_balance)} + 코인 {fmtKrw(upbitSnapshot.coin_valuation_krw)}
+              )
+            </span>
+          )}
         </div>
       )}
 

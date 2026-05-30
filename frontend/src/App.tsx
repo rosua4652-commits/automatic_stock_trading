@@ -559,6 +559,8 @@ export default function App() {
             trades={data.all_trades ?? data.bot.recent_trades}
             botStatus={data.bot.status}
             manualMode={data.bot.manual_mode}
+            tradeMode={data.config.trade_mode}
+            upbitSnapshot={data.upbit_snapshot}
             onManualBuy={handleManualBuy}
             onManualSell={handleManualSell}
             onSellAll={handleSellAll}

@@ -14,6 +14,7 @@ from app.config import settings as app_settings
 from app.market.upbit_data import market
 from app.market.scanner import top_usdt_symbols
 from app.models import (
+    UpbitAccountSnapshot,
     AccountLinkInfo,
     AppConfig,
     ApplyRecommendationsRequest,
@@ -41,7 +42,7 @@ STATIC_DIR = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
 # PC에서 run.bat 시작 시 표시 — GitHub 최신과 비교용
-AIDI_BUILD = "2026-03-30-cost-basis"
+AIDI_BUILD = "2026-03-30-upbit-truth"
 
 
 def _load_pc_path_hint() -> str:
@@ -114,7 +115,24 @@ async def _build_status() -> dict:
     portfolio = engine.portfolio
     prices = await engine.prices_map()
     tickers = await _get_tickers()
-    snap = portfolio.snapshot(prices, engine.config)
+    upbit_snap: UpbitAccountSnapshot | None = None
+    upbit_synced_at: float | None = None
+    if engine.config.trade_mode == TradeMode.LIVE and link.linked:
+        raw = store._live_meta.get("upbit_snapshot")
+        if raw:
+            try:
+                upbit_snap = UpbitAccountSnapshot(**raw)
+                upbit_synced_at = upbit_snap.synced_at
+            except Exception:
+                upbit_snap = None
+        snap = portfolio.snapshot(
+            prices,
+            engine.config,
+            upbit_truth=True,
+            upbit_synced_at=upbit_synced_at,
+        )
+    else:
+        snap = portfolio.snapshot(prices, engine.config)
     if link.linked and engine.config.trade_mode == TradeMode.LIVE:
         link.total_assets_krw = round(snap.total_value_krw, 0)
         link.cash_krw = round(snap.cash_krw, 0)
@@ -138,6 +156,7 @@ async def _build_status() -> dict:
         tabs=engine.tab_symbols(),
         tab_quotes=tab_quotes,
         account_link=link,
+        upbit_snapshot=upbit_snap,
     ).model_dump()
     payload["config"] = config_for_response(engine.config)
     payload["status_version"] = engine._status_version

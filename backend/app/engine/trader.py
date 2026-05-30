@@ -819,7 +819,11 @@ class TradingEngine:
                 price = float(t.get("lastPrice", 0))
             change = float(t.get("priceChangePercent", 0))
         if pos:
-            price = pos.current_price or price
+            if pos.data_source == "upbit" and pos.current_price_krw > 0:
+                rate = self.portfolio.usdt_krw or 1350.0
+                price = pos.current_price_krw / max(rate, 1.0)
+            else:
+                price = pos.current_price or price
         elif cand and not change:
             change = cand.change_24h
 
