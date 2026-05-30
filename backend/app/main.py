@@ -28,6 +28,7 @@ from app.storage.credentials import (
     apply_credentials_to_config,
     config_for_response,
     get_active_keys,
+    get_keys_from_body,
     has_api_keys,
     save_credentials,
 )
@@ -197,11 +198,18 @@ async def get_status():
 
 @api.post("/config")
 async def set_config(cfg: AppConfig):
-    ak, sk = get_active_keys(cfg)
-    if ak and sk:
-        save_credentials(cfg.exchange or "upbit", ak, sk, merge=False)
-    elif ak or sk:
-        save_credentials(cfg.exchange or "upbit", ak, sk, merge=True)
+    body_ak, body_sk = get_keys_from_body(cfg)
+    ex = (cfg.exchange or "upbit").lower()
+    if body_ak and body_sk:
+        save_credentials(ex, body_ak, body_sk, merge=False)
+    elif body_ak or body_sk:
+        return JSONResponse(
+            {
+                "error": "incomplete_keys",
+                "message": "Access Key와 Secret Key를 둘 다 입력한 뒤 저장하세요.",
+            },
+            status_code=400,
+        )
     merged = apply_credentials_to_config(cfg)
     msg = await engine.update_config(merged)
     engine.config = apply_credentials_to_config(engine.config)
@@ -234,8 +242,34 @@ async def credentials_test(cfg: AppConfig):
 
     draft.api_access_key = ak
     draft.api_secret_key = sk
-    outbound = await get_outbound_public_ip()
+    draft.exchange = cfg.exchange or draft.exchange or "upbit"
+    outbound = await outbound_ipv4_via_same_stack() or await get_outbound_public_ip()
     key_hint = mask_key(ak, 4)
+    if (draft.exchange or "upbit").lower() == "upbit":
+        from app.market.upbit_client import upbit_client
+
+        upbit_client.configure(ak, sk)
+        probe = await upbit_client.probe_accounts()
+        probe["key_source"] = key_source
+        probe["access_key_hint"] = key_hint
+        if probe.get("ok"):
+            probe["message"] = (
+                f"연결 성공 · 계정 {probe.get('accounts', 0)}개 · IP {outbound or probe.get('outbound_ipv4_stack', '')}"
+            )
+            return probe
+        probe["ok"] = False
+        probe["message"] = (
+            f"업비트 거부 [{probe.get('upbit_error_name') or 'error'}]: "
+            f"{probe.get('upbit_error_message') or probe.get('raw_body', '')}"
+        )
+        if outbound:
+            probe["outbound_ip"] = outbound
+        if probe.get("upbit_error_name") == "no_authorization_ip":
+            probe["hint"] = (
+                f"Open API 키 [{key_hint}] 행에 IP [{outbound}] 등록 여부 확인. "
+                f"다른 키에만 IP 등록했거나 Access/Secret 짝이 다르면 동일 오류가 납니다."
+            )
+        return probe
     try:
         result = await test_exchange_connection(draft)
         if outbound:
@@ -252,13 +286,6 @@ async def credentials_test(cfg: AppConfig):
         }
         if outbound:
             body["outbound_ip"] = outbound
-            body["registered_ip_example"] = "61.43.16.54"
-            if "no_authorization_ip" in str(e) or "허용 IP" in str(e):
-                body["hint"] = (
-                    f"업비트 Open API에서 Access Key [{key_hint}] 키의 허용 IP에 "
-                    f"[{outbound}] 를 등록하세요. "
-                    f"({key_source} — 저장된 예전 키면 새 키를 입력·저장 후 다시 테스트)"
-                )
         return body
 
 
@@ -277,17 +304,28 @@ async def outbound_ip():
 async def network_diagnose():
     cred = load_credentials()
     ak = cred.get("api_access_key") or ""
-    return {
+    sk = cred.get("api_secret_key") or ""
+    ip4 = await outbound_ipv4_via_same_stack()
+    out: dict = {
         "outbound_ip": await get_outbound_public_ip(),
-        "outbound_ipv4_stack": await outbound_ipv4_via_same_stack(),
+        "outbound_ipv4_stack": ip4,
         "upbit_ipv4_targets": upbit_resolved_ipv4(),
         "saved_access_key": mask_key(ak, 4) if ak else "",
+        "has_saved_secret": bool(sk),
         "steps": [
             "1. outbound_ipv4_stack 를 업비트 Open API 허용 IP에 등록",
             "2. AIDI 설정에 새 Access·Secret 둘 다 입력 후 [저장]",
-            "3. 연결 테스트 — key_source 가 '입력한 키' 인지 확인",
+            "3. 연결 테스트 — upbit_error_name 이 비어 있으면 성공",
         ],
     }
+    if ak and sk:
+        from app.market.upbit_client import upbit_client
+
+        upbit_client.configure(ak, sk)
+        out["upbit_probe"] = await upbit_client.probe_accounts()
+    else:
+        out["upbit_probe"] = {"ok": False, "message": "저장된 API 키 없음"}
+    return out
 
 
 @api.post("/bot/start")

@@ -42,19 +42,22 @@ export default function SettingsModal({
       const res = await testCredentials(draft);
       if (res.ok) {
         setTestOk(true);
-        if (res.exchange === "upbit") {
-          const ipNote = res.outbound_ip ? ` · IP ${res.outbound_ip}` : "";
-          setTestMsg(
-            `연결 성공 · KRW ${fmtKrw(res.krw_balance ?? 0)}원 · 보유 코인 ${res.coin_count ?? 0}종${ipNote}`
-          );
+        if (res.exchange === "upbit" || res.accounts != null) {
+          const ipNote = res.outbound_ip || res.outbound_ipv4_stack;
+          const ipStr = ipNote ? ` · IP ${ipNote}` : "";
+          const acct = res.accounts ?? res.coin_count ?? 0;
+          setTestMsg(res.message || `연결 성공 · 계정 ${acct}개${ipStr}`);
         } else {
           setTestMsg(res.message || "연결 성공");
         }
       } else {
         setTestOk(false);
         const parts = [res.message || "연결 실패"];
-        if (res.outbound_ip) parts.push(`AIDI 나가는 IP: ${res.outbound_ip}`);
-        if (res.access_key_hint) parts.push(`키: ${res.access_key_hint}`);
+        if (res.upbit_error_name) parts.push(`[${res.upbit_error_name}]`);
+        if (res.outbound_ip || res.outbound_ipv4_stack) {
+          parts.push(`IP ${res.outbound_ip || res.outbound_ipv4_stack}`);
+        }
+        if (res.access_key_hint) parts.push(`키 ${res.access_key_hint}`);
         if (res.key_source) parts.push(`(${res.key_source})`);
         if (res.hint) parts.push(res.hint);
         setTestMsg(parts.join(" · "));

@@ -28,12 +28,26 @@ export async function fetchStatus(): Promise<StatusPayload> {
   return request("/api/status");
 }
 
-export async function saveConfig(cfg: AppConfig): Promise<StatusPayload> {
-  const body = {
-    ...cfg,
-    api_access_key: cfg.api_access_key || cfg.binance_api_key || "",
-    api_secret_key: cfg.api_secret_key || cfg.binance_api_secret || "",
+function keysForExchange(cfg: AppConfig) {
+  const ex = (cfg.exchange || "upbit").toLowerCase();
+  if (ex === "binance") {
+    return {
+      api_access_key: cfg.binance_api_key || cfg.api_access_key || "",
+      api_secret_key: cfg.binance_api_secret || cfg.api_secret_key || "",
+      binance_api_key: cfg.binance_api_key || cfg.api_access_key || "",
+      binance_api_secret: cfg.binance_api_secret || cfg.api_secret_key || "",
+    };
+  }
+  return {
+    api_access_key: cfg.api_access_key || "",
+    api_secret_key: cfg.api_secret_key || "",
+    binance_api_key: "",
+    binance_api_secret: "",
   };
+}
+
+export async function saveConfig(cfg: AppConfig): Promise<StatusPayload> {
+  const body = { ...cfg, ...keysForExchange(cfg) };
   return request("/api/config", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -42,11 +56,7 @@ export async function saveConfig(cfg: AppConfig): Promise<StatusPayload> {
 }
 
 export async function testCredentials(cfg: AppConfig): Promise<CredentialsTestResult> {
-  const body = {
-    ...cfg,
-    api_access_key: cfg.api_access_key || cfg.binance_api_key || "",
-    api_secret_key: cfg.api_secret_key || cfg.binance_api_secret || "",
-  };
+  const body = { ...cfg, ...keysForExchange(cfg) };
   return request("/api/credentials/test", {
     method: "POST",
     headers: { "Content-Type": "application/json" },

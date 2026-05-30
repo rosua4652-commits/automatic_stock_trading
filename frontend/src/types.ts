@@ -38,9 +38,13 @@ export interface CredentialsTestResult {
   coin_count?: number;
   accounts?: number;
   outbound_ip?: string;
+  outbound_ipv4_stack?: string;
   access_key_hint?: string;
   key_source?: string;
   hint?: string;
+  upbit_error_name?: string | null;
+  upbit_error_message?: string | null;
+  raw_body?: string;
 }
 
 export interface AccountLink {

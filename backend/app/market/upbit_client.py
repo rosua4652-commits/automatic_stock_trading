@@ -1,6 +1,7 @@
 """Upbit REST API (JWT)."""
 
 import hashlib
+import json
 import uuid
 from typing import Any
 from urllib.parse import urlencode
@@ -8,30 +9,56 @@ from urllib.parse import urlencode
 import httpx
 import jwt
 
-from app.market.ipv4_http import ipv4_async_client
+from app.market.ipv4_http import ipv4_async_client, outbound_ipv4_via_same_stack
 from app.market.network_info import get_outbound_public_ip
+from app.storage.credentials import mask_key
 
 UPBIT_API = "https://api.upbit.com"
 
 
-async def _parse_upbit_error(text: str) -> RuntimeError:
-    if "no_authorization_ip" in text:
-        ip = await get_outbound_public_ip()
+def _parse_upbit_error_body(text: str) -> tuple[str, str]:
+    """(error_name, message) from Upbit JSON or raw text."""
+    try:
+        data = json.loads(text)
+        err = data.get("error") if isinstance(data, dict) else None
+        if isinstance(err, dict):
+            return str(err.get("name") or ""), str(err.get("message") or text)
+    except Exception:
+        pass
+    return "", text
+
+
+async def _parse_upbit_error(text: str, access_hint: str = "") -> RuntimeError:
+    name, msg = _parse_upbit_error_body(text)
+    key_note = f" (AIDI Access Key: {access_hint})" if access_hint else ""
+    if name == "no_authorization_ip" or "no_authorization_ip" in text:
+        ip = await outbound_ipv4_via_same_stack() or await get_outbound_public_ip()
         ip_hint = (
-            f" 지금 이 PC에서 업비트로 나가는 IP: {ip} — 업비트 Open API 키에 이 주소(IPv4)를 등록하세요."
+            f" AIDI→업비트 나가는 IP: {ip}."
             if ip
-            else " cmd에서 curl ifconfig.me 로 공인 IP 확인 후 업비트에 등록하세요."
+            else " cmd: curl -4 https://api.ipify.org 로 IPv4 확인."
         )
         return RuntimeError(
-            "업비트 API: 허용 IP가 등록되지 않았습니다."
+            "업비트 API: 허용 IP 오류(no_authorization_ip)."
             + ip_hint
-            + " (VPN/핫스팟 사용 중이면 IP가 달라집니다. 등록 후 1~2분 기다린 뒤 설정 → 연결 테스트)"
+            + key_note
+            + " 업비트 Open API에서 **이 Access Key** 행에 위 IP가 등록됐는지 확인하세요."
+            + " (다른 키에 IP만 등록한 경우 동일 증상 · VPN/IPv6이면 IP가 달라질 수 있음)"
         )
-    if "invalid_access_key" in text:
-        return RuntimeError("업비트 API: Access Key가 올바르지 않습니다.")
-    if "invalid_secret_key" in text:
-        return RuntimeError("업비트 API: Secret Key가 올바르지 않습니다.")
-    return RuntimeError(f"Upbit: {text}")
+    if name == "invalid_access_key" or "invalid_access_key" in text:
+        return RuntimeError(
+            "업비트 API: Access Key가 올바르지 않습니다." + key_note
+        )
+    if name == "invalid_secret_key" or "invalid_secret_key" in text:
+        return RuntimeError(
+            "업비트 API: Secret Key가 올바르지 않습니다 (Access와 짝이 맞는지 확인)."
+            + key_note
+        )
+    if name in ("invalid_query_payload", "jwt_verification"):
+        return RuntimeError(f"업비트 API: {name or '요청 오류'} — {msg}{key_note}")
+    if name:
+        return RuntimeError(f"업비트 API [{name}]: {msg}{key_note}")
+    return RuntimeError(f"Upbit: {msg or text}{key_note}")
 
 
 class UpbitClient:
@@ -82,7 +109,7 @@ class UpbitClient:
         headers = {"Authorization": f"Bearer {self._token(params)}"}
         resp = await client.get(path, params=params, headers=headers)
         if resp.status_code >= 400:
-            raise await _parse_upbit_error(resp.text)
+            raise await _parse_upbit_error(resp.text, mask_key(self._access, 4))
         return resp.json()
 
     async def _auth_post(self, path: str, body: dict) -> Any:
@@ -92,8 +119,35 @@ class UpbitClient:
         headers = {"Authorization": f"Bearer {self._token(body)}"}
         resp = await client.post(path, json=body, headers=headers)
         if resp.status_code >= 400:
-            raise await _parse_upbit_error(resp.text)
+            raise await _parse_upbit_error(resp.text, mask_key(self._access, 4))
         return resp.json()
+
+    async def probe_accounts(self) -> dict[str, Any]:
+        """연결 테스트용 — 업비트 원문 오류·IP 포함."""
+        if not self.is_configured():
+            return {"ok": False, "message": "키 없음"}
+        outbound = await outbound_ipv4_via_same_stack() or await get_outbound_public_ip()
+        hint = mask_key(self._access, 4)
+        client = await self._ensure()
+        headers = {"Authorization": f"Bearer {self._token()}"}
+        resp = await client.get("/v1/accounts", headers=headers)
+        name, msg = _parse_upbit_error_body(resp.text)
+        out: dict[str, Any] = {
+            "ok": resp.status_code < 400,
+            "status_code": resp.status_code,
+            "upbit_error_name": name or None,
+            "upbit_error_message": msg if resp.status_code >= 400 else None,
+            "access_key_hint": hint,
+            "access_key_len": len(self._access),
+            "secret_key_len": len(self._secret),
+            "outbound_ipv4_stack": outbound or "",
+        }
+        if resp.status_code >= 400:
+            out["raw_body"] = resp.text[:400]
+        else:
+            rows = resp.json()
+            out["accounts"] = len(rows) if isinstance(rows, list) else 0
+        return out
 
     async def test_connection(self) -> dict[str, Any]:
         accounts = await self._auth_get("/v1/accounts")

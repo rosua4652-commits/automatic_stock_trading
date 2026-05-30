@@ -85,10 +85,24 @@ def config_for_response(cfg: AppConfig) -> dict[str, Any]:
     return d
 
 
+def get_keys_from_body(cfg: AppConfig) -> tuple[str, str]:
+    """요청 본문에만 있는 키 (저장 파일 미적용)."""
+    ex = (cfg.exchange or "upbit").lower()
+    if ex == "binance":
+        return (cfg.binance_api_key or "").strip(), (cfg.binance_api_secret or "").strip()
+    return (cfg.api_access_key or "").strip(), (cfg.api_secret_key or "").strip()
+
+
 def get_active_keys(cfg: AppConfig) -> tuple[str, str]:
-    ak = cfg.api_access_key or cfg.binance_api_key
-    sk = cfg.api_secret_key or cfg.binance_api_secret
-    return ak.strip(), sk.strip()
+    """거래소별 키만 사용 (업비트 Access + 바이낸스 Secret 혼합 방지)."""
+    ex = (cfg.exchange or "upbit").lower()
+    if ex == "binance":
+        ak = (cfg.binance_api_key or cfg.api_access_key or "").strip()
+        sk = (cfg.binance_api_secret or cfg.api_secret_key or "").strip()
+    else:
+        ak = (cfg.api_access_key or "").strip()
+        sk = (cfg.api_secret_key or "").strip()
+    return ak, sk
 
 
 def has_api_keys(cfg: AppConfig) -> bool:
