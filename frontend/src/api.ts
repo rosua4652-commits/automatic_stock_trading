@@ -52,6 +52,28 @@ export async function setViewSymbol(symbol: string): Promise<StatusPayload> {
   return request(`/api/view/${encodeURIComponent(symbol)}`, { method: "POST" });
 }
 
+export async function manualBuy(
+  symbol: string,
+  amount_krw: number
+): Promise<StatusPayload> {
+  return request("/api/trade/buy", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ symbol, amount_krw }),
+  });
+}
+
+export async function manualSell(
+  symbol: string,
+  percent: number
+): Promise<StatusPayload> {
+  return request("/api/trade/sell", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ symbol, percent }),
+  });
+}
+
 export function connectWs(
   onMessage: (data: StatusPayload) => void,
   onError?: () => void

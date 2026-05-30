@@ -24,6 +24,7 @@ class AppConfig(BaseModel):
     take_profit_pct: float = Field(default=12.0, ge=2.0, le=50.0)
     scan_interval_sec: int = Field(default=45, ge=15, le=300)
     min_buy_score: float = Field(default=40.0, ge=20.0, le=90.0)
+    min_entry_score: float = Field(default=60.0, ge=40.0, le=90.0)
     binance_api_key: str = ""
     binance_api_secret: str = ""
 
@@ -58,15 +59,20 @@ class Position(BaseModel):
     trailing_high: float = 0.0
     opened_at: float
     score: float = 0.0
+    cost_basis_krw: float = 0.0
+    entry_reason: str = ""
+    entry_score: float = 0.0
+    entry_outlook: str = ""
+    auto_managed: bool = True
 
     @computed_field
     @property
-    def value(self) -> float:
+    def value_usdt(self) -> float:
         return self.quantity * self.current_price
 
     @computed_field
     @property
-    def pnl(self) -> float:
+    def pnl_usdt(self) -> float:
         return (self.current_price - self.avg_price) * self.quantity
 
     @computed_field
@@ -76,11 +82,17 @@ class Position(BaseModel):
             return 0.0
         return (self.current_price - self.avg_price) / self.avg_price * 100
 
+    # KRW 환산은 snapshot 시 portfolio에서 채움
+    current_value_krw: float = 0.0
+    pnl_krw: float = 0.0
+    weight_pct: float = 0.0
+
 
 class PortfolioSnapshot(BaseModel):
     cash_krw: float
     total_value_krw: float
     invested_krw: float
+    principal_krw: float
     unrealized_pnl_krw: float
     realized_pnl_krw: float
     profit_toward_target_krw: float
@@ -102,6 +114,9 @@ class CoinCandidate(BaseModel):
     change_24h: float
     volume_usdt: float
     reason: str
+    entry_score: float = 0.0
+    entry_ok: bool = False
+    entry_outlook: str = ""
 
 
 class TradeEvent(BaseModel):
@@ -112,6 +127,8 @@ class TradeEvent(BaseModel):
     side: str
     price: float
     quantity: float
+    amount_krw: float
+    amount_usdt: float
     reason: str
 
 
@@ -131,6 +148,17 @@ class BotState(BaseModel):
     message: str = "대기 중"
     candidates: list[CoinCandidate] = Field(default_factory=list)
     recent_trades: list[TradeEvent] = Field(default_factory=list)
+    manual_mode: bool = True
+
+
+class ManualBuyRequest(BaseModel):
+    symbol: str
+    amount_krw: float = Field(ge=50_000, le=500_000_000)
+
+
+class ManualSellRequest(BaseModel):
+    symbol: str
+    percent: float = Field(default=100.0, ge=1.0, le=100.0)
 
 
 class StatusResponse(BaseModel):

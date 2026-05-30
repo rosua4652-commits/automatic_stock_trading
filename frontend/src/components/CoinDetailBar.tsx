@@ -1,5 +1,5 @@
 import type { CoinView } from "../types";
-import { fmtPct, fmtUsd, isRunning } from "../utils";
+import { fmtKrw, fmtPct, fmtUsd, isRunning } from "../utils";
 
 type Props = {
   view: CoinView;
@@ -32,30 +32,44 @@ export default function CoinDetailBar({ view, botStatus, botMessage }: Props) {
         {in_portfolio && position && (
           <>
             <div className="detail-stat">
-              <span className="ds-label">수익률</span>
-              <span className={`ds-value ${position.pnl_pct >= 0 ? "up" : "down"}`}>
-                {fmtPct(position.pnl_pct)}
+              <span className="ds-label">평단가</span>
+              <span className="ds-value">${fmtUsd(position.avg_price)}</span>
+            </div>
+            <div className="detail-stat">
+              <span className="ds-label">보유량</span>
+              <span className="ds-value">{position.quantity.toFixed(6)}</span>
+            </div>
+            <div className="detail-stat">
+              <span className="ds-label">원금</span>
+              <span className="ds-value">{fmtKrw(position.cost_basis_krw)}원</span>
+            </div>
+            <div className="detail-stat">
+              <span className="ds-label">평가손익</span>
+              <span className={`ds-value ${position.pnl_krw >= 0 ? "up" : "down"}`}>
+                {fmtKrw(position.pnl_krw)}원 ({fmtPct(position.pnl_pct)})
               </span>
             </div>
             <div className="detail-stat">
-              <span className="ds-label">손절</span>
-              <span className="ds-value dim">${fmtUsd(position.stop_loss)}</span>
-            </div>
-            <div className="detail-stat">
-              <span className="ds-label">익절</span>
-              <span className="ds-value dim">${fmtUsd(position.take_profit)}</span>
+              <span className="ds-label">비중</span>
+              <span className="ds-value">{position.weight_pct.toFixed(1)}%</span>
             </div>
           </>
         )}
         {!in_portfolio && candidate && (
           <>
             <div className="detail-stat">
-              <span className="ds-label">AI점수</span>
+              <span className="ds-label">시장점수</span>
               <span className="ds-value accent">{candidate.score}</span>
             </div>
             <div className="detail-stat">
-              <span className="ds-label">추세</span>
-              <span className="ds-value">{candidate.trend}</span>
+              <span className="ds-label">차트점수</span>
+              <span className={`ds-value ${candidate.entry_ok ? "up" : ""}`}>
+                {candidate.entry_score} {candidate.entry_ok ? "✓" : ""}
+              </span>
+            </div>
+            <div className="detail-stat">
+              <span className="ds-label">전망</span>
+              <span className="ds-value">{candidate.entry_outlook || candidate.trend}</span>
             </div>
           </>
         )}
@@ -66,7 +80,7 @@ export default function CoinDetailBar({ view, botStatus, botMessage }: Props) {
             ? "중지 중..."
             : running
               ? "자동투자 ON"
-              : "자동투자 OFF"}
+              : "수동관리 가능"}
         </span>
         {botMessage && <span className="bot-status-msg">{botMessage}</span>}
       </div>

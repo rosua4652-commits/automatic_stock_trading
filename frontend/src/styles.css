@@ -708,6 +708,279 @@ body {
   height: 400px;
 }
 
+.main-nav {
+  display: flex;
+  gap: 0.35rem;
+  padding: 0.5rem 1rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.nav-btn {
+  padding: 0.5rem 1.1rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--muted);
+  font-family: inherit;
+  font-weight: 600;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.nav-btn.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.funds-layout {
+  grid-template-columns: 1fr;
+  padding: 1rem 1.5rem 1.5rem;
+  overflow-y: auto;
+  max-height: calc(100vh - 220px);
+}
+
+.funds-tab {
+  max-width: 960px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.funds-notice {
+  padding: 0.65rem 1rem;
+  border-radius: 8px;
+  font-size: 0.82rem;
+  margin-bottom: 1rem;
+}
+
+.funds-notice.warn {
+  background: rgba(248, 113, 113, 0.12);
+  color: #fca5a5;
+  border: 1px solid rgba(248, 113, 113, 0.3);
+}
+
+.funds-notice.ok {
+  background: rgba(34, 211, 165, 0.1);
+  color: var(--green);
+  border: 1px solid rgba(34, 211, 165, 0.25);
+}
+
+.funds-summary h3,
+.funds-positions h3,
+.funds-trades h3,
+.funds-manual-buy h3 {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  margin-bottom: 0.75rem;
+}
+
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 0.65rem;
+  margin-bottom: 1.5rem;
+}
+
+.sum-box {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.sum-box span {
+  font-size: 0.7rem;
+  color: var(--muted);
+}
+
+.sum-box strong {
+  font-size: 1rem;
+}
+
+.fund-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.fund-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 0.75rem;
+}
+
+.fund-card-head h4 {
+  font-size: 1rem;
+  margin-bottom: 0.2rem;
+}
+
+.fund-pair {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.badge {
+  font-size: 0.65rem;
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+  margin-left: 0.35rem;
+}
+
+.badge.auto {
+  background: rgba(59, 158, 255, 0.2);
+  color: var(--accent);
+}
+
+.badge.manual {
+  background: rgba(148, 163, 184, 0.2);
+  color: var(--muted);
+}
+
+.link-btn {
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-size: 0.78rem;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.fund-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 0.6rem;
+}
+
+.fg-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.fg-label {
+  font-size: 0.68rem;
+  color: var(--muted);
+}
+
+.fg-val {
+  font-size: 0.88rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.entry-reason {
+  font-size: 0.78rem;
+  color: var(--muted);
+  margin-top: 0.65rem;
+  line-height: 1.4;
+}
+
+.manual-sell-row {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border);
+}
+
+.manual-sell-row label {
+  flex: 1;
+  font-size: 0.78rem;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.btn-sell {
+  background: var(--red);
+  color: #fff;
+  border: none;
+  padding: 0.45rem 1rem;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.buy-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: flex-end;
+  margin-bottom: 1.5rem;
+  padding: 1rem;
+  background: var(--surface);
+  border-radius: 10px;
+  border: 1px solid var(--border);
+}
+
+.buy-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.buy-form input {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.5rem 0.75rem;
+  color: var(--text);
+  font-family: inherit;
+  min-width: 140px;
+}
+
+.trades-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.trades-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.78rem;
+}
+
+.trades-table th,
+.trades-table td {
+  padding: 0.5rem 0.65rem;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+
+.trades-table th {
+  background: var(--surface2);
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.trades-table tr.buy td:nth-child(3) {
+  color: var(--green);
+}
+
+.trades-table tr.sell td:nth-child(3) {
+  color: var(--red);
+}
+
+.empty-cell {
+  text-align: center;
+  color: var(--muted);
+  padding: 1.5rem !important;
+}
+
 .modal-backdrop {
   position: fixed;
   inset: 0;

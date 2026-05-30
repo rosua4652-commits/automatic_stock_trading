@@ -3,6 +3,8 @@ import {
   connectWs,
   fetchChart,
   fetchStatus,
+  manualBuy,
+  manualSell,
   saveConfig,
   setViewSymbol,
   startBot,
@@ -11,9 +13,10 @@ import {
 import ChartPanel from "./components/ChartPanel";
 import CoinDetailBar from "./components/CoinDetailBar";
 import CoinTabs from "./components/CoinTabs";
+import FundsTab from "./components/FundsTab";
 import PortfolioPanel from "./components/PortfolioPanel";
 import SettingsModal from "./components/SettingsModal";
-import type { AppConfig, Candle, StatusPayload } from "./types";
+import type { AppConfig, Candle, MainView, StatusPayload } from "./types";
 import { DEFAULT_CONFIG, fmtKrw, isRunning, mergeWsPayload } from "./utils";
 
 export default function App() {
@@ -29,6 +32,8 @@ export default function App() {
   const [botBusy, setBotBusy] = useState(false);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [mainView, setMainView] = useState<MainView>("chart");
+  const [tradeBusy, setTradeBusy] = useState(false);
 
   const botLockVersionRef = useRef(0);
   const activeSymbolRef = useRef(activeSymbol);
@@ -153,6 +158,37 @@ export default function App() {
   const showToast = (msg: string) => {
     setToast(msg);
     window.setTimeout(() => setToast(null), 3500);
+  };
+
+  const handleManualBuy = async (symbol: string, amountKrw: number) => {
+    setTradeBusy(true);
+    try {
+      const s = await manualBuy(symbol, amountKrw);
+      applyPayload(s);
+      showToast(s.message || "매수 완료");
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "매수 실패");
+    } finally {
+      setTradeBusy(false);
+    }
+  };
+
+  const handleManualSell = async (symbol: string, percent: number) => {
+    setTradeBusy(true);
+    try {
+      const s = await manualSell(symbol, percent);
+      applyPayload(s);
+      showToast(s.message || "매도 완료");
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "매도 실패");
+    } finally {
+      setTradeBusy(false);
+    }
+  };
+
+  const goChart = (sym: string) => {
+    setMainView("chart");
+    handleSelectCoin(sym);
   };
 
   const handleSaveSettings = async () => {
@@ -299,38 +335,72 @@ export default function App() {
         </div>
       </div>
 
-      <CoinTabs
-        tabs={tabs}
-        selected={activeSymbol}
-        portfolio={data.portfolio}
-        candidates={data.bot.candidates}
-        onSelect={handleSelectCoin}
-      />
+      <nav className="main-nav">
+        <button
+          type="button"
+          className={`nav-btn ${mainView === "chart" ? "active" : ""}`}
+          onClick={() => setMainView("chart")}
+        >
+          차트 · AI
+        </button>
+        <button
+          type="button"
+          className={`nav-btn ${mainView === "funds" ? "active" : ""}`}
+          onClick={() => setMainView("funds")}
+        >
+          자금 · 매매
+        </button>
+      </nav>
 
-      <CoinDetailBar
-        view={view}
-        botStatus={data.bot.status}
-        botMessage={data.bot.message}
-      />
+      {mainView === "chart" && (
+        <>
+          <CoinTabs
+            tabs={tabs}
+            selected={activeSymbol}
+            portfolio={data.portfolio}
+            candidates={data.bot.candidates}
+            onSelect={handleSelectCoin}
+          />
+          <CoinDetailBar
+            view={view}
+            botStatus={data.bot.status}
+            botMessage={data.bot.message}
+          />
+          <main className="layout">
+            <PortfolioPanel
+              portfolio={data.portfolio}
+              candidates={data.bot.candidates}
+              trades={data.bot.recent_trades}
+              selected={activeSymbol}
+              onSelect={handleSelectCoin}
+            />
+            <ChartPanel
+              symbol={activeSymbol}
+              pairLabel={pairLabel}
+              chartInterval={chartInterval}
+              candles={candles}
+              chartLoading={chartLoading}
+              chartError={chartError}
+              onIntervalChange={setChartInterval}
+            />
+          </main>
+        </>
+      )}
 
-      <main className="layout">
-        <PortfolioPanel
-          portfolio={data.portfolio}
-          candidates={data.bot.candidates}
-          trades={data.bot.recent_trades}
-          selected={activeSymbol}
-          onSelect={handleSelectCoin}
-        />
-        <ChartPanel
-          symbol={activeSymbol}
-          pairLabel={pairLabel}
-          chartInterval={chartInterval}
-          candles={candles}
-          chartLoading={chartLoading}
-          chartError={chartError}
-          onIntervalChange={setChartInterval}
-        />
-      </main>
+      {mainView === "funds" && (
+        <main className="layout funds-layout">
+          <FundsTab
+            portfolio={data.portfolio}
+            trades={data.all_trades ?? data.bot.recent_trades}
+            botStatus={data.bot.status}
+            manualMode={data.bot.manual_mode}
+            onManualBuy={handleManualBuy}
+            onManualSell={handleManualSell}
+            onSelectChart={goChart}
+            busy={tradeBusy}
+          />
+        </main>
+      )}
 
       {toast && <div className="toast">{toast}</div>}
 

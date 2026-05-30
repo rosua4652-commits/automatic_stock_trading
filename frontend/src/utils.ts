@@ -69,6 +69,7 @@ export const DEFAULT_CONFIG = {
   take_profit_pct: 12,
   scan_interval_sec: 45,
   min_buy_score: 40,
+  min_entry_score: 60,
   binance_api_key: "",
   binance_api_secret: "",
 };

@@ -10,7 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from app.engine.portfolio import PortfolioManager
 from app.engine.trader import TradingEngine
 from app.market.binance import binance
-from app.models import AppConfig, StatusResponse
+from app.models import AppConfig, ManualBuyRequest, ManualSellRequest, StatusResponse
 
 STATIC_DIR = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
 
@@ -40,6 +40,8 @@ async def _build_status() -> dict:
     tickers = await _get_tickers()
     snap = portfolio.snapshot(prices, engine.config)
     view = engine.build_coin_view(engine.bot.view_symbol, prices, tickers)
+    engine.bot.manual_mode = engine.can_manual_trade()
+    engine.bot.recent_trades = portfolio.trades[-40:]
     payload = StatusResponse(
         bot=engine.bot,
         portfolio=snap,
@@ -48,6 +50,7 @@ async def _build_status() -> dict:
         tabs=engine.tab_symbols(),
     ).model_dump()
     payload["status_version"] = engine._status_version
+    payload["all_trades"] = [t.model_dump() for t in portfolio.trades[-50:]]
     return payload
 
 
@@ -127,6 +130,24 @@ async def chart(symbol: str, interval: str = "1h"):
 async def set_view(symbol: str):
     engine.set_view_symbol(symbol.upper())
     return await _build_status()
+
+
+@api.post("/trade/buy")
+async def trade_buy(req: ManualBuyRequest):
+    ok, msg = await engine.manual_buy(req)
+    status = await _build_status()
+    status["ok"] = ok
+    status["message"] = msg
+    return status
+
+
+@api.post("/trade/sell")
+async def trade_sell(req: ManualSellRequest):
+    ok, msg = await engine.manual_sell(req)
+    status = await _build_status()
+    status["ok"] = ok
+    status["message"] = msg
+    return status
 
 
 # 하위 호환

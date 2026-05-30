@@ -113,7 +113,7 @@ export default function SettingsModal({
               />
             </label>
             <label className="field">
-              <span>매수 최소 AI 점수</span>
+              <span>시장 스캔 최소 점수</span>
               <input
                 type="number"
                 min={20}
@@ -121,6 +121,17 @@ export default function SettingsModal({
                 value={draft.min_buy_score}
                 onChange={(e) => set("min_buy_score", Number(e.target.value))}
               />
+            </label>
+            <label className="field">
+              <span>차트 진입 최소 점수</span>
+              <input
+                type="number"
+                min={40}
+                max={90}
+                value={draft.min_entry_score}
+                onChange={(e) => set("min_entry_score", Number(e.target.value))}
+              />
+              <small>올라갈 패턴일 때만 자동 매수</small>
             </label>
             <label className="field">
               <span>시장 스캔 주기 (초)</span>
