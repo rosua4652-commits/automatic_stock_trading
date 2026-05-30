@@ -80,14 +80,19 @@ if not exist "backend\data" mkdir "backend\data"
 
 echo.
 echo  Build check...
-"backend\.venv\Scripts\python.exe" -c "from app.main import AIDI_BUILD; print('  AIDI_BUILD =', AIDI_BUILD)" 2>nul
+pushd "%~dp0backend"
+".venv\Scripts\python.exe" -c "from app.main import AIDI_BUILD; print('  AIDI_BUILD =', AIDI_BUILD)" 2>nul
 if errorlevel 1 (
-  echo   WARNING: Old code - no AIDI_BUILD. Use update-windows.bat or latest ZIP from GitHub.
+  echo   WARNING: Could not read AIDI_BUILD. Check backend\app\main.py
+  popd
 ) else (
-  "backend\.venv\Scripts\python.exe" -c "from app.main import AIDI_BUILD; import sys; sys.exit(0 if 'upbit-only' in AIDI_BUILD else 1)" 2>nul
+  ".venv\Scripts\python.exe" -c "from app.main import AIDI_BUILD; import sys; sys.exit(0 if 'upbit-only' in AIDI_BUILD else 1)" 2>nul
   if errorlevel 1 (
-    echo   WARNING: This folder is not the latest build. Run update-windows.bat
+    echo   WARNING: Old build id - get latest ZIP from GitHub
+  ) else (
+    echo   OK - latest Upbit-only build
   )
+  popd
 )
 
 echo.
