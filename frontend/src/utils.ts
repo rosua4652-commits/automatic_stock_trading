@@ -72,4 +72,5 @@ export const DEFAULT_CONFIG = {
   min_entry_score: 60,
   binance_api_key: "",
   binance_api_secret: "",
+  use_testnet: false,
 };

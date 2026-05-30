@@ -63,6 +63,17 @@ export async function manualBuy(
   });
 }
 
+export async function setPositionExclude(
+  symbol: string,
+  exclude: boolean
+): Promise<StatusPayload> {
+  return request(`/api/position/${encodeURIComponent(symbol)}/exclude`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ exclude }),
+  });
+}
+
 export async function manualSell(
   symbol: string,
   percent: number

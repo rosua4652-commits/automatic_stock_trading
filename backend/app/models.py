@@ -27,6 +27,7 @@ class AppConfig(BaseModel):
     min_entry_score: float = Field(default=60.0, ge=40.0, le=90.0)
     binance_api_key: str = ""
     binance_api_secret: str = ""
+    use_testnet: bool = False
 
     @field_validator("binance_api_key", "binance_api_secret", mode="before")
     @classmethod
@@ -51,19 +52,30 @@ class Position(BaseModel):
     name_en: str
     pair_label: str
     display: str
-    quantity: float
-    avg_price: float
+    # 총 수량 = auto + manual
+    auto_quantity: float = 0.0
+    manual_quantity: float = 0.0
+    avg_price: float = 0.0
+    auto_avg_price: float = 0.0
+    manual_avg_price: float = 0.0
     current_price: float = 0.0
-    stop_loss: float
-    take_profit: float
+    stop_loss: float = 0.0
+    take_profit: float = 0.0
     trailing_high: float = 0.0
-    opened_at: float
+    opened_at: float = 0.0
     score: float = 0.0
     cost_basis_krw: float = 0.0
+    auto_cost_basis_krw: float = 0.0
+    manual_cost_basis_krw: float = 0.0
     entry_reason: str = ""
     entry_score: float = 0.0
     entry_outlook: str = ""
-    auto_managed: bool = True
+    excluded_from_auto: bool = False
+
+    @computed_field
+    @property
+    def quantity(self) -> float:
+        return self.auto_quantity + self.manual_quantity
 
     @computed_field
     @property
@@ -72,8 +84,8 @@ class Position(BaseModel):
 
     @computed_field
     @property
-    def pnl_usdt(self) -> float:
-        return (self.current_price - self.avg_price) * self.quantity
+    def auto_value_usdt(self) -> float:
+        return self.auto_quantity * self.current_price
 
     @computed_field
     @property
@@ -82,9 +94,19 @@ class Position(BaseModel):
             return 0.0
         return (self.current_price - self.avg_price) / self.avg_price * 100
 
-    # KRW 환산은 snapshot 시 portfolio에서 채움
+    @computed_field
+    @property
+    def auto_pnl_pct(self) -> float:
+        if self.auto_avg_price <= 0 or self.auto_quantity <= 0:
+            return 0.0
+        return (self.current_price - self.auto_avg_price) / self.auto_avg_price * 100
+
     current_value_krw: float = 0.0
+    auto_value_krw: float = 0.0
+    manual_value_krw: float = 0.0
     pnl_krw: float = 0.0
+    auto_pnl_krw: float = 0.0
+    manual_pnl_krw: float = 0.0
     weight_pct: float = 0.0
 
 
@@ -130,6 +152,15 @@ class TradeEvent(BaseModel):
     amount_krw: float
     amount_usdt: float
     reason: str
+    is_auto: bool = True
+
+
+class ChartMarker(BaseModel):
+    time: int
+    price: float
+    side: str
+    text: str
+    is_auto: bool = True
 
 
 class CoinView(BaseModel):
@@ -159,6 +190,18 @@ class ManualBuyRequest(BaseModel):
 class ManualSellRequest(BaseModel):
     symbol: str
     percent: float = Field(default=100.0, ge=1.0, le=100.0)
+    from_auto_only: bool = False
+
+
+class PositionExcludeRequest(BaseModel):
+    exclude: bool
+
+
+class AccountLinkInfo(BaseModel):
+    linked: bool = False
+    mode: str = "paper"
+    message: str = ""
+    last_sync: Optional[float] = None
 
 
 class StatusResponse(BaseModel):
@@ -167,3 +210,4 @@ class StatusResponse(BaseModel):
     config: AppConfig
     view: CoinView
     tabs: list[str] = Field(default_factory=list)
+    account_link: AccountLinkInfo = Field(default_factory=AccountLinkInfo)

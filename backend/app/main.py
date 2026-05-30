@@ -1,4 +1,5 @@
 import asyncio
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -7,26 +8,33 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.engine.portfolio import PortfolioManager
+from app.engine.portfolio_store import store
 from app.engine.trader import TradingEngine
 from app.market.binance import binance
-from app.models import AppConfig, ManualBuyRequest, ManualSellRequest, StatusResponse
+from app.models import (
+    AccountLinkInfo,
+    AppConfig,
+    ManualBuyRequest,
+    ManualSellRequest,
+    PositionExcludeRequest,
+    StatusResponse,
+    TradeMode,
+)
 
 STATIC_DIR = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
 
-portfolio = PortfolioManager()
-engine = TradingEngine(portfolio)
+engine = TradingEngine()
 _ws_clients: set[WebSocket] = set()
 _broadcast_task: asyncio.Task | None = None
 _ticker_cache: tuple[float, dict] | None = None
+_last_live_sync: float = 0
+
 
 api = APIRouter(prefix="/api")
 
 
 async def _get_tickers() -> dict:
     global _ticker_cache
-    import time
-
     now = time.time()
     if _ticker_cache and now - _ticker_cache[0] < 5:
         return _ticker_cache[1]
@@ -36,18 +44,45 @@ async def _get_tickers() -> dict:
 
 
 async def _build_status() -> dict:
+    global _last_live_sync
+    engine.bind_portfolio()
+    link = AccountLinkInfo(mode=engine.config.trade_mode.value)
+
+    if engine.config.trade_mode == TradeMode.LIVE:
+        if not engine.config.binance_api_key:
+            link.linked = False
+            link.message = "API 키를 설정하세요"
+        else:
+            try:
+                if time.time() - _last_live_sync > 8:
+                    engine._link_message = await store.sync_live(engine.config)
+                    _last_live_sync = time.time()
+                engine.bind_portfolio()
+                link.linked = True
+                link.message = engine._link_message or "거래소 연동됨"
+                link.last_sync = _last_live_sync
+            except Exception as e:
+                link.linked = False
+                link.message = f"연동 실패: {e}"
+    else:
+        link.linked = True
+        link.message = "모의투자 (시뮬 데이터 · 거래소 미연동)"
+
+    portfolio = engine.portfolio
     prices = await engine.prices_map()
     tickers = await _get_tickers()
     snap = portfolio.snapshot(prices, engine.config)
     view = engine.build_coin_view(engine.bot.view_symbol, prices, tickers)
     engine.bot.manual_mode = engine.can_manual_trade()
     engine.bot.recent_trades = portfolio.trades[-40:]
+
     payload = StatusResponse(
         bot=engine.bot,
         portfolio=snap,
         config=engine.config,
         view=view,
         tabs=engine.tab_symbols(),
+        account_link=link,
     ).model_dump()
     payload["status_version"] = engine._status_version
     payload["all_trades"] = [t.model_dump() for t in portfolio.trades[-50:]]
@@ -69,21 +104,26 @@ async def _broadcast_loop() -> None:
                     _ws_clients.discard(ws)
             except Exception:
                 pass
-        await asyncio.sleep(2)
+        await asyncio.sleep(3 if engine.config.trade_mode == TradeMode.LIVE else 2)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global _broadcast_task
+    engine.bind_portfolio()
     _broadcast_task = asyncio.create_task(_broadcast_loop())
     yield
     if _broadcast_task:
         _broadcast_task.cancel()
     await engine.stop()
+    store.persist_active(engine.config.trade_mode)
     await binance.close()
+    from app.market.binance_live import binance_live
+
+    await binance_live.close()
 
 
-app = FastAPI(title="AIDI Auto Invest", version="1.2.0", lifespan=lifespan)
+app = FastAPI(title="AIDI Auto Invest", version="1.3.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -99,8 +139,10 @@ async def get_status():
 
 @api.post("/config")
 async def set_config(cfg: AppConfig):
-    engine.update_config(cfg)
-    return await _build_status()
+    msg = await engine.update_config(cfg)
+    status = await _build_status()
+    status["switch_message"] = msg
+    return status
 
 
 @api.post("/bot/start")
@@ -115,15 +157,46 @@ async def bot_start():
 @api.post("/bot/stop")
 async def bot_stop():
     await engine.stop()
+    engine._persist()
     status = await _build_status()
     status["ok"] = True
     return status
 
 
+@api.post("/account/sync")
+async def force_sync():
+    """실거래 계정 강제 동기화."""
+    if engine.config.trade_mode != TradeMode.LIVE:
+        return {"ok": False, "message": "실거래 모드에서만 가능"}
+    msg = await store.sync_live(engine.config)
+    engine.bind_portfolio()
+    status = await _build_status()
+    status["ok"] = True
+    status["message"] = msg
+    return status
+
+
 @api.get("/chart/{symbol}")
 async def chart(symbol: str, interval: str = "1h"):
-    data = await engine.get_candles(symbol.upper(), interval)
-    return {"symbol": symbol.upper(), "interval": interval, "candles": data}
+    engine.bind_portfolio()
+    sym = symbol.upper()
+    data = await engine.get_candles(sym, interval)
+    markers = [m.model_dump() for m in engine.portfolio.chart_markers(sym)]
+    return {
+        "symbol": sym,
+        "interval": interval,
+        "candles": data,
+        "markers": markers,
+    }
+
+
+@api.post("/position/{symbol}/exclude")
+async def position_exclude(symbol: str, body: PositionExcludeRequest):
+    ok, msg = await engine.set_position_exclude(symbol, body.exclude)
+    status = await _build_status()
+    status["ok"] = ok
+    status["message"] = msg
+    return status
 
 
 @api.post("/view/{symbol}")
@@ -150,7 +223,6 @@ async def trade_sell(req: ManualSellRequest):
     return status
 
 
-# 하위 호환
 @api.post("/chart/select/{symbol}")
 async def legacy_select(symbol: str):
     engine.set_view_symbol(symbol.upper())
@@ -179,15 +251,10 @@ async def websocket_api(ws: WebSocket):
 
 app.include_router(api)
 
-# WebSocket 하위 호환 (/ws)
+
 @app.websocket("/ws")
 async def websocket_root(ws: WebSocket):
     await _ws_handler(ws)
-
-
-@app.get("/api/ws")
-async def ws_hint():
-    return JSONResponse({"use": "WebSocket at /api/ws"})
 
 
 if STATIC_DIR.exists():

@@ -10,6 +10,7 @@ type Props = {
   onManualBuy: (symbol: string, amountKrw: number) => Promise<void>;
   onManualSell: (symbol: string, percent: number) => Promise<void>;
   onSelectChart: (symbol: string) => void;
+  onExclude: (symbol: string, exclude: boolean) => Promise<void>;
   busy: boolean;
 };
 
@@ -48,10 +49,14 @@ function PositionCard({
         <div>
           <h4>{pos.name_ko}</h4>
           <span className="fund-pair">{pos.pair_label}</span>
-          {pos.auto_managed ? (
-            <span className="badge auto">AI 관리</span>
-          ) : (
-            <span className="badge manual">수동 보유</span>
+          {pos.auto_quantity > 0 && (
+            <span className="badge auto">AI {fmtQty(pos.auto_quantity)}</span>
+          )}
+          {pos.manual_quantity > 0 && (
+            <span className="badge manual">수동 {fmtQty(pos.manual_quantity)}</span>
+          )}
+          {pos.excluded_from_auto && (
+            <span className="badge exclude">자동투자 제외</span>
           )}
         </div>
         <button type="button" className="link-btn" onClick={onChart}>

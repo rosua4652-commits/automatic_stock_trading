@@ -2,7 +2,9 @@ import asyncio
 import time
 from typing import Callable, Optional
 
+from app.engine.live_orders import live_market_buy, live_market_sell
 from app.engine.portfolio import PortfolioManager
+from app.engine.portfolio_store import store
 from app.market.binance import binance
 from app.market.coin_registry import coin_meta
 from app.market.entry_analyzer import analyze_entry
@@ -20,13 +22,24 @@ from app.models import (
 
 
 class TradingEngine:
-    def __init__(self, portfolio: PortfolioManager) -> None:
-        self.portfolio = portfolio
+    def __init__(self) -> None:
         self.config = AppConfig()
+        self.portfolio: PortfolioManager = store.paper
         self.bot = BotState()
         self._task: Optional[asyncio.Task] = None
         self._listeners: list[Callable[[], None]] = []
         self._status_version: int = 0
+        self._link_message: str = ""
+
+    def bind_portfolio(self) -> None:
+        """현재 모드에 맞는 포트폴리오만 참조 (시뮬·실거래 분리)."""
+        self.portfolio = store.get(self.config.trade_mode)
+
+    def _persist(self) -> None:
+        store.persist_active(self.config.trade_mode)
+
+    def _is_live(self) -> bool:
+        return self.config.trade_mode == TradeMode.LIVE
 
     def is_running(self) -> bool:
         return self.bot.status == BotStatus.RUNNING
@@ -49,21 +62,50 @@ class TradingEngine:
         return self._status_version
 
     async def start(self) -> tuple[bool, str]:
-        if self.config.trade_mode == TradeMode.LIVE:
+        if self._is_live():
             if not self.config.binance_api_key or not self.config.binance_api_secret:
                 self.bot.message = "실거래: API 키를 설정에서 입력하세요"
+                return False, self.bot.message
+            try:
+                self._link_message = await store.sync_live(self.config)
+                self.bind_portfolio()
+            except Exception as e:
+                self.bot.message = f"거래소 연동 실패: {e}"
                 return False, self.bot.message
 
         if self.bot.status == BotStatus.RUNNING:
             return True, "이미 실행 중입니다"
 
+        self.bind_portfolio()
         self._bump_version()
         self.bot.status = BotStatus.RUNNING
         self.bot.manual_mode = False
         self.bot.message = "시장·차트 분석 후 진입합니다..."
         self._task = asyncio.create_task(self._loop())
+        await self._resume_existing_positions()
         self._notify()
         return True, self.bot.message
+
+    async def _resume_existing_positions(self) -> None:
+        """재시작 시 보유 AI 포지션 재분석·익절 타이밍 점검."""
+        tickers = await binance.tickers_24h()
+        n = 0
+        for symbol, pos in list(self.portfolio.positions.items()):
+            if pos.auto_quantity <= 0:
+                continue
+            signal = await analyze_entry(symbol, self.config.min_entry_score)
+            pos.entry_outlook = signal.outlook
+            pos.entry_reason = (
+                f"재개·{signal.outlook} · " + ", ".join(signal.reasons[:3])
+            )
+            pos.entry_score = signal.score
+            t = tickers.get(symbol)
+            if t:
+                price = float(t["lastPrice"])
+                await self._manage_position(symbol, price)
+                n += 1
+        if n:
+            self.bot.message = f"보유 {n}개 코인 재분석·익절 감시 시작"
 
     async def stop(self) -> None:
         if self.bot.status == BotStatus.STOPPED:
@@ -88,10 +130,20 @@ class TradingEngine:
         self._bump_version()
         self._notify()
 
-    def update_config(self, cfg: AppConfig) -> None:
+    async def update_config(self, cfg: AppConfig) -> str:
+        old_mode = self.config.trade_mode
+        if self.is_running():
+            await self.stop()
         self.config = cfg
-        self.portfolio.apply_config(cfg)
+        switch_msg = await store.on_mode_change(old_mode, cfg.trade_mode, cfg)
+        self.bind_portfolio()
+        if cfg.trade_mode == TradeMode.PAPER:
+            self.portfolio.apply_config(cfg)
+            self._persist()
+        self._link_message = switch_msg
+        self._bump_version()
         self._notify()
+        return switch_msg
 
     def set_view_symbol(self, symbol: str) -> str:
         sym = symbol.upper()
@@ -103,58 +155,74 @@ class TradingEngine:
         if not self.can_manual_trade():
             return False, "자동투자 중에는 수동 매매할 수 없습니다. 먼저 중지하세요."
 
+        self.bind_portfolio()
         symbol = req.symbol.upper()
+
+        if self._is_live():
+            ok, msg = await live_market_buy(
+                self.config, symbol, req.amount_krw, "수동 매수", as_auto=False
+            )
+            self.bind_portfolio()
+            self.bot.recent_trades = self.portfolio.trades[-30:]
+            self._notify()
+            return ok, msg
+
         tickers = await binance.tickers_24h()
         t = tickers.get(symbol)
         if not t:
             return False, "코인 시세를 찾을 수 없습니다"
-
         price = float(t["lastPrice"])
         base = coin_meta(symbol)["base"]
         sl = self.config.stop_loss_pct / 100
         tp = self.config.take_profit_pct / 100
-
         pos = self.portfolio.buy(
-            symbol,
-            base,
-            price,
-            req.amount_krw,
-            sl,
-            tp,
+            symbol, base, price, req.amount_krw, sl, tp,
             reason="수동 매수",
             entry_reason="사용자 직접 매수",
-            entry_score=0,
-            entry_outlook="수동",
             auto_managed=False,
         )
         if not pos:
             return False, "잔고 부족 또는 최소 금액 미달"
+        self._persist()
         self.bot.recent_trades = self.portfolio.trades[-30:]
         self._notify()
-        return True, f"{pos.display} 매수 완료"
+        return True, f"{pos.display} 모의 매수 완료"
 
     async def manual_sell(self, req: ManualSellRequest) -> tuple[bool, str]:
         if not self.can_manual_trade():
             return False, "자동투자 중에는 수동 매매할 수 없습니다. 먼저 중지하세요."
 
+        self.bind_portfolio()
         symbol = req.symbol.upper()
         if symbol not in self.portfolio.positions:
             return False, "보유하지 않은 코인입니다"
+
+        if self._is_live():
+            ok, msg = await live_market_sell(
+                self.config,
+                symbol,
+                req.percent,
+                "수동 매도",
+                auto_only=getattr(req, "from_auto_only", False),
+            )
+            self.bind_portfolio()
+            self.bot.recent_trades = self.portfolio.trades[-30:]
+            self._notify()
+            return ok, msg
 
         tickers = await binance.tickers_24h()
         t = tickers.get(symbol)
         if not t:
             return False, "시세 조회 실패"
         price = float(t["lastPrice"])
-
         pos = self.portfolio.positions[symbol]
         evt = self.portfolio.sell(symbol, price, "수동 매도", req.percent)
         if not evt:
             return False, "매도 실패"
+        self._persist()
         self.bot.recent_trades = self.portfolio.trades[-30:]
         self._notify()
-        pct = req.percent
-        return True, f"{pos.display} {pct:.0f}% 매도 완료"
+        return True, f"{pos.display} 모의 {req.percent:.0f}% 매도"
 
     async def _loop(self) -> None:
         try:
@@ -186,6 +254,15 @@ class TradingEngine:
     async def _tick(self) -> None:
         if not self.is_running():
             return
+
+        self.bind_portfolio()
+        if self._is_live():
+            try:
+                self._link_message = await store.sync_live(self.config)
+                self.bind_portfolio()
+            except Exception as e:
+                self.bot.message = f"연동 오류: {e}"
+                return
 
         self.portfolio.usdt_krw = await binance.usdt_krw_rate()
         candidates = await scan_market(limit=15, is_running=self.is_running)
@@ -221,23 +298,23 @@ class TradingEngine:
             if not self.is_running():
                 return
             pos = self.portfolio.positions[symbol]
-            if not pos.auto_managed:
-                t = tickers.get(symbol)
-                if t:
-                    prices[symbol] = float(t["lastPrice"])
-                continue
             t = tickers.get(symbol)
+            if t:
+                prices[symbol] = float(t["lastPrice"])
+            if pos.auto_quantity <= 0:
+                continue
             if not t:
                 continue
             price = float(t["lastPrice"])
-            prices[symbol] = price
             await self._manage_position(symbol, price)
 
         if not self.is_running():
             return
 
-        held = set(self.portfolio.positions.keys())
-        slots = self.config.max_positions - len(held)
+        auto_held = {
+            s for s, p in self.portfolio.positions.items() if p.auto_quantity > 0
+        }
+        slots = self.config.max_positions - len(auto_held)
         if slots <= 0:
             return
 
@@ -249,7 +326,12 @@ class TradingEngine:
         for cand, signal in enriched:
             if not self.is_running() or slots <= 0:
                 break
-            if cand.symbol in held:
+            existing = self.portfolio.positions.get(cand.symbol)
+            if existing and existing.auto_quantity > 0:
+                continue
+            if existing and existing.excluded_from_auto and existing.manual_quantity > 0:
+                pass
+            elif existing and existing.excluded_from_auto:
                 continue
             if cand.score < self.config.min_buy_score:
                 continue
@@ -264,59 +346,104 @@ class TradingEngine:
                 signal.reasons[:4]
             )
 
-            pos = self.portfolio.buy(
-                cand.symbol,
-                cand.base,
-                price,
-                per_slot,
-                sl_pct,
-                tp_pct,
-                score=cand.score,
-                reason="AI 진입",
-                entry_reason=entry_txt,
-                entry_score=signal.score,
-                entry_outlook=signal.outlook,
-                auto_managed=True,
-            )
-            if pos:
-                prices[cand.symbol] = price
-                held.add(cand.symbol)
-                slots -= 1
-                self.bot.recent_trades = self.portfolio.trades[-30:]
+            if self._is_live():
+                ok, _ = await live_market_buy(
+                    self.config,
+                    cand.symbol,
+                    per_slot,
+                    f"AI 진입 · {entry_txt}",
+                    as_auto=True,
+                )
+                if ok:
+                    self.bind_portfolio()
+                    auto_held.add(cand.symbol)
+                    slots -= 1
+                    self.bot.recent_trades = self.portfolio.trades[-30:]
+            else:
+                pos = self.portfolio.buy(
+                    cand.symbol,
+                    cand.base,
+                    price,
+                    per_slot,
+                    sl_pct,
+                    tp_pct,
+                    score=cand.score,
+                    reason="AI 진입",
+                    entry_reason=entry_txt,
+                    entry_score=signal.score,
+                    entry_outlook=signal.outlook,
+                    auto_managed=True,
+                )
+                if pos:
+                    prices[cand.symbol] = price
+                    auto_held.add(cand.symbol)
+                    slots -= 1
+                    self._persist()
+                    self.bot.recent_trades = self.portfolio.trades[-30:]
 
         self._notify()
+
+    async def set_position_exclude(self, symbol: str, exclude: bool) -> tuple[bool, str]:
+        self.bind_portfolio()
+        sym = symbol.upper()
+        pos = self.portfolio.set_exclude(sym, exclude)
+        if not pos:
+            return False, "보유하지 않은 코인입니다"
+        self._persist()
+        if self._is_live():
+            await store.sync_live(self.config)
+            self.bind_portfolio()
+        if exclude:
+            return True, f"{pos.display} — 수동 보유 (AI는 auto 수량만 관리)"
+        return True, f"{pos.display} — 자동투자 예외 해제"
 
     async def _manage_position(self, symbol: str, price: float) -> None:
         if not self.is_running():
             return
         pos = self.portfolio.positions.get(symbol)
-        if not pos or not pos.auto_managed:
+        if not pos or pos.auto_quantity <= 0:
             return
 
         pos.current_price = price
+        if pos.trailing_high <= 0:
+            pos.trailing_high = price
         if price > pos.trailing_high:
             pos.trailing_high = price
 
-        pnl_pct = (price - pos.avg_price) / pos.avg_price
+        pnl_pct = (price - pos.auto_avg_price) / pos.auto_avg_price if pos.auto_avg_price else 0
 
         from app.config import settings
 
         if pnl_pct >= settings.trailing_activate_pct:
             trail_stop = pos.trailing_high * (1 - settings.trailing_distance_pct)
-            pos.stop_loss = max(pos.stop_loss, trail_stop)
+            if pos.stop_loss > 0:
+                pos.stop_loss = max(pos.stop_loss, trail_stop)
 
-        if price <= pos.stop_loss:
-            if self.portfolio.sell(symbol, price, "손절"):
-                self.bot.recent_trades = self.portfolio.trades[-30:]
+        if pos.stop_loss > 0 and price <= pos.stop_loss:
+            await self._auto_sell(symbol, "손절")
             return
 
-        if price >= pos.take_profit:
-            if self.portfolio.sell(symbol, price, "익절"):
-                self.bot.recent_trades = self.portfolio.trades[-30:]
+        if pos.take_profit > 0 and price >= pos.take_profit:
+            await self._auto_sell(symbol, "익절")
             return
 
         if pnl_pct <= -0.12:
-            if self.portfolio.sell(symbol, price, "급락 방어"):
+            await self._auto_sell(symbol, "급락 방어")
+
+    async def _auto_sell(self, symbol: str, reason: str) -> None:
+        if self._is_live():
+            ok, _ = await live_market_sell(
+                self.config, symbol, 100.0, reason, auto_only=True
+            )
+            if ok:
+                self.bind_portfolio()
+                self.bot.recent_trades = self.portfolio.trades[-30:]
+        else:
+            tickers = await binance.tickers_24h()
+            t = tickers.get(symbol)
+            px = float(t["lastPrice"]) if t else 0
+            if self.portfolio.sell(symbol, px, reason, auto_only=True):
+                self._persist()
                 self.bot.recent_trades = self.portfolio.trades[-30:]
 
     async def get_candles(self, symbol: str, interval: str = "1h") -> list[dict]:

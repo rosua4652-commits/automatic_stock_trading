@@ -49,7 +49,13 @@ export default function SettingsModal({
           </div>
           {draft.trade_mode === "live" && (
             <p className="warn">
-              실거래는 API 키 설정 후에만 시작됩니다. 소액으로 먼저 테스트하세요.
+              실거래는 Binance 잔고·보유 코인을 API로 불러옵니다. 모의투자 데이터와 섞이지
+              않습니다. 소액·테스트넷으로 먼저 확인하세요.
+            </p>
+          )}
+          {draft.trade_mode === "paper" && (
+            <p className="warn subtle">
+              모의투자 잔고는 앱 내부 시뮬이며, 실거래 계정과 무관합니다.
             </p>
           )}
         </section>
@@ -166,6 +172,14 @@ export default function SettingsModal({
                 onChange={(e) => set("binance_api_secret", e.target.value)}
                 placeholder="입력 시에만 저장"
               />
+            </label>
+            <label className="field checkbox-field">
+              <input
+                type="checkbox"
+                checked={draft.use_testnet}
+                onChange={(e) => set("use_testnet", e.target.checked)}
+              />
+              <span>Binance 테스트넷 사용 (연습용)</span>
             </label>
           </section>
         )}

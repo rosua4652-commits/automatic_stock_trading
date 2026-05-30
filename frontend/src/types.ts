@@ -14,6 +14,14 @@ export interface AppConfig {
   min_entry_score: number;
   binance_api_key: string;
   binance_api_secret: string;
+  use_testnet: boolean;
+}
+
+export interface AccountLink {
+  linked: boolean;
+  mode: string;
+  message: string;
+  last_sync?: number;
 }
 
 export interface CoinMeta {
@@ -34,6 +42,8 @@ export interface Position {
   pair_label: string;
   display: string;
   quantity: number;
+  auto_quantity: number;
+  manual_quantity: number;
   avg_price: number;
   current_price: number;
   stop_loss: number;
@@ -46,7 +56,7 @@ export interface Position {
   entry_reason: string;
   entry_score: number;
   entry_outlook: string;
-  auto_managed: boolean;
+  excluded_from_auto: boolean;
   score: number;
 }
 
@@ -117,10 +127,12 @@ export interface StatusPayload {
   config: AppConfig;
   view: CoinView;
   tabs: string[];
+  account_link?: AccountLink;
   status_version?: number;
   all_trades?: TradeEvent[];
   ok?: boolean;
   message?: string;
+  switch_message?: string;
 }
 
 export interface Candle {

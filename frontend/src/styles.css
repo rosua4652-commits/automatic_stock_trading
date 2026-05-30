@@ -676,6 +676,21 @@ body {
   font-size: 0.78rem;
   color: var(--red);
   margin-top: 0.5rem;
+  line-height: 1.4;
+}
+
+.warn.subtle {
+  color: var(--muted);
+}
+
+.checkbox-field {
+  flex-direction: row !important;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.checkbox-field input {
+  width: auto;
 }
 
 .field-grid {
@@ -841,6 +856,17 @@ body {
 
 .badge.manual {
   background: rgba(148, 163, 184, 0.2);
+  color: var(--muted);
+}
+
+.badge.exclude {
+  background: rgba(251, 191, 36, 0.2);
+  color: #fbbf24;
+}
+
+.exclude-row {
+  margin-top: 0.65rem;
+  font-size: 0.78rem;
   color: var(--muted);
 }
 

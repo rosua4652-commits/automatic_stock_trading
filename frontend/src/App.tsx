@@ -6,6 +6,7 @@ import {
   manualBuy,
   manualSell,
   saveConfig,
+  setPositionExclude,
   setViewSymbol,
   startBot,
   stopBot,
@@ -290,7 +291,11 @@ export default function App() {
   return (
     <div className="app">
       <div className={`mode-banner ${isPaper ? "paper" : "live"}`}>
-        {isPaper ? "모의투자 모드 — 실제 주문 없음" : "실거래 모드 — 실제 자금 사용"}
+        {isPaper
+          ? "모의투자 — 시뮬 전용 데이터 (실거래와 완전 분리)"
+          : data.account_link?.linked
+            ? `실거래 연동 · ${data.account_link.message}`
+            : `실거래 — ${data.account_link?.message || "API 연동 필요"}`}
       </div>
 
       <header className="topbar">
@@ -397,6 +402,18 @@ export default function App() {
             onManualBuy={handleManualBuy}
             onManualSell={handleManualSell}
             onSelectChart={goChart}
+            onExclude={async (sym, ex) => {
+              setTradeBusy(true);
+              try {
+                const s = await setPositionExclude(sym, ex);
+                applyPayload(s);
+                showToast(s.message || (ex ? "자동투자 제외" : "제외 해제"));
+              } catch (e) {
+                showToast(e instanceof Error ? e.message : "실패");
+              } finally {
+                setTradeBusy(false);
+              }
+            }}
             busy={tradeBusy}
           />
         </main>
