@@ -162,7 +162,7 @@ def _live_once(config: AppConfig, client: UpbitClient, confirmed: bool) -> int:
 
 
 def _run(config: AppConfig, client: UpbitClient, mode: str, interval: int) -> int:
-    controller = BotController(TradingBot(config, client), interval_seconds=interval)
+    controller = BotController(TradingBot(config, client, interval_seconds=interval), interval_seconds=interval)
     controller.start(mode)
     print_json({"ok": True, "message": "bot started; press Ctrl+C or create data/STOP_BOT to stop", "status": controller.status()})
     try:

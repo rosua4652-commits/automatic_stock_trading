@@ -12,6 +12,7 @@ from .config import AppConfig
 from .reporting import build_portfolio_report
 from .runner import BotController, TradingBot
 from .runtime_settings import RuntimeSettingsStore
+from .settings_advisor import advice_to_dict, analyze_investment_settings
 from .storage import read_jsonl
 from .upbit import UpbitClient
 
@@ -21,9 +22,9 @@ def serve(host: str = "0.0.0.0", port: int = 8080, interval_seconds: int = 60) -
 
     def build_runtime() -> dict[str, Any]:
         config = settings_store.apply(AppConfig.from_env())
-        bot = TradingBot(config, UpbitClient(config.credentials))
-        ai_client = AIAnalysisClient(config)
         interval = int(settings_store.load().get("bot_interval_seconds", interval_seconds))
+        bot = TradingBot(config, UpbitClient(config.credentials), interval_seconds=interval)
+        ai_client = AIAnalysisClient(config)
         return {"config": config, "bot": bot, "ai_client": ai_client, "interval": interval}
 
     runtime = build_runtime()
@@ -44,6 +45,10 @@ def serve(host: str = "0.0.0.0", port: int = 8080, interval_seconds: int = 60) -
                         "saved_overrides": settings_store.load(),
                     }
                 )
+            elif parsed.path == "/api/settings/advice":
+                settings = settings_store.public_settings(runtime["config"], controller.interval_seconds)
+                advice = advice_to_dict(analyze_investment_settings(runtime["config"], controller.interval_seconds))
+                self._send_json({"ok": True, "settings": settings, "advice": advice})
             elif parsed.path == "/api/logs":
                 limit = int(parse_qs(parsed.query).get("limit", ["30"])[0])
                 self._send_json({"ok": True, "events": read_jsonl("logs/bot_events.jsonl")[-limit:]})
@@ -74,6 +79,25 @@ def serve(host: str = "0.0.0.0", port: int = 8080, interval_seconds: int = 60) -
                         "settings": settings_store.public_settings(runtime["config"], controller.interval_seconds),
                         "saved_overrides": saved,
                         "status": controller.status(),
+                    }
+                )
+            elif parsed.path == "/api/settings/ai-review":
+                settings = settings_store.public_settings(runtime["config"], controller.interval_seconds)
+                advice = advice_to_dict(analyze_investment_settings(runtime["config"], controller.interval_seconds))
+                analysis = runtime["ai_client"].summarize_settings(settings, advice)
+                self._send_json({"ok": True, "settings": settings, "advice": advice, "ai_analysis": analysis})
+            elif parsed.path == "/api/settings/apply-suggestions":
+                advice = analyze_investment_settings(runtime["config"], controller.interval_seconds)
+                saved = settings_store.save(advice.suggested_overrides)
+                new_runtime = build_runtime()
+                runtime.update(new_runtime)
+                controller.configure(runtime["bot"], runtime["interval"])
+                self._send_json(
+                    {
+                        "ok": True,
+                        "applied": advice.suggested_overrides,
+                        "settings": settings_store.public_settings(runtime["config"], controller.interval_seconds),
+                        "saved_overrides": saved,
                     }
                 )
             elif parsed.path == "/api/step":
@@ -179,6 +203,7 @@ def _dashboard_html() -> str:
       <p class="muted">API 키는 화면에 표시하지 않습니다. 실거래는 .env의 LIVE_TRADING_ENABLED=true가 켜져 있어야 가능합니다.</p>
       <div class="grid">
         <div><label>AI 분석</label><select id="ai_enabled"><option value="true">활성</option><option value="false">비활성</option></select></div>
+        <div><label>자동 설정 점검</label><select id="settings_advisor_enabled"><option value="true">활성</option><option value="false">비활성</option></select></div>
         <div><label>거래 모드</label><select id="trading_mode"><option value="paper">모의투자</option><option value="live">실거래</option></select></div>
         <div><label>AI 모델</label><input id="ai_model"></div>
         <div><label>반복 주기(초)</label><input id="bot_interval_seconds" type="number" min="5"></div>
@@ -200,6 +225,9 @@ def _dashboard_html() -> str:
       </div>
       <button onclick="saveSettings()">설정 저장/적용</button>
       <button onclick="loadSettings()">설정 불러오기</button>
+      <button onclick="get('/api/settings/advice', 'settings')">설정 자동 점검</button>
+      <button onclick="post('/api/settings/ai-review', {})">AI 설정 분석</button>
+      <button onclick="post('/api/settings/apply-suggestions', {})">추천값 적용</button>
       <pre id="settings"></pre>
     </section>
     <section>
@@ -229,7 +257,7 @@ def _dashboard_html() -> str:
     async function post(path, body) {
       const res = await fetch(path, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
       const data = await res.json();
-      const target = path.includes('scan') || path.includes('ai') ? 'signals' : path.includes('portfolio') ? 'portfolio' : path.includes('settings') ? 'settings' : 'status';
+      const target = path.includes('settings') ? 'settings' : path.includes('scan') || path.includes('ai') ? 'signals' : path.includes('portfolio') ? 'portfolio' : 'status';
       document.getElementById(target).textContent = JSON.stringify(data, null, 2);
       loadStatus();
     }
@@ -246,7 +274,7 @@ def _dashboard_html() -> str:
     }
     async function saveSettings() {
       const keys = [
-        'ai_enabled','trading_mode','ai_model','bot_interval_seconds','total_budget_krw','max_position_krw',
+        'ai_enabled','settings_advisor_enabled','trading_mode','ai_model','bot_interval_seconds','total_budget_krw','max_position_krw',
         'min_position_krw','max_open_positions','daily_loss_limit_krw','stop_after_consecutive_losses',
         'take_profit_pct','stop_loss_pct','trailing_stop_pct','taker_fee_pct','slippage_pct',
         'min_expected_net_profit_pct','btc_crash_5m_pct','scan_top_markets','min_24h_trade_price_krw'

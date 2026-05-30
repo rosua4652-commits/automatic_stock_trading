@@ -11,7 +11,7 @@ from .config import AppConfig, RiskSettings
 class RuntimeSettingsStore:
     """Persist non-secret runtime settings controlled by the dashboard."""
 
-    BOOL_FIELDS = {"ai_enabled"}
+    BOOL_FIELDS = {"ai_enabled", "settings_advisor_enabled"}
     INT_FIELDS = {
         "scan_top_markets",
         "max_open_positions",
@@ -77,7 +77,7 @@ class RuntimeSettingsStore:
         for key, value in settings.items():
             if key in self.RISK_FIELDS:
                 risk_data[key] = value
-            elif key in {"trading_mode", "scan_top_markets", "min_24h_trade_price_krw", "ai_enabled", "ai_model"}:
+            elif key in {"trading_mode", "scan_top_markets", "min_24h_trade_price_krw", "ai_enabled", "settings_advisor_enabled", "ai_model"}:
                 app_updates[key] = value
 
         if "trading_mode" in app_updates:
@@ -91,6 +91,7 @@ class RuntimeSettingsStore:
         return {
             "trading_mode": config.trading_mode,
             "ai_enabled": config.ai_enabled,
+            "settings_advisor_enabled": config.settings_advisor_enabled,
             "ai_model": config.ai_model,
             "scan_top_markets": config.scan_top_markets,
             "min_24h_trade_price_krw": config.min_24h_trade_price_krw,

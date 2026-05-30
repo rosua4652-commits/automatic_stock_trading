@@ -10,6 +10,7 @@ from typing import Any
 from .config import AppConfig
 from .indicators import percent_change
 from .portfolio import PortfolioManager
+from .settings_advisor import advice_to_dict, analyze_investment_settings
 from .state import BotPosition, BotState, StateStore
 from .storage import append_jsonl
 from .strategy import MarketContext, ScalpingStrategy, Signal
@@ -23,11 +24,18 @@ class TradingBot:
     an explicit start mode of "live".
     """
 
-    def __init__(self, config: AppConfig, client: UpbitClient | None = None, state_store: StateStore | None = None) -> None:
+    def __init__(
+        self,
+        config: AppConfig,
+        client: UpbitClient | None = None,
+        state_store: StateStore | None = None,
+        interval_seconds: int = 60,
+    ) -> None:
         self.config = config
         self.client = client or UpbitClient(config.credentials)
         self.state_store = state_store or StateStore()
         self.strategy = ScalpingStrategy(config.risk)
+        self.interval_seconds = interval_seconds
 
     def step(self, requested_mode: str = "paper") -> dict[str, Any]:
         state = self.state_store.load()
@@ -37,6 +45,8 @@ class TradingBot:
             "mode": mode,
             "state": asdict(state),
         }
+        if self.config.settings_advisor_enabled:
+            event["settings_advice"] = advice_to_dict(analyze_investment_settings(self.config, self.interval_seconds))
 
         if state.position:
             event.update(self._manage_position(state, mode))

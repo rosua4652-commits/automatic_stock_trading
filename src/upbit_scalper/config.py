@@ -83,6 +83,7 @@ class AppConfig:
     scan_top_markets: int
     min_24h_trade_price_krw: float
     ai_enabled: bool
+    settings_advisor_enabled: bool
     cursor_api_key: str
     ai_base_url: str
     ai_model: str
@@ -116,6 +117,7 @@ class AppConfig:
             scan_top_markets=env_int("SCAN_TOP_MARKETS", 30),
             min_24h_trade_price_krw=env_float("MIN_24H_TRADE_PRICE_KRW", 1_000_000_000),
             ai_enabled=env_bool("AI_ENABLED", False),
+            settings_advisor_enabled=env_bool("SETTINGS_ADVISOR_ENABLED", True),
             cursor_api_key=os.getenv("CURSOR_API_KEY", ""),
             ai_base_url=os.getenv("AI_BASE_URL", "https://api.cursor.com/v1/chat/completions"),
             ai_model=os.getenv("AI_MODEL", "gpt-4o-mini"),
