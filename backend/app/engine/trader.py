@@ -598,7 +598,7 @@ class TradingEngine:
                 return fail
             return (
                 f"{pos.display} — 손익절 범위이나 매도 실패 "
-                "(API·최소주문·잔고 확인)"
+                "(API·잔고·지정가 미체결 확인)"
             )
 
         self.bot.recent_trades = self.portfolio.trades[-30:]

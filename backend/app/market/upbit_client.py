@@ -157,6 +157,29 @@ class UpbitClient:
         }
         return await self._auth_post("/v1/orders", body)
 
+    async def limit_sell(
+        self,
+        market: str,
+        volume: float,
+        price_krw: float,
+        *,
+        time_in_force: str = "gtc",
+    ) -> dict:
+        vol = f"{volume:.8f}".rstrip("0").rstrip(".")
+        from app.market.upbit_sell import format_upbit_price
+
+        body: dict[str, str] = {
+            "market": market,
+            "side": "ask",
+            "ord_type": "limit",
+            "volume": vol,
+            "price": format_upbit_price(price_krw),
+        }
+        tif = (time_in_force or "gtc").lower()
+        if tif in ("ioc", "fok"):
+            body["time_in_force"] = tif
+        return await self._auth_post("/v1/orders", body)
+
 
 def symbol_to_upbit(symbol: str) -> str:
     s = symbol.upper()

@@ -9,6 +9,7 @@ from app.engine.portfolio_store import store
 from app.market.upbit_data import market
 from app.market.coin_registry import coin_meta
 from app.market.upbit_client import symbol_to_upbit, upbit_client
+from app.market.upbit_sell import MIN_MARKET_ASK_KRW, smart_sell
 from app.models import AppConfig, Position, TradeEvent
 from app.storage.credentials import get_active_keys
 from app.config import settings
@@ -153,8 +154,24 @@ async def live_market_sell(
         upbit_market = resolve_upbit_market(sym, markets)
         if not upbit_market:
             return False, f"업비트 미상장 종목 ({sym}) — 매도 스킵"
-        order = await upbit_client.market_sell(upbit_market, sell_qty)
-        executed_qty = float(order.get("executed_volume", sell_qty))
+        bid_hint = 0.0
+        if pos.current_price_krw > 0:
+            bid_hint = pos.current_price_krw
+        elif pos.current_price > 0 and portfolio.usdt_krw > 0:
+            bid_hint = pos.current_price * portfolio.usdt_krw
+        order, sell_mode = await smart_sell(
+            upbit_client, upbit_market, sell_qty, bid_hint_krw=bid_hint
+        )
+        executed_qty = float(order.get("executed_volume") or 0)
+        state = str(order.get("state") or "")
+        if executed_qty <= sell_qty * 1e-6 and state in ("wait", "watch"):
+            return (
+                False,
+                f"평가 {int(MIN_MARKET_ASK_KRW):,}원 미만 — {sell_mode} 접수(미체결). "
+                "업비트 앱·미체결 탭에서 확인하세요.",
+            )
+        if executed_qty <= sell_qty * 1e-6:
+            return False, f"매도 체결 없음 ({sell_mode})"
         quote_krw = executed_qty * pos.current_price * portfolio.usdt_krw
         if order.get("trades"):
             quote_krw = sum(float(t.get("funds", 0)) for t in order["trades"])
@@ -192,4 +209,5 @@ async def live_market_sell(
     _persist_live(portfolio)
     label = "업비트"
     kind = "AI" if auto_only else "수동"
-    return True, f"[{label}] 실거래 {kind} 매도 · {executed_qty:.6f}"
+    tail = f" · {sell_mode}" if sell_mode != "시장가" else ""
+    return True, f"[{label}] 실거래 {kind} 매도 · {executed_qty:.6f}{tail}"
