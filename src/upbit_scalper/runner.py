@@ -210,10 +210,17 @@ class BotController:
         return {
             "running": self.is_running,
             "mode": self.mode,
+            "interval_seconds": self.interval_seconds,
             "started_at": self.started_at,
             "last_event": self.last_event,
             "last_error": self.last_error,
         }
+
+    def configure(self, bot: TradingBot, interval_seconds: int | None = None) -> None:
+        with self._lock:
+            self.bot = bot
+            if interval_seconds is not None:
+                self.interval_seconds = interval_seconds
 
     def _run_loop(self) -> None:
         while not self._stop_event.is_set() and not self.stop_file.exists():

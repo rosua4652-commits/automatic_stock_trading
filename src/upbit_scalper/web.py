@@ -11,15 +11,23 @@ from .ai_client import AIAnalysisClient
 from .config import AppConfig
 from .reporting import build_portfolio_report
 from .runner import BotController, TradingBot
+from .runtime_settings import RuntimeSettingsStore
 from .storage import read_jsonl
 from .upbit import UpbitClient
 
 
 def serve(host: str = "0.0.0.0", port: int = 8080, interval_seconds: int = 60) -> None:
-    config = AppConfig.from_env()
-    bot = TradingBot(config, UpbitClient(config.credentials))
-    controller = BotController(bot, interval_seconds=interval_seconds)
-    ai_client = AIAnalysisClient(config)
+    settings_store = RuntimeSettingsStore()
+
+    def build_runtime() -> dict[str, Any]:
+        config = settings_store.apply(AppConfig.from_env())
+        bot = TradingBot(config, UpbitClient(config.credentials))
+        ai_client = AIAnalysisClient(config)
+        interval = int(settings_store.load().get("bot_interval_seconds", interval_seconds))
+        return {"config": config, "bot": bot, "ai_client": ai_client, "interval": interval}
+
+    runtime = build_runtime()
+    controller = BotController(runtime["bot"], interval_seconds=runtime["interval"])
 
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self) -> None:  # noqa: N802
@@ -28,6 +36,14 @@ def serve(host: str = "0.0.0.0", port: int = 8080, interval_seconds: int = 60) -
                 self._send_html(_dashboard_html())
             elif parsed.path == "/api/status":
                 self._send_json({"ok": True, "status": controller.status()})
+            elif parsed.path == "/api/settings":
+                self._send_json(
+                    {
+                        "ok": True,
+                        "settings": settings_store.public_settings(runtime["config"], controller.interval_seconds),
+                        "saved_overrides": settings_store.load(),
+                    }
+                )
             elif parsed.path == "/api/logs":
                 limit = int(parse_qs(parsed.query).get("limit", ["30"])[0])
                 self._send_json({"ok": True, "events": read_jsonl("logs/bot_events.jsonl")[-limit:]})
@@ -41,23 +57,37 @@ def serve(host: str = "0.0.0.0", port: int = 8080, interval_seconds: int = 60) -
             parsed = urlparse(self.path)
             if parsed.path == "/api/start":
                 body = self._read_body()
-                started = controller.start(body.get("mode", "paper"))
+                mode = body.get("mode") or runtime["config"].trading_mode
+                started = controller.start(mode)
                 self._send_json({"ok": True, "started": started, "status": controller.status()})
             elif parsed.path == "/api/stop":
                 controller.stop()
                 self._send_json({"ok": True, "status": controller.status()})
+            elif parsed.path == "/api/settings":
+                saved = settings_store.save(self._read_body())
+                new_runtime = build_runtime()
+                runtime.update(new_runtime)
+                controller.configure(runtime["bot"], runtime["interval"])
+                self._send_json(
+                    {
+                        "ok": True,
+                        "settings": settings_store.public_settings(runtime["config"], controller.interval_seconds),
+                        "saved_overrides": saved,
+                        "status": controller.status(),
+                    }
+                )
             elif parsed.path == "/api/step":
-                event = bot.step("paper")
+                event = runtime["bot"].step(runtime["config"].trading_mode)
                 self._send_json({"ok": True, "event": event})
             elif parsed.path == "/api/scan":
-                signals = bot.rank_signals()[:10]
+                signals = runtime["bot"].rank_signals()[:10]
                 self._send_json({"ok": True, "signals": signals})
             elif parsed.path == "/api/ai":
-                signals = bot.rank_signals()[:1]
-                analysis = ai_client.summarize_signal(signals[0], {"source": "web"}) if signals else "No signals"
+                signals = runtime["bot"].rank_signals()[:1]
+                analysis = runtime["ai_client"].summarize_signal(signals[0], {"source": "web"}) if signals else "신호가 없습니다."
                 self._send_json({"ok": True, "analysis": analysis})
             elif parsed.path == "/api/portfolio":
-                snapshot = bot.portfolio_snapshot()
+                snapshot = runtime["bot"].portfolio_snapshot()
                 self._send_json({"ok": True, "snapshot": snapshot})
             else:
                 self.send_error(HTTPStatus.NOT_FOUND)
@@ -122,6 +152,9 @@ def _dashboard_html() -> str:
     button { margin: 4px; padding: 10px 14px; border: 0; border-radius: 8px; background: #2563eb; color: white; cursor: pointer; }
     button.danger { background: #dc2626; }
     button.safe { background: #16a34a; }
+    label { display: block; margin: 10px 0 4px; color: #cbd5e1; font-size: 14px; }
+    input, select { width: 100%; box-sizing: border-box; padding: 9px; border-radius: 8px; border: 1px solid #475569; background: #020617; color: #e2e8f0; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
     pre { overflow: auto; white-space: pre-wrap; background: #020617; padding: 12px; border-radius: 8px; max-height: 420px; }
     .muted { color: #94a3b8; }
   </style>
@@ -135,10 +168,39 @@ def _dashboard_html() -> str:
     <section>
       <h2>봇 제어</h2>
       <button class="safe" onclick="post('/api/start', {mode:'paper'})">모의투자 지속 실행</button>
+      <button class="safe" onclick="startConfigured()">현재 설정으로 지속 실행</button>
       <button onclick="post('/api/step', {})">1회 분석/실행</button>
       <button class="danger" onclick="post('/api/stop', {})">중단</button>
       <button onclick="loadStatus()">상태 새로고침</button>
       <pre id="status">불러오는 중...</pre>
+    </section>
+    <section>
+      <h2>운용 설정</h2>
+      <p class="muted">API 키는 화면에 표시하지 않습니다. 실거래는 .env의 LIVE_TRADING_ENABLED=true가 켜져 있어야 가능합니다.</p>
+      <div class="grid">
+        <div><label>AI 분석</label><select id="ai_enabled"><option value="true">활성</option><option value="false">비활성</option></select></div>
+        <div><label>거래 모드</label><select id="trading_mode"><option value="paper">모의투자</option><option value="live">실거래</option></select></div>
+        <div><label>AI 모델</label><input id="ai_model"></div>
+        <div><label>반복 주기(초)</label><input id="bot_interval_seconds" type="number" min="5"></div>
+        <div><label>총 운용 예산(KRW)</label><input id="total_budget_krw" type="number" min="0"></div>
+        <div><label>1회 최대 진입금(KRW)</label><input id="max_position_krw" type="number" min="0"></div>
+        <div><label>1회 최소 진입금(KRW)</label><input id="min_position_krw" type="number" min="0"></div>
+        <div><label>동시 보유 수</label><input id="max_open_positions" type="number" min="1"></div>
+        <div><label>일일 손실 한도(KRW)</label><input id="daily_loss_limit_krw" type="number" min="0"></div>
+        <div><label>연속 손절 중단 횟수</label><input id="stop_after_consecutive_losses" type="number" min="1"></div>
+        <div><label>익절(%)</label><input id="take_profit_pct" type="number" step="0.1"></div>
+        <div><label>손절(%)</label><input id="stop_loss_pct" type="number" step="0.1"></div>
+        <div><label>트레일링 스탑(%)</label><input id="trailing_stop_pct" type="number" step="0.1"></div>
+        <div><label>수수료(%)</label><input id="taker_fee_pct" type="number" step="0.01"></div>
+        <div><label>슬리피지(%)</label><input id="slippage_pct" type="number" step="0.01"></div>
+        <div><label>최소 기대 순수익(%)</label><input id="min_expected_net_profit_pct" type="number" step="0.1"></div>
+        <div><label>BTC 급락 차단 기준(%)</label><input id="btc_crash_5m_pct" type="number" step="0.1"></div>
+        <div><label>스캔 종목 수</label><input id="scan_top_markets" type="number" min="1"></div>
+        <div><label>최소 24h 거래대금(KRW)</label><input id="min_24h_trade_price_krw" type="number" min="0"></div>
+      </div>
+      <button onclick="saveSettings()">설정 저장/적용</button>
+      <button onclick="loadSettings()">설정 불러오기</button>
+      <pre id="settings"></pre>
     </section>
     <section>
       <h2>매매 후보 신호</h2>
@@ -167,12 +229,41 @@ def _dashboard_html() -> str:
     async function post(path, body) {
       const res = await fetch(path, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
       const data = await res.json();
-      const target = path.includes('scan') || path.includes('ai') ? 'signals' : path.includes('portfolio') ? 'portfolio' : 'status';
+      const target = path.includes('scan') || path.includes('ai') ? 'signals' : path.includes('portfolio') ? 'portfolio' : path.includes('settings') ? 'settings' : 'status';
       document.getElementById(target).textContent = JSON.stringify(data, null, 2);
       loadStatus();
     }
     async function loadStatus() { await get('/api/status', 'status'); }
+    async function loadSettings() {
+      const res = await fetch('/api/settings');
+      const data = await res.json();
+      const settings = data.settings || {};
+      for (const [key, value] of Object.entries(settings)) {
+        const el = document.getElementById(key);
+        if (el) el.value = String(value);
+      }
+      document.getElementById('settings').textContent = JSON.stringify(data, null, 2);
+    }
+    async function saveSettings() {
+      const keys = [
+        'ai_enabled','trading_mode','ai_model','bot_interval_seconds','total_budget_krw','max_position_krw',
+        'min_position_krw','max_open_positions','daily_loss_limit_krw','stop_after_consecutive_losses',
+        'take_profit_pct','stop_loss_pct','trailing_stop_pct','taker_fee_pct','slippage_pct',
+        'min_expected_net_profit_pct','btc_crash_5m_pct','scan_top_markets','min_24h_trade_price_krw'
+      ];
+      const body = {};
+      for (const key of keys) {
+        const el = document.getElementById(key);
+        if (el) body[key] = el.value;
+      }
+      await post('/api/settings', body);
+    }
+    async function startConfigured() {
+      const mode = document.getElementById('trading_mode')?.value || 'paper';
+      await post('/api/start', {mode});
+    }
     loadStatus();
+    loadSettings();
     setInterval(loadStatus, 10000);
   </script>
 </body>
