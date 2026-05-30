@@ -32,8 +32,10 @@ echo.
 
 if exist "backend\.venv\Scripts\python.exe" (
   echo [Python venv]
-  "backend\.venv\Scripts\python.exe" -c "from app.main import AIDI_BUILD; print('AIDI_BUILD=', AIDI_BUILD)" 2>nul
-  if errorlevel 1 echo   ^(venv: 구버전 import^)
+  pushd "%~dp0backend"
+  ".venv\Scripts\python.exe" -c "from app.main import AIDI_BUILD; print('AIDI_BUILD=', AIDI_BUILD)" 2>nul
+  if errorlevel 1 echo   ^(main.py import failed^)
+  popd
   echo.
 )
 
