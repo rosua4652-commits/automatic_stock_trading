@@ -5,7 +5,6 @@ const MIN_KRW = MIN_BUY_KRW;
 const STEP = 1_000;
 
 const PRESETS: { label: string; ratio: number }[] = [
-  { label: "5%", ratio: 0.05 },
   { label: "10%", ratio: 0.1 },
   { label: "25%", ratio: 0.25 },
   { label: "50%", ratio: 0.5 },
@@ -40,7 +39,12 @@ export default function BuyAmountControl({
 }: Props) {
   const maxKrw = useMemo(() => maxBuyKrw(cashKrw), [cashKrw]);
 
-  const pct = useMemo(() => {
+  const sliderPct = useMemo(() => {
+    if (maxKrw <= MIN_KRW) return 100;
+    return Math.round(((value - MIN_KRW) / (maxKrw - MIN_KRW)) * 100);
+  }, [value, maxKrw]);
+
+  const cashPct = useMemo(() => {
     if (cashKrw <= 0) return 0;
     return Math.min(100, Math.round((value / cashKrw) * 100));
   }, [value, cashKrw]);
@@ -51,22 +55,24 @@ export default function BuyAmountControl({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [maxKrw]);
 
+  const setFromSlider = (p: number) => {
+    const ratio = Math.min(100, Math.max(0, p)) / 100;
+    const raw = MIN_KRW + (maxKrw - MIN_KRW) * ratio;
+    onChange(clampAmount(raw, maxKrw));
+  };
+
   const setPreset = (ratio: number) => {
     onChange(clampAmount(cashKrw * ratio, maxKrw));
   };
 
   const insufficient = value > cashKrw;
-  const activePreset = PRESETS.find(
-    (p) => Math.abs(clampAmount(cashKrw * p.ratio, maxKrw) - value) < STEP
-  )?.label;
 
   return (
-    <div className={`buy-amount-control buy-amount-stack ${disabled ? "disabled" : ""}`}>
+    <div className={`buy-amount-control buy-amount-compact ${disabled ? "disabled" : ""}`}>
       <div className="buy-amount-head">
         <span className="buy-amount-label">매수 금액</span>
-        <span className="buy-amount-cash">
-          보유 <strong>{fmtKrw(cashKrw)}</strong>원
-          <span className="dim"> · 매수 가능 최대 {fmtKrw(maxKrw)}원</span>
+        <span className="buy-amount-cash dim">
+          보유 {fmtKrw(cashKrw)}원 · 최대 {fmtKrw(maxKrw)}원
         </span>
       </div>
 
@@ -85,37 +91,37 @@ export default function BuyAmountControl({
         <span className="buy-amount-unit">원</span>
       </div>
 
-      <p className="buy-amount-summary">
-        선택 <strong>{fmtKrw(value)}</strong>원
-        {cashKrw > 0 && (
-          <span className="dim"> · 현금의 {pct}%</span>
-        )}
-      </p>
+      <div className="buy-amount-slider-row">
+        <input
+          type="range"
+          className="buy-amount-range"
+          min={0}
+          max={100}
+          step={1}
+          value={sliderPct}
+          disabled={disabled || maxKrw <= MIN_KRW}
+          onChange={(e) => setFromSlider(Number(e.target.value))}
+          aria-label="매수 금액 비율"
+        />
+        <span className="buy-amount-pct">{cashPct}%</span>
+      </div>
 
-      <div className="buy-amount-presets buy-amount-presets-stack" role="group" aria-label="비율 선택">
-        {PRESETS.map((p) => {
-          const amt = clampAmount(cashKrw * p.ratio, maxKrw);
-          const active = activePreset === p.label;
-          return (
-            <button
-              key={p.label}
-              type="button"
-              className={`preset-btn preset-btn-stack ${active ? "active" : ""}`}
-              disabled={disabled || cashKrw < MIN_KRW}
-              onClick={() => setPreset(p.ratio)}
-            >
-              <span className="preset-label">{p.label}</span>
-              <span className="preset-amt">{fmtKrw(amt)}원</span>
-            </button>
-          );
-        })}
+      <div className="buy-amount-presets buy-amount-presets-inline" role="group" aria-label="비율 빠른 선택">
+        {PRESETS.map((p) => (
+          <button
+            key={p.label}
+            type="button"
+            className="preset-chip"
+            disabled={disabled || cashKrw < MIN_KRW}
+            onClick={() => setPreset(p.ratio)}
+          >
+            {p.label}
+          </button>
+        ))}
       </div>
 
       {insufficient && (
-        <p className="trade-hint warn">입력 금액이 현금보다 큽니다.</p>
-      )}
-      {cashKrw < MIN_KRW && (
-        <p className="trade-hint warn">최소 매수 금액은 {fmtKrw(MIN_KRW)}원입니다.</p>
+        <p className="trade-hint warn">현금보다 큽니다</p>
       )}
     </div>
   );

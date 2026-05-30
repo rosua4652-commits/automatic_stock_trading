@@ -571,6 +571,110 @@ body {
   background: var(--surface);
 }
 
+.coin-detail-compact {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.35rem;
+  padding: 0.5rem 0.65rem;
+}
+
+.coin-detail-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+}
+
+.coin-detail-names {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.coin-entry-chip {
+  font-size: 0.62rem;
+  font-weight: 600;
+  padding: 0.1rem 0.35rem;
+  border-radius: 4px;
+}
+
+.coin-entry-chip.ok {
+  background: rgba(34, 211, 165, 0.15);
+  color: var(--green);
+}
+
+.coin-entry-chip.scalp {
+  background: rgba(59, 158, 255, 0.15);
+  color: var(--accent);
+}
+
+.coin-entry-chip.hold {
+  background: rgba(148, 163, 184, 0.12);
+  color: var(--muted);
+}
+
+.coin-detail-prices {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.coin-price {
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.coin-chg {
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.bot-status-pill {
+  margin-left: auto;
+  font-size: 0.65rem;
+  padding: 0.15rem 0.45rem;
+  border-radius: 999px;
+  background: var(--surface2);
+  color: var(--muted);
+}
+
+.bot-status-pill.on {
+  background: rgba(34, 211, 165, 0.15);
+  color: var(--green);
+}
+
+.coin-detail-hold {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.coin-detail-mini {
+  font-size: 0.68rem;
+  color: var(--muted);
+  margin: 0;
+  line-height: 1.35;
+}
+
+.entry-detail-box.compact {
+  padding: 0.35rem 0.5rem;
+  margin-bottom: 0.35rem;
+  font-size: 0.72rem;
+}
+
+.rec-inline-hint {
+  font-size: 0.68rem;
+  color: var(--accent);
+  margin: 0 0 0.35rem;
+}
+
+.coin-trade-bar-compact {
+  padding: 0.35rem 0.65rem 0.5rem;
+}
+
 .coin-detail-main {
   display: flex;
   flex-wrap: wrap;
@@ -721,10 +825,69 @@ body {
   border: 1px solid var(--border);
 }
 
-.buy-amount-stack {
+.buy-amount-compact {
+  padding: 0.45rem 0.55rem;
+}
+
+.buy-amount-compact .buy-amount-head {
+  margin-bottom: 0.35rem;
+}
+
+.buy-amount-slider-row {
   display: flex;
-  flex-direction: column;
+  align-items: center;
   gap: 0.5rem;
+  margin: 0.35rem 0;
+}
+
+.buy-amount-range {
+  flex: 1;
+  min-width: 0;
+  accent-color: var(--accent);
+  height: 4px;
+}
+
+.buy-amount-pct {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--accent);
+  min-width: 2.2rem;
+  text-align: right;
+}
+
+.buy-amount-presets-inline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin-top: 0.25rem;
+}
+
+.preset-chip {
+  padding: 0.18rem 0.45rem;
+  font-size: 0.65rem;
+  font-weight: 600;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--muted);
+  cursor: pointer;
+  font-family: inherit;
+  line-height: 1.2;
+}
+
+.preset-chip:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.preset-chip:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.buy-amount-compact .buy-amount-number {
+  font-size: 0.9rem;
+  padding: 0.35rem 0.5rem;
 }
 
 .buy-amount-control.disabled {

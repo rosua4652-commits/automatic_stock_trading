@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import type { CoinView, InvestmentRecommendation } from "../types";
 import BuyAmountControl, { maxBuyKrw } from "./BuyAmountControl";
 import SellPctControl from "./SellPctControl";
-import { fmtKrw, fmtUsd, MIN_BUY_KRW } from "../utils";
+import { fmtKrw, MIN_BUY_KRW } from "../utils";
 
 type Props = {
   view: CoinView;
@@ -48,43 +48,30 @@ export default function CoinTradeBar({
   const canBuy =
     canTrade && !busy && amount >= MIN_BUY_KRW && amount <= cashKrw && cashKrw >= MIN_BUY_KRW;
 
+  const entryLine = view.candidate?.entry_detail;
+  const shortEntry =
+    entryLine && entryLine.length > 72 ? `${entryLine.slice(0, 72)}…` : entryLine;
+
   return (
-    <div className="coin-trade-bar">
-      {view.candidate?.entry_detail && (
+    <div className="coin-trade-bar coin-trade-bar-compact">
+      {shortEntry && !held && (
         <p
-          className={`entry-detail-box ${
-            view.candidate.entry_ok
+          className={`entry-detail-box compact ${
+            view.candidate?.entry_ok
               ? "ok"
-              : view.candidate.entry_scalp_ok
+              : view.candidate?.entry_scalp_ok
                 ? "scalp"
                 : "warn"
           }`}
+          title={view.candidate?.entry_detail}
         >
-          {view.candidate.entry_detail}
-        </p>
-      )}
-      {held && view.position?.entry_reason && (
-        <p className="entry-detail-box ok">
-          <strong>보유 근거:</strong> {view.position.entry_reason}
+          {shortEntry}
         </p>
       )}
 
-      {recommendation && recAmt && (
-        <p className="entry-detail-box ok">
-          <strong>AI 제안:</strong> {fmtKrw(recAmt)}원
-          {recommendation.price_usdt && recommendation.price_usdt > 0 && (
-            <>
-              {" "}
-              · ${fmtUsd(recommendation.price_usdt)}에 약{" "}
-              {(recommendation.quantity_est ?? 0).toFixed(4)}개
-            </>
-          )}
-        </p>
-      )}
-
-      {running && (
-        <p className="trade-hint subtle">
-          분석 중에도 아래에서 즉시 매수 가능 · 제안은 우측 상단 알림
+      {recAmt && !held && (
+        <p className="rec-inline-hint">
+          AI 제안 {fmtKrw(recAmt)}원 · 승인 매수는 익절/손절 자동
         </p>
       )}
 
@@ -102,7 +89,7 @@ export default function CoinTradeBar({
           disabled={!canBuy}
           onClick={() => onBuy(sym, amount)}
         >
-          매수 ({fmtKrw(amount)}원)
+          매수 {fmtKrw(amount)}원
         </button>
         {held && (
           <div className="sell-block sell-block-stack">

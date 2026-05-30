@@ -1,5 +1,5 @@
 import type { CoinView } from "../types";
-import { fmtKrw, fmtPct, fmtUsd, isRunning } from "../utils";
+import { entryBadge, fmtKrw, fmtPct, fmtUsd, isRunning } from "../utils";
 import CoinTradeBar from "./CoinTradeBar";
 
 type Props = {
@@ -27,81 +27,52 @@ export default function CoinDetailBar({
 }: Props) {
   const { meta, price_usdt, change_24h, in_portfolio, position, candidate } = view;
   const running = isRunning(botStatus);
+  const entry = entryBadge(candidate ?? undefined);
 
   return (
     <div className="coin-detail-wrap">
-      <div className="coin-detail">
-        <div className="coin-detail-main">
-          <h2 className="coin-title">{meta.name_ko}</h2>
-          <span className="coin-en">{meta.name_en}</span>
-          <span className="coin-pair">{meta.pair_label}</span>
-        </div>
-        <div className="coin-detail-stats">
-          <div className="detail-stat">
-            <span className="ds-label">현재가</span>
-            <span className="ds-value">${fmtUsd(price_usdt)}</span>
+      <div className="coin-detail coin-detail-compact">
+        <div className="coin-detail-top">
+          <div className="coin-detail-names">
+            <h2 className="coin-title">{meta.name_ko}</h2>
+            <span className="coin-pair">{meta.base}</span>
+            {entry.kind !== "none" && (
+              <span className={`coin-entry-chip ${entry.kind}`}>{entry.label}</span>
+            )}
           </div>
-          <div className="detail-stat">
-            <span className="ds-label">24h</span>
-            <span className={`ds-value ${change_24h >= 0 ? "up" : "down"}`}>
+          <div className="coin-detail-prices">
+            <span className="coin-price">${fmtUsd(price_usdt)}</span>
+            <span className={`coin-chg ${change_24h >= 0 ? "up" : "down"}`}>
               {fmtPct(change_24h)}
             </span>
           </div>
-          {in_portfolio && position && (
-            <>
-              <div className="detail-stat">
-                <span className="ds-label">평단가</span>
-                <span className="ds-value">${fmtUsd(position.avg_price)}</span>
-              </div>
-              <div className="detail-stat">
-                <span className="ds-label">보유량</span>
-                <span className="ds-value">{position.quantity.toFixed(6)}</span>
-              </div>
-              <div className="detail-stat">
-                <span className="ds-label">원금</span>
-                <span className="ds-value">{fmtKrw(position.cost_basis_krw)}원</span>
-              </div>
-              <div className="detail-stat">
-                <span className="ds-label">평가손익</span>
-                <span className={`ds-value ${position.pnl_krw >= 0 ? "up" : "down"}`}>
-                  {fmtKrw(position.pnl_krw)}원 ({fmtPct(position.pnl_pct)})
-                </span>
-              </div>
-              <div className="detail-stat">
-                <span className="ds-label">비중</span>
-                <span className="ds-value">{position.weight_pct.toFixed(1)}%</span>
-              </div>
-            </>
-          )}
-          {!in_portfolio && candidate && (
-            <>
-              <div className="detail-stat">
-                <span className="ds-label">시장점수</span>
-                <span className="ds-value accent">{candidate.score}</span>
-              </div>
-              <div className="detail-stat">
-                <span className="ds-label">차트점수</span>
-                <span className={`ds-value ${candidate.entry_ok ? "up" : ""}`}>
-                  {candidate.entry_score} {candidate.entry_ok ? "✓" : ""}
-                </span>
-              </div>
-              <div className="detail-stat">
-                <span className="ds-label">전망</span>
-                <span className="ds-value">{candidate.entry_outlook || candidate.trend}</span>
-              </div>
-            </>
-          )}
-        </div>
-        <div className="coin-detail-status">
-          <span className={`bot-status-text ${running ? "on" : ""}`}>
-            {botStatus === "stopping"
-              ? "중지 중..."
-              : running
-                ? "자동투자 ON"
-                : "수동관리 가능"}
+          <span className={`bot-status-pill ${running ? "on" : ""}`}>
+            {running ? "분석 중" : "수동"}
           </span>
-          {botMessage && <span className="bot-status-msg">{botMessage}</span>}
         </div>
+
+        {in_portfolio && position && (
+          <div className="coin-detail-hold">
+            <span>원금 {fmtKrw(position.cost_basis_krw)}원</span>
+            <span className={position.pnl_krw >= 0 ? "up" : "down"}>
+              {position.pnl_krw >= 0 ? "+" : ""}
+              {fmtKrw(position.pnl_krw)}원 ({fmtPct(position.pnl_pct)})
+            </span>
+          </div>
+        )}
+
+        {!in_portfolio && candidate && (
+          <p className="coin-detail-mini" title={candidate.entry_detail}>
+            시장 {candidate.score} · 차트 {candidate.entry_score}
+            {candidate.entry_outlook ? ` · ${candidate.entry_outlook}` : ""}
+          </p>
+        )}
+
+        {running && botMessage && (
+          <p className="coin-detail-mini dim" title={botMessage}>
+            {botMessage.length > 48 ? `${botMessage.slice(0, 48)}…` : botMessage}
+          </p>
+        )}
       </div>
 
       <CoinTradeBar
