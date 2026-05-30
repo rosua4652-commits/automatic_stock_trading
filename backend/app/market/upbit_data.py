@@ -41,6 +41,9 @@ _USDT_KRW_CACHE: tuple[float, float] | None = None
 _TICKERS_TTL_SEC = 25.0
 _TICKER_CHUNK_SIZE = 35
 _TICKER_CHUNK_DELAY_SEC = 0.18
+_KLINES_CACHE: dict[str, tuple[float, list[list]]] = {}
+_KLINES_TTL_SEC = 20.0
+_KLINES_LOCK = asyncio.Lock()
 
 
 def is_safe_krw_base(base: str) -> bool:
@@ -231,17 +234,31 @@ class UpbitDataClient:
         all_t = await self.tickers_24h()
         return {s: all_t[s] for s in symbols if s in all_t}
 
+    def get_cached_klines(self, symbol: str, interval: str) -> list[list] | None:
+        key = f"{symbol.upper()}:{interval.lower()}"
+        hit = _KLINES_CACHE.get(key)
+        if hit:
+            return hit[1]
+        return None
+
     async def klines(
         self, symbol: str, interval: str = "1h", limit: int = 168
     ) -> list[list]:
         from app.market.ipv4_http import shared_upbit_client
 
-        market = symbol_to_upbit(symbol.upper())
+        sym = symbol.upper()
+        market = symbol_to_upbit(sym)
         allowed = await get_upbit_krw_markets()
         if market not in allowed:
             return []
 
         iv = interval.lower()
+        cache_key = f"{sym}:{iv}"
+        now = time.time()
+        cached = _KLINES_CACHE.get(cache_key)
+        if cached and now - cached[0] < _KLINES_TTL_SEC:
+            return cached[1]
+
         path_spec = _INTERVAL_PATHS.get(iv, ("minutes", 60))
         kind, unit = path_spec
         client = shared_upbit_client()
@@ -255,13 +272,27 @@ class UpbitDataClient:
             url = f"/v1/candles/minutes/{unit}"
             params = {"market": market, "count": min(limit, 200)}
 
-        resp = await _get_with_retry(client, url, params=params)
-        resp.raise_for_status()
-        rows = resp.json()
-        if not isinstance(rows, list):
-            return []
-        raw = [_candle_row(c) for c in reversed(rows)]
-        return raw
+        async with _KLINES_LOCK:
+            cached = _KLINES_CACHE.get(cache_key)
+            if cached and now - cached[0] < _KLINES_TTL_SEC:
+                return cached[1]
+            resp = await _get_with_retry(client, url, params=params)
+            if resp.status_code == 429:
+                if cached:
+                    return cached[1]
+                raise httpx.HTTPStatusError(
+                    "429 Too Many Requests",
+                    request=resp.request,
+                    response=resp,
+                )
+            resp.raise_for_status()
+            rows = resp.json()
+            if not isinstance(rows, list):
+                raw: list[list] = []
+            else:
+                raw = [_candle_row(c) for c in reversed(rows)]
+            _KLINES_CACHE[cache_key] = (time.time(), raw)
+            return raw
 
     async def price(self, symbol: str) -> float:
         t = await self.tickers_for_symbols([symbol.upper()])

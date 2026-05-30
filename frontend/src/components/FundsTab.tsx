@@ -5,7 +5,15 @@ import type {
   TradeEvent,
   UpbitAccountSnapshot,
 } from "../types";
-import { fmtKrw, fmtPct, fmtUsd, isRunning, MIN_BUY_KRW } from "../utils";
+import {
+  fmtKrw,
+  fmtPct,
+  fmtPctSetting,
+  fmtUsd,
+  isRunning,
+  MIN_BUY_KRW,
+  pctFromAvg,
+} from "../utils";
 import BuyAmountControl, { maxBuyKrw } from "./BuyAmountControl";
 import SellPctControl from "./SellPctControl";
 
@@ -21,6 +29,16 @@ type Props = {
   onSellAll?: () => void;
   onSelectChart: (symbol: string) => void;
   onExclude: (symbol: string, exclude: boolean) => Promise<void>;
+  onExitPlan: (
+    symbol: string,
+    plan: {
+      custom_sl_tp: boolean;
+      stop_loss_usdt?: number;
+      take_profit_usdt?: number;
+    }
+  ) => Promise<void>;
+  stopLossPct: number;
+  takeProfitPct: number;
   busy: boolean;
 };
 
@@ -45,6 +63,9 @@ function PositionCard({
   onSell,
   onChart,
   onExclude,
+  onExitPlan,
+  stopLossPct,
+  takeProfitPct,
 }: {
   pos: Position;
   canTrade: boolean;
@@ -52,8 +73,38 @@ function PositionCard({
   onSell: (pct: number) => void;
   onChart: () => void;
   onExclude: (exclude: boolean) => void;
+  onExitPlan: (
+    plan: {
+      custom_sl_tp: boolean;
+      stop_loss_usdt?: number;
+      take_profit_usdt?: number;
+    }
+  ) => Promise<void>;
+  stopLossPct: number;
+  takeProfitPct: number;
 }) {
   const [sellPct, setSellPct] = useState(100);
+  const [customSlTp, setCustomSlTp] = useState(!!pos.custom_sl_tp);
+  const [slUsdt, setSlUsdt] = useState(pos.stop_loss);
+  const [tpUsdt, setTpUsdt] = useState(pos.take_profit);
+
+  useEffect(() => {
+    setCustomSlTp(!!pos.custom_sl_tp);
+    setSlUsdt(pos.stop_loss);
+    setTpUsdt(pos.take_profit);
+  }, [pos.symbol, pos.custom_sl_tp, pos.stop_loss, pos.take_profit]);
+
+  const entry = pos.avg_price;
+  const slPct = pctFromAvg(entry, pos.stop_loss);
+  const tpPct = pctFromAvg(entry, pos.take_profit);
+
+  const applyExitPlan = async (custom: boolean, sl?: number, tp?: number) => {
+    await onExitPlan({
+      custom_sl_tp: custom,
+      stop_loss_usdt: sl,
+      take_profit_usdt: tp,
+    });
+  };
 
   return (
     <div className="fund-card">
@@ -128,12 +179,73 @@ function PositionCard({
           <span className="fg-label">자산 비중</span>
           <span className="fg-val">{pos.weight_pct.toFixed(1)}%</span>
         </div>
-        <div className="fg-item">
+        <div className="fg-item fg-item-wide">
           <span className="fg-label">손절 / 익절</span>
           <span className="fg-val dim">
-            ${fmtUsd(pos.stop_loss)} / ${fmtUsd(pos.take_profit)}
+            ${fmtUsd(pos.stop_loss)}
+            {slPct != null ? ` (${fmtPct(slPct)})` : ""}
+            {" / "}$
+            {fmtUsd(pos.take_profit)}
+            {tpPct != null ? ` (${fmtPct(tpPct)})` : ""}
           </span>
         </div>
+      </div>
+
+      <div className="exit-plan-block">
+        <label className="exclude-row checkbox-field">
+          <input
+            type="checkbox"
+            checked={customSlTp}
+            disabled={busy}
+            onChange={async (e) => {
+              const on = e.target.checked;
+              setCustomSlTp(on);
+              await applyExitPlan(on, slUsdt, tpUsdt);
+            }}
+          />
+          <span>
+            손익절 수동 지정
+            <span className="exclude-hint dim">
+              {customSlTp
+                ? " — 체크됨: 아래 가격 도달 시 전량 자동 매도"
+                : ` — 해제 시 설정 손절 ${fmtPctSetting(stopLossPct)} / 익절 ${fmtPctSetting(takeProfitPct)} 자동`}
+            </span>
+          </span>
+        </label>
+        {customSlTp && (
+          <div className="exit-plan-inputs">
+            <label>
+              손절가 (USDT)
+              <input
+                type="number"
+                step="any"
+                min={0}
+                value={slUsdt || ""}
+                disabled={busy}
+                onChange={(e) => setSlUsdt(parseFloat(e.target.value) || 0)}
+              />
+            </label>
+            <label>
+              익절가 (USDT)
+              <input
+                type="number"
+                step="any"
+                min={0}
+                value={tpUsdt || ""}
+                disabled={busy}
+                onChange={(e) => setTpUsdt(parseFloat(e.target.value) || 0)}
+              />
+            </label>
+            <button
+              type="button"
+              className="btn-primary btn-sm"
+              disabled={busy || slUsdt <= 0 || tpUsdt <= 0}
+              onClick={() => applyExitPlan(true, slUsdt, tpUsdt)}
+            >
+              손익절 적용
+            </button>
+          </div>
+        )}
       </div>
 
       {pos.entry_reason && (
@@ -154,10 +266,10 @@ function PositionCard({
           자동투자 제외
           <span className="exclude-hint dim">
             {pos.excluded_from_auto
-              ? " — 체크됨: AI 익절·손절 안 함"
+              ? " — AI 자동매수만 제외 (손익절은 아래 설정 따름)"
               : pos.auto_quantity > 0
-                ? " — 해제(기본): AI가 익절·손절 감시"
-                : " — 수동 매수분만 해당"}
+                ? " — 해제(기본): AI 자동매수 포함"
+                : " — 수동 보유"}
           </span>
         </span>
       </label>
@@ -202,6 +314,9 @@ export default function FundsTab({
   onSellAll,
   onSelectChart,
   onExclude,
+  onExitPlan,
+  stopLossPct,
+  takeProfitPct,
   busy,
 }: Props) {
   const [buySymbol, setBuySymbol] = useState("BTCUSDT");
@@ -308,6 +423,9 @@ export default function FundsTab({
               onSell={(pct) => onManualSell(p.symbol, pct)}
               onChart={() => onSelectChart(p.symbol)}
               onExclude={(ex) => onExclude(p.symbol, ex)}
+              onExitPlan={(plan) => onExitPlan(p.symbol, plan)}
+              stopLossPct={stopLossPct}
+              takeProfitPct={takeProfitPct}
             />
           ))
         )}

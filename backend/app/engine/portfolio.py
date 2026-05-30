@@ -263,6 +263,38 @@ class PortfolioManager:
                 self.positions.pop(sym, None)
         return pnl
 
+    def set_exit_plan(
+        self,
+        symbol: str,
+        *,
+        custom_sl_tp: bool,
+        stop_loss_usdt: float | None,
+        take_profit_usdt: float | None,
+        config: AppConfig,
+    ) -> Optional[Position]:
+        sym = symbol.upper()
+        pos = self.positions.get(sym)
+        if not pos:
+            return None
+        entry = pos.avg_price or pos.auto_avg_price or pos.current_price
+        pos.custom_sl_tp = custom_sl_tp
+        sl_r = config.stop_loss_pct / 100
+        tp_r = config.take_profit_pct / 100
+        if custom_sl_tp:
+            if stop_loss_usdt is not None and stop_loss_usdt > 0:
+                pos.stop_loss = stop_loss_usdt
+            elif entry > 0:
+                pos.stop_loss = entry * (1 - sl_r)
+            if take_profit_usdt is not None and take_profit_usdt > 0:
+                pos.take_profit = take_profit_usdt
+            elif entry > 0:
+                pos.take_profit = entry * (1 + tp_r)
+        elif entry > 0:
+            pos.stop_loss = entry * (1 - sl_r)
+            pos.take_profit = entry * (1 + tp_r)
+        self._recalc_avg(pos)
+        return pos
+
     def set_exclude(self, symbol: str, exclude: bool) -> Optional[Position]:
         pos = self.positions.get(symbol)
         if not pos:

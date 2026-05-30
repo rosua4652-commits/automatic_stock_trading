@@ -188,11 +188,17 @@ async def _sync_upbit(
         valuation_krw = total_qty * price_krw
 
         cm = coin_meta(symbol, base)
+        custom_sl = bool(pm.get("custom_sl_tp", False))
         sl = float(pm.get("stop_loss", 0))
         tp = float(pm.get("take_profit", 0))
-        if total_qty > 0 and sl <= 0:
+        if not custom_sl and total_qty > 0 and sl <= 0:
             sl = ref_usdt * (1 - config.stop_loss_pct / 100)
             tp = ref_usdt * (1 + config.take_profit_pct / 100)
+        elif custom_sl and total_qty > 0:
+            if sl <= 0 and ref_usdt > 0:
+                sl = ref_usdt * (1 - config.stop_loss_pct / 100)
+            if tp <= 0 and ref_usdt > 0:
+                tp = ref_usdt * (1 + config.take_profit_pct / 100)
 
         pos = Position(
             symbol=symbol,
@@ -219,6 +225,7 @@ async def _sync_upbit(
             entry_score=float(pm.get("entry_score", 0)),
             entry_outlook=pm.get("entry_outlook", ""),
             excluded_from_auto=bool(pm.get("excluded_from_auto", False)),
+            custom_sl_tp=custom_sl,
             data_source="upbit",
             exchange_quantity=total_qty,
             avg_buy_price_krw=avg_buy_krw,
@@ -404,6 +411,7 @@ def export_live_meta(portfolio, preserve: dict[str, Any] | None = None) -> dict[
             "entry_score": pos.entry_score,
             "entry_outlook": pos.entry_outlook,
             "excluded_from_auto": pos.excluded_from_auto,
+            "custom_sl_tp": pos.custom_sl_tp,
         }
     out: dict[str, Any] = {
         "positions_meta": positions_meta,

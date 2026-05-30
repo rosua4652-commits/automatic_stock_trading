@@ -108,6 +108,7 @@ class Position(BaseModel):
     entry_score: float = 0.0
     entry_outlook: str = ""
     excluded_from_auto: bool = False
+    custom_sl_tp: bool = False
     # 실거래: 업비트 API 기준 (잔고·평단·시세·평가)
     data_source: str = ""
     exchange_quantity: float = 0.0
@@ -311,6 +312,14 @@ class SellAllRequest(BaseModel):
 
 class PositionExcludeRequest(BaseModel):
     exclude: bool
+
+
+class PositionExitPlanRequest(BaseModel):
+    """손익절: custom_sl_tp=True면 지정가 도달 시 전량 자동 매도."""
+
+    custom_sl_tp: bool
+    stop_loss_usdt: Optional[float] = Field(default=None, ge=0)
+    take_profit_usdt: Optional[float] = Field(default=None, ge=0)
 
 
 class AccountLinkInfo(BaseModel):

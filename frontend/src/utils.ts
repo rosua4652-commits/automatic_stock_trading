@@ -325,9 +325,15 @@ export function computeTradePlan(
 
 /** 차트 자동 갱신 주기 (초봉은 1초마다) */
 export function chartRefreshMs(interval: string): number {
-  if (interval === "1s") return 1000;
-  if (interval === "1m") return 3000;
-  return 12000;
+  if (interval === "1s") return 2000;
+  if (interval === "1m") return 5000;
+  return 20000;
+}
+
+/** 평단 대비 손절·익절 가격의 % */
+export function pctFromAvg(avg: number, level: number): number | null {
+  if (avg <= 0 || level <= 0) return null;
+  return ((level - avg) / avg) * 100;
 }
 
 export const DEFAULT_CONFIG = {

@@ -108,11 +108,16 @@ class TradingEngine:
             while True:
                 await asyncio.sleep(3)
                 self.bind_portfolio()
-                has_auto = any(
-                    p.auto_quantity > 1e-10 and not p.excluded_from_auto
+                has_watch = any(
+                    p.quantity > 1e-12
+                    and (
+                        p.custom_sl_tp
+                        or (p.auto_quantity > 1e-10 and not p.excluded_from_auto)
+                        or p.manual_quantity > 1e-10
+                    )
                     for p in self.portfolio.positions.values()
                 )
-                if not has_auto:
+                if not has_watch:
                     continue
                 try:
                     tickers = await market.tickers_24h()
@@ -503,21 +508,48 @@ class TradingEngine:
         return 0.0
 
     async def _monitor_positions(self, tickers: dict) -> None:
-        """보유 AI(auto) 포지션 손절·익절·트레일링 — 분석 중·중지 후 모두."""
+        """보유 포지션 손절·익절 (수동 지정가 / AI·설정 %)."""
         if not self.portfolio.positions:
             return
         for sym in list(self.portfolio.positions.keys()):
             pos = self.portfolio.positions.get(sym)
-            if (
-                not pos
-                or pos.auto_quantity <= 1e-10
-                or pos.excluded_from_auto
-            ):
+            if not pos or pos.quantity <= 1e-12:
                 continue
             price = await self._price_for_symbol(sym, tickers)
             if price <= 0:
                 continue
-            await self._manage_position(sym, price)
+            await self._manage_exit(sym, price)
+
+    async def _manage_exit(self, symbol: str, price: float) -> None:
+        pos = self.portfolio.positions.get(symbol)
+        if not pos:
+            return
+        pos.current_price = price
+
+        if pos.custom_sl_tp:
+            if pos.stop_loss > 0 and price <= pos.stop_loss * 1.0001:
+                await self._auto_sell(symbol, "손절(지정가)", full=True)
+                return
+            if pos.take_profit > 0 and price >= pos.take_profit * 0.9999:
+                await self._auto_sell(symbol, "익절(지정가)", full=True)
+            return
+
+        if pos.auto_quantity > 1e-10 and not pos.excluded_from_auto:
+            await self._manage_position(symbol, price)
+            return
+
+        entry = pos.avg_price or pos.current_price
+        if entry <= 0:
+            return
+        sl_ratio = self.config.stop_loss_pct / 100
+        tp_ratio = self.config.take_profit_pct / 100
+        pos.stop_loss = entry * (1 - sl_ratio)
+        pos.take_profit = entry * (1 + tp_ratio)
+        pnl = (price - entry) / entry
+        if pnl <= -sl_ratio:
+            await self._auto_sell(symbol, "손절", full=True)
+        elif pnl >= tp_ratio:
+            await self._auto_sell(symbol, "익절", full=True)
 
     async def apply_recommendations(
         self,
@@ -654,6 +686,42 @@ class TradingEngine:
             return True, f"{pos.display} — 수동 보유 (AI는 auto 수량만 관리)"
         return True, f"{pos.display} — 자동투자 예외 해제"
 
+    async def set_position_exit_plan(
+        self,
+        symbol: str,
+        *,
+        custom_sl_tp: bool,
+        stop_loss_usdt: float | None = None,
+        take_profit_usdt: float | None = None,
+    ) -> tuple[bool, str]:
+        self.bind_portfolio()
+        sym = symbol.upper()
+        pos = self.portfolio.set_exit_plan(
+            sym,
+            custom_sl_tp=custom_sl_tp,
+            stop_loss_usdt=stop_loss_usdt,
+            take_profit_usdt=take_profit_usdt,
+            config=self.config,
+        )
+        if not pos:
+            return False, "보유하지 않은 코인입니다"
+        self._persist()
+        if self._is_live():
+            await store.sync_live(self.config)
+            self.bind_portfolio()
+        self.ensure_auto_guard()
+        if custom_sl_tp:
+            return (
+                True,
+                f"{pos.display} — 손익절 수동 지정 "
+                f"(손절 ${pos.stop_loss:.6f} / 익절 ${pos.take_profit:.6f}) · 도달 시 자동 매도",
+            )
+        return (
+            True,
+            f"{pos.display} — 설정 손절 {self.config.stop_loss_pct}% / "
+            f"익절 {self.config.take_profit_pct}% 자동 감시",
+        )
+
     async def _manage_position(self, symbol: str, price: float) -> None:
         pos = self.portfolio.positions.get(symbol)
         if (
@@ -677,7 +745,7 @@ class TradingEngine:
 
         tp_ratio = self.config.take_profit_pct / 100
         sl_ratio = self.config.stop_loss_pct / 100
-        if entry > 0:
+        if entry > 0 and not pos.custom_sl_tp:
             pos.take_profit = entry * (1 + tp_ratio)
             base_sl = entry * (1 - sl_ratio)
             if pos.stop_loss <= 0:
@@ -707,11 +775,15 @@ class TradingEngine:
         if auto_pnl <= -0.12:
             await self._auto_sell(symbol, "급락 방어")
 
-    async def _auto_sell(self, symbol: str, reason: str) -> None:
+    async def _auto_sell(self, symbol: str, reason: str, *, full: bool = False) -> None:
         sym = symbol.upper()
         if self._is_live():
             ok, msg = await live_market_sell(
-                self.config, sym, 100.0, reason, auto_only=True
+                self.config,
+                sym,
+                100.0,
+                reason,
+                auto_only=not full,
             )
             if ok:
                 self.bind_portfolio()
@@ -728,7 +800,9 @@ class TradingEngine:
             if px <= 0:
                 pos = self.portfolio.positions.get(sym)
                 px = pos.current_price if pos else 0.0
-            if px > 0 and self.portfolio.sell(sym, px, reason, auto_only=True):
+            if px > 0 and self.portfolio.sell(
+                sym, px, reason, auto_only=not full
+            ):
                 self._persist()
                 self.bot.recent_trades = self.portfolio.trades[-30:]
                 self.bot.message = f"{sym} {reason} 자동 매도 완료"

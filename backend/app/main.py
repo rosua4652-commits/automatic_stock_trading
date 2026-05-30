@@ -21,6 +21,7 @@ from app.models import (
     ManualBuyRequest,
     ManualSellRequest,
     PositionExcludeRequest,
+    PositionExitPlanRequest,
     SellAllRequest,
     StatusResponse,
     TradeMode,
@@ -42,7 +43,7 @@ STATIC_DIR = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
 # PC에서 run.bat 시작 시 표시 — GitHub 최신과 비교용
-AIDI_BUILD = "2026-03-30-upbit-truth"
+AIDI_BUILD = "2026-03-30-sl-tp-manual"
 
 
 def _load_pc_path_hint() -> str:
@@ -439,14 +440,40 @@ async def chart(symbol: str, interval: str = "1h"):
     engine.bind_portfolio()
     sym = symbol.upper()
     iv = interval.lower() if interval.lower() in _CHART_INTERVALS else "1h"
-    data = await engine.get_candles(sym, iv)
+    stale = False
+    try:
+        data = await engine.get_candles(sym, iv)
+    except Exception as e:
+        err = str(e)
+        if "429" in err:
+            from app.market.upbit_data import market as upbit_market
+
+            data = upbit_market.get_cached_klines(sym, iv) or []
+            stale = True
+        else:
+            raise
     markers = [m.model_dump() for m in engine.portfolio.chart_markers(sym)]
     return {
         "symbol": sym,
         "interval": iv,
         "candles": data,
         "markers": markers,
+        "stale": stale,
     }
+
+
+@api.post("/position/{symbol}/exit-plan")
+async def position_exit_plan(symbol: str, body: PositionExitPlanRequest):
+    ok, msg = await engine.set_position_exit_plan(
+        symbol,
+        custom_sl_tp=body.custom_sl_tp,
+        stop_loss_usdt=body.stop_loss_usdt,
+        take_profit_usdt=body.take_profit_usdt,
+    )
+    status = await _build_status()
+    status["ok"] = ok
+    status["message"] = msg
+    return status
 
 
 @api.post("/position/{symbol}/exclude")

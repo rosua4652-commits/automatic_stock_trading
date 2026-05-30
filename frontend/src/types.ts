@@ -92,6 +92,7 @@ export interface Position {
   entry_score: number;
   entry_outlook: string;
   excluded_from_auto: boolean;
+  custom_sl_tp?: boolean;
   score: number;
   /** 실거래: 업비트 API 기준 필드 */
   data_source?: string;

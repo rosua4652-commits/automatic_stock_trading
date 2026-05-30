@@ -9,6 +9,7 @@ import {
   sellAll,
   saveConfig,
   setPositionExclude,
+  setPositionExitPlan,
   setViewSymbol,
   startBot,
   stopBot,
@@ -577,6 +578,20 @@ export default function App() {
                 setTradeBusy(false);
               }
             }}
+            onExitPlan={async (sym, plan) => {
+              setTradeBusy(true);
+              try {
+                const s = await setPositionExitPlan(sym, plan);
+                applyPayload(s);
+                showToast(s.message || "손익절 설정 저장");
+              } catch (e) {
+                showToast(e instanceof Error ? e.message : "손익절 저장 실패");
+              } finally {
+                setTradeBusy(false);
+              }
+            }}
+            stopLossPct={data.config.stop_loss_pct}
+            takeProfitPct={data.config.take_profit_pct}
             busy={tradeBusy}
           />
         </div>

@@ -124,6 +124,21 @@ export async function setPositionExclude(
   });
 }
 
+export async function setPositionExitPlan(
+  symbol: string,
+  body: {
+    custom_sl_tp: boolean;
+    stop_loss_usdt?: number;
+    take_profit_usdt?: number;
+  }
+): Promise<StatusPayload> {
+  return request(`/api/position/${encodeURIComponent(symbol)}/exit-plan`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
 export async function manualSell(
   symbol: string,
   percent: number
