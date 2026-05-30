@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import type { CoinView } from "../types";
+import type { CoinView, InvestmentRecommendation } from "../types";
 import BuyAmountControl, { maxBuyKrw } from "./BuyAmountControl";
-import { fmtKrw, MIN_BUY_KRW } from "../utils";
+import { fmtKrw, fmtUsd, MIN_BUY_KRW } from "../utils";
 
 type Props = {
   view: CoinView;
@@ -9,6 +9,7 @@ type Props = {
   running: boolean;
   busy: boolean;
   cashKrw: number;
+  recommendation?: InvestmentRecommendation | null;
   onBuy: (symbol: string, amountKrw: number) => Promise<void>;
   onSell: (symbol: string, percent: number) => Promise<void>;
 };
@@ -19,11 +20,16 @@ export default function CoinTradeBar({
   running,
   busy,
   cashKrw,
+  recommendation,
   onBuy,
   onSell,
 }: Props) {
+  const recAmt =
+    recommendation && recommendation.amount_krw >= MIN_BUY_KRW
+      ? recommendation.amount_krw
+      : null;
   const [amount, setAmount] = useState(() =>
-    Math.min(500_000, maxBuyKrw(cashKrw))
+    Math.min(recAmt ?? 500_000, maxBuyKrw(cashKrw))
   );
   const [sellPct, setSellPct] = useState(100);
   const sym = view.meta.symbol;
@@ -31,8 +37,12 @@ export default function CoinTradeBar({
   const maxKrw = maxBuyKrw(cashKrw);
 
   useEffect(() => {
-    setAmount((prev) => Math.min(prev, maxKrw));
-  }, [maxKrw, sym]);
+    if (recAmt) {
+      setAmount(Math.min(recAmt, maxKrw));
+    } else {
+      setAmount((prev) => Math.min(prev, maxKrw));
+    }
+  }, [maxKrw, sym, recAmt]);
 
   const canBuy =
     canTrade && !busy && amount >= MIN_BUY_KRW && amount <= cashKrw && cashKrw >= MIN_BUY_KRW;
@@ -58,9 +68,22 @@ export default function CoinTradeBar({
         </p>
       )}
 
+      {recommendation && recAmt && (
+        <p className="entry-detail-box ok">
+          <strong>AI 제안:</strong> {fmtKrw(recAmt)}원
+          {recommendation.price_usdt && recommendation.price_usdt > 0 && (
+            <>
+              {" "}
+              · ${fmtUsd(recommendation.price_usdt)}에 약{" "}
+              {(recommendation.quantity_est ?? 0).toFixed(4)}개
+            </>
+          )}
+        </p>
+      )}
+
       {running && (
-        <p className="trade-hint warn subtle">
-          분석 실행 중 — 위 「AI 투자 제안」에서 선택 후 「승인 매수」하세요. 개별 매수도 가능합니다.
+        <p className="trade-hint subtle">
+          분석 중에도 아래에서 즉시 매수 가능 · 제안은 우측 상단 알림
         </p>
       )}
 

@@ -210,6 +210,8 @@ class InvestmentRecommendation(BaseModel):
     entry_score: float = 0.0
     weight_pct: float = 0.0
     amount_krw: float = 0.0
+    price_usdt: float = 0.0
+    quantity_est: float = 0.0
     entry_detail: str = ""
     change_24h: float = 0.0
     trend: str = ""

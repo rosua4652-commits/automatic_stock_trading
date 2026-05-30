@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { InvestmentRecommendation } from "../types";
-import { fmtKrw, fmtPct, isRunning } from "../utils";
+import { fmtKrw, fmtPct, fmtUsd, isRunning } from "../utils";
 
 type Props = {
   recommendations: InvestmentRecommendation[];
@@ -102,7 +102,11 @@ export default function RecommendationsPanel({
                   />
                   <span className="rec-row-name">{r.name_ko}</span>
                   <span className="rec-row-amt">{fmtKrw(r.amount_krw)}</span>
-                  <span className="rec-row-pct">{r.weight_pct}%</span>
+                  <span className="rec-row-qty">
+                    {r.price_usdt && r.price_usdt > 0
+                      ? `${(r.quantity_est ?? 0).toFixed(3)}개`
+                      : "—"}
+                  </span>
                 </label>
               </li>
             ))}
@@ -117,6 +121,7 @@ export default function RecommendationsPanel({
                 <th>차트</th>
                 <th>비중</th>
                 <th>제안 금액</th>
+                <th>가격·수량</th>
                 <th>24h</th>
                 <th>근거</th>
               </tr>
@@ -139,6 +144,17 @@ export default function RecommendationsPanel({
                   <td>{r.entry_score}</td>
                   <td>{r.weight_pct}%</td>
                   <td className="amount">{fmtKrw(r.amount_krw)}원</td>
+                  <td className="rec-qty">
+                    {r.price_usdt && r.price_usdt > 0 ? (
+                      <>
+                        ${fmtUsd(r.price_usdt)}
+                        <br />
+                        <span className="dim">≈ {(r.quantity_est ?? 0).toFixed(4)}개</span>
+                      </>
+                    ) : (
+                      "—"
+                    )}
+                  </td>
                   <td className={r.change_24h >= 0 ? "up" : "down"}>
                     {fmtPct(r.change_24h)}
                   </td>

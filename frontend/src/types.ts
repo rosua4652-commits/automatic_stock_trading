@@ -144,6 +144,8 @@ export interface InvestmentRecommendation {
   entry_score: number;
   weight_pct: number;
   amount_krw: number;
+  price_usdt?: number;
+  quantity_est?: number;
   entry_detail: string;
   change_24h: number;
   trend: string;

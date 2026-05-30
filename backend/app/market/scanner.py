@@ -97,15 +97,16 @@ async def _analyze_one(
     if not is_running():
         return None
     try:
-        raw = await binance.klines(symbol, "1h", settings.min_candles)
-        if not is_running() or len(raw) < settings.min_candles:
+        need = settings.scan_kline_min
+        raw = await binance.klines(symbol, "1h", max(need, 80))
+        if not is_running() or len(raw) < need:
             return None
         closes = np.array([float(r[4]) for r in raw], dtype=float)
         volumes = np.array([float(r[5]) for r in raw], dtype=float)
-        if closes.std() / (closes.mean() + 1e-9) > 0.35:
+        if closes.std() / (closes.mean() + 1e-9) > 0.55:
             return None
         score, trend, rsi, reason = _score_symbol(closes, volumes, change)
-        if score < 10:
+        if score < 5:
             return None
         meta = coin_meta(symbol, base)
         return CoinCandidate(
@@ -126,8 +127,57 @@ async def _analyze_one(
         return None
 
 
+def _quick_score(change_24h: float, quote_vol: float) -> tuple[float, str, float, str]:
+    score = 20.0
+    if change_24h > 0:
+        score += min(change_24h, 12) * 1.5
+    else:
+        score += max(change_24h, -10)
+    if quote_vol > 50_000_000:
+        score += 12
+    elif quote_vol > 10_000_000:
+        score += 6
+    trend = "상승" if change_24h > 2 else ("하락" if change_24h < -2 else "횡보")
+    rsi = 50.0
+    return round(score, 1), trend, rsi, "거래대금·24h 기준"
+
+
+async def build_ticker_candidates(
+    symbols: list[str],
+    tickers: dict[str, dict],
+) -> list[CoinCandidate]:
+    """캔들 분석 없이 탭·목록용 경량 후보."""
+    out: list[CoinCandidate] = []
+    for symbol in symbols:
+        t = tickers.get(symbol)
+        if not t:
+            continue
+        base = symbol.replace("USDT", "")
+        quote_vol = float(t.get("quoteVolume", 0))
+        change = float(t.get("priceChangePercent", 0))
+        score, trend, rsi, reason = _quick_score(change, quote_vol)
+        meta = coin_meta(symbol, base)
+        out.append(
+            CoinCandidate(
+                symbol=symbol,
+                base=meta["base"],
+                name_ko=meta["name_ko"],
+                name_en=meta["name_en"],
+                pair_label=meta["pair_label"],
+                display=meta["display"],
+                score=score,
+                trend=trend,
+                rsi=rsi,
+                change_24h=round(change, 2),
+                volume_usdt=quote_vol,
+                reason=reason,
+            )
+        )
+    return out
+
+
 async def top_usdt_symbols(
-    limit: int = 50,
+    limit: int | None = None,
     is_running: Callable[[], bool] | None = None,
 ) -> list[str]:
     """거래대금 상위 USDT 페어 (차트 분석 없이 탭·탐색용)."""
@@ -149,11 +199,12 @@ async def top_usdt_symbols(
             continue
         ranked.append((symbol, quote_vol))
     ranked.sort(key=lambda x: x[1], reverse=True)
-    return [s for s, _ in ranked[:limit]]
+    cap = limit if limit is not None else settings.tab_symbol_limit
+    return [s for s, _ in ranked[:cap]]
 
 
 async def scan_market(
-    limit: int = 60,
+    limit: int | None = None,
     is_running: Callable[[], bool] | None = None,
 ) -> list[CoinCandidate]:
     running = is_running or (lambda: True)
@@ -180,9 +231,10 @@ async def scan_market(
         candidates.append((symbol, base, quote_vol, change))
 
     candidates.sort(key=lambda x: x[2], reverse=True)
-    top = candidates[:120]
+    scan_cap = limit if limit is not None else settings.scan_candidate_limit
+    top = candidates[: max(scan_cap * 2, 200)]
 
-    sem = asyncio.Semaphore(10)
+    sem = asyncio.Semaphore(16)
 
     async def run_one(item: tuple[str, str, float, float]) -> CoinCandidate | None:
         if not running():
@@ -193,4 +245,4 @@ async def scan_market(
     results = await asyncio.gather(*[run_one(c) for c in top])
     ranked = [(c.score, c) for c in results if c is not None]
     ranked.sort(key=lambda x: x[0], reverse=True)
-    return [c for _, c in ranked[:limit]]
+    return [c for _, c in ranked[:scan_cap]]

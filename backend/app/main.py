@@ -10,7 +10,9 @@ from fastapi.staticfiles import StaticFiles
 
 from app.engine.portfolio_store import store
 from app.engine.trader import TradingEngine
+from app.config import settings as app_settings
 from app.market.binance import binance
+from app.market.scanner import top_usdt_symbols
 from app.models import (
     AccountLinkInfo,
     AppConfig,
@@ -85,8 +87,15 @@ async def _build_status() -> dict:
     if link.linked and engine.config.trade_mode == TradeMode.LIVE:
         link.total_assets_krw = round(snap.total_value_krw, 0)
         link.cash_krw = round(snap.cash_krw, 0)
+    if len(engine.bot.liquid_symbols) < 80:
+        try:
+            engine.bot.liquid_symbols = await top_usdt_symbols(
+                app_settings.tab_symbol_limit
+            )
+        except Exception:
+            pass
     view = engine.build_coin_view(engine.bot.view_symbol, prices, tickers)
-    engine.bot.manual_mode = engine.can_manual_trade()
+    engine.bot.manual_mode = True
     engine.bot.recent_trades = portfolio.trades[-40:]
 
     payload = StatusResponse(
@@ -251,7 +260,9 @@ async def position_exclude(symbol: str, body: PositionExcludeRequest):
 
 @api.post("/view/{symbol}")
 async def set_view(symbol: str):
-    engine.set_view_symbol(symbol.upper())
+    sym = symbol.upper()
+    engine.set_view_symbol(sym)
+    await engine.ensure_candidate_entry(sym)
     return await _build_status()
 
 

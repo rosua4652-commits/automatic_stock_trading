@@ -96,7 +96,7 @@ export default function PortfolioPanel({
           <p className="empty">「분석 시작」 후 스캔·차트 분석 결과가 표시됩니다</p>
         ) : (
           <ul className="candidate-list">
-            {candidates.slice(0, 30).map((c) => (
+            {candidates.slice(0, 50).map((c) => (
               <li key={c.symbol} className="cand-item">
                 <button
                   type="button"

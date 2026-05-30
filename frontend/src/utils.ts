@@ -44,6 +44,18 @@ export function displayForSymbol(
   return `${base} (${base})`;
 }
 
+/** 탭·목록용 진입 상태 */
+export function entryBadge(c: CoinCandidate | undefined): {
+  label: string;
+  kind: "ok" | "scalp" | "hold" | "none";
+} {
+  if (!c) return { label: "", kind: "none" };
+  if (c.entry_ok) return { label: "추천", kind: "ok" };
+  if (c.entry_scalp_ok) return { label: "단타", kind: "scalp" };
+  if (c.entry_detail) return { label: "보류", kind: "hold" };
+  return { label: "—", kind: "none" };
+}
+
 /** WebSocket으로 bot 상태가 덮어쓰이지 않도록 (시작/중지 직후) */
 export function mergeWsPayload(
   local: StatusPayload,

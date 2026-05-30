@@ -9,6 +9,7 @@ type Props = {
   canTrade: boolean;
   busy: boolean;
   cashKrw: number;
+  recommendation?: import("../types").InvestmentRecommendation | null;
   onBuy: (symbol: string, amountKrw: number) => Promise<void>;
   onSell: (symbol: string, percent: number) => Promise<void>;
 };
@@ -20,6 +21,7 @@ export default function CoinDetailBar({
   canTrade,
   busy,
   cashKrw,
+  recommendation,
   onBuy,
   onSell,
 }: Props) {
@@ -108,6 +110,7 @@ export default function CoinDetailBar({
         running={running}
         busy={busy}
         cashKrw={cashKrw}
+        recommendation={recommendation}
         onBuy={onBuy}
         onSell={onSell}
       />

@@ -9,7 +9,7 @@ from app.engine.recommendations import build_recommendations
 from app.market.binance import binance
 from app.market.coin_registry import coin_meta
 from app.market.entry_analyzer import analyze_entry, format_entry_detail
-from app.market.scanner import scan_market, top_usdt_symbols
+from app.market.scanner import build_ticker_candidates, scan_market, top_usdt_symbols
 from app.models import (
     AppConfig,
     BotState,
@@ -125,6 +125,27 @@ class TradingEngine:
         self._bump_version()
         self._notify()
         return switch_msg
+
+    async def ensure_candidate_entry(self, symbol: str) -> None:
+        """탭에서 선택한 코인 진입 분석이 없으면 보강."""
+        sym = symbol.upper()
+        cand = next((c for c in self.bot.candidates if c.symbol == sym), None)
+        if not cand or cand.entry_detail:
+            return
+        signal = await analyze_entry(sym, self.config.min_entry_score)
+        cand.entry_score = signal.score
+        cand.entry_ok = signal.ok
+        cand.entry_scalp_ok = signal.scalp_ok
+        cand.entry_outlook = signal.outlook
+        cand.entry_pattern = signal.pattern
+        cand.entry_reasons = signal.reasons
+        cand.entry_detail = format_entry_detail(
+            signal,
+            min_entry_score=self.config.min_entry_score,
+            min_market_score=self.config.min_buy_score,
+            market_score=cand.score,
+        )
+        self._notify()
 
     def set_view_symbol(self, symbol: str) -> str:
         sym = symbol.upper()
@@ -257,21 +278,33 @@ class TradingEngine:
                 return
 
         self.portfolio.usdt_krw = await binance.usdt_krw_rate()
+        from app.config import settings as app_settings
+
+        tickers = await binance.tickers_24h()
         self.bot.liquid_symbols = await top_usdt_symbols(
-            50, is_running=self.is_running
+            app_settings.tab_symbol_limit, is_running=self.is_running
         )
         if not self.is_running():
             return
-        candidates = await scan_market(limit=60, is_running=self.is_running)
+        deep = await scan_market(is_running=self.is_running)
         if not self.is_running():
             return
 
-        # 후보별 차트 진입 분석 (적합/부적합 모두 상세 표시)
-        enriched = []
-        for cand in candidates:
+        deep_syms = {c.symbol for c in deep}
+        quick_syms = [s for s in self.bot.liquid_symbols if s not in deep_syms]
+        quick = await build_ticker_candidates(quick_syms, tickers)
+        by_sym: dict[str, CoinCandidate] = {c.symbol: c for c in deep}
+        for c in quick:
+            by_sym.setdefault(c.symbol, c)
+        candidates = list(by_sym.values())
+
+        sem = asyncio.Semaphore(14)
+
+        async def enrich(cand: CoinCandidate):
             if not self.is_running():
-                return
-            signal = await analyze_entry(cand.symbol, self.config.min_entry_score)
+                return cand, None
+            async with sem:
+                signal = await analyze_entry(cand.symbol, self.config.min_entry_score)
             cand.entry_score = signal.score
             cand.entry_ok = signal.ok
             cand.entry_scalp_ok = signal.scalp_ok
@@ -284,15 +317,17 @@ class TradingEngine:
                 min_market_score=self.config.min_buy_score,
                 market_score=cand.score,
             )
-            if signal.ok:
-                enriched.append((cand, signal))
+            return cand, signal if signal.ok else None
+
+        results = await asyncio.gather(*[enrich(c) for c in candidates])
+        enriched = [(c, s) for c, s in results if s is not None]
         enriched.sort(key=lambda x: x[0].score, reverse=True)
 
         self.bot.candidates = sorted(
             candidates,
-            key=lambda c: (c.entry_ok, c.score),
+            key=lambda c: (c.entry_ok, c.entry_scalp_ok, c.score),
             reverse=True,
-        )[:60]
+        )
         self.bot.last_scan = time.time()
 
         held = {
@@ -306,6 +341,8 @@ class TradingEngine:
             snap.cash_krw,
             self.config,
             held,
+            tickers=tickers,
+            usdt_krw=self.portfolio.usdt_krw,
         )
         mode = "모의" if self.config.trade_mode == TradeMode.PAPER else "실거래"
         total_rec = sum(r.amount_krw for r in self.bot.recommendations)

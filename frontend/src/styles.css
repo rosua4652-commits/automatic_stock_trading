@@ -117,14 +117,31 @@ body {
   color: var(--muted);
 }
 
+.coin-tabs-wrap {
+  display: flex;
+  align-items: stretch;
+  gap: 0.35rem;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.coin-tabs-count {
+  flex-shrink: 0;
+  align-self: center;
+  font-size: 0.65rem;
+  color: var(--muted);
+  padding: 0 0 0 0.75rem;
+  white-space: nowrap;
+}
+
 .coin-tabs {
   display: flex;
   gap: 0.35rem;
-  padding: 0.35rem 0.75rem;
+  padding: 0.35rem 0.75rem 0.35rem 0;
   overflow-x: auto;
-  border-bottom: 1px solid var(--border);
   scrollbar-width: thin;
-  flex-shrink: 0;
+  flex: 1;
+  min-width: 0;
 }
 
 .coin-tab {
@@ -164,6 +181,29 @@ body {
   font-weight: 700;
   font-size: 0.85rem;
   color: var(--text);
+}
+
+.tab-entry {
+  font-size: 0.58rem;
+  font-weight: 600;
+  padding: 0.06rem 0.35rem;
+  border-radius: 4px;
+  line-height: 1.2;
+}
+
+.tab-entry.ok {
+  background: rgba(34, 211, 165, 0.2);
+  color: var(--green);
+}
+
+.tab-entry.scalp {
+  background: rgba(59, 158, 255, 0.2);
+  color: var(--accent);
+}
+
+.tab-entry.hold {
+  background: rgba(148, 163, 184, 0.15);
+  color: var(--muted);
 }
 
 .tab-sub {
@@ -1111,6 +1151,99 @@ body {
   background: rgba(248, 113, 113, 0.15);
   color: #fca5a5;
   border-bottom: 1px solid rgba(248, 113, 113, 0.35);
+}
+
+.rec-alert {
+  position: fixed;
+  top: 5.5rem;
+  right: 1rem;
+  z-index: 210;
+  width: min(320px, calc(100vw - 2rem));
+  max-height: min(70vh, 480px);
+  overflow-y: auto;
+  background: var(--surface2);
+  border: 1px solid var(--accent);
+  border-radius: 12px;
+  padding: 0.65rem 0.75rem;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+}
+
+.rec-alert.collapsed .rec-alert-list,
+.rec-alert.collapsed .rec-alert-actions,
+.rec-alert.collapsed .rec-alert-more,
+.rec-alert.collapsed .warn {
+  display: none;
+}
+
+.rec-alert-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.rec-alert-head strong {
+  font-size: 0.82rem;
+  color: var(--green);
+}
+
+.rec-alert-sum {
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.rec-alert-head-btns {
+  margin-left: auto;
+  display: flex;
+  gap: 0.25rem;
+}
+
+.rec-alert-list {
+  list-style: none;
+  margin: 0 0 0.5rem;
+  padding: 0;
+}
+
+.rec-alert-row {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  padding: 0.25rem 0;
+  border: none;
+  background: none;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 0.78rem;
+  cursor: pointer;
+  text-align: left;
+}
+
+.rec-alert-row:hover {
+  color: var(--accent);
+}
+
+.rec-alert-detail {
+  display: block;
+  font-size: 0.65rem;
+  color: var(--muted);
+  margin-bottom: 0.35rem;
+  padding-left: 0.15rem;
+}
+
+.rec-alert-more {
+  font-size: 0.65rem;
+  color: var(--muted);
+  margin: 0 0 0.5rem;
+}
+
+.rec-alert-actions {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.topbar {
+  position: relative;
 }
 
 .toast {

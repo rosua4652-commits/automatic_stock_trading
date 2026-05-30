@@ -12,6 +12,7 @@ import {
   startBot,
   stopBot,
 } from "./api";
+import RecommendationAlert from "./components/RecommendationAlert";
 import RecommendationsPanel from "./components/RecommendationsPanel";
 import ChartPanel from "./components/ChartPanel";
 import CoinDetailBar from "./components/CoinDetailBar";
@@ -247,7 +248,9 @@ export default function App() {
   const running = isRunning(data.bot.status);
   const stopping = data.bot.status === "stopping";
   const isPaper = data.config.trade_mode === "paper";
-  const canTrade = data.bot.manual_mode !== false && !stopping;
+  const canTrade = !stopping;
+  const activeRec =
+    data.bot.recommendations?.find((r) => r.symbol === activeSymbol) ?? null;
   const tabs =
     data.tabs?.length > 0
       ? data.tabs
@@ -362,6 +365,13 @@ export default function App() {
               <span className="m-value dim">{fmtKrw(data.portfolio.cash_krw)}</span>
             </div>
           </div>
+          <RecommendationAlert
+            recommendations={data.bot.recommendations ?? []}
+            cashKrw={data.portfolio.cash_krw}
+            busy={tradeBusy}
+            onApply={applyRecs}
+            onSelectSymbol={handleSelectCoin}
+          />
           <div className="top-actions">
             <button
               type="button"
@@ -442,6 +452,7 @@ export default function App() {
                 canTrade={canTrade}
                 busy={tradeBusy}
                 cashKrw={data.portfolio.cash_krw}
+                recommendation={activeRec}
                 onBuy={handleManualBuy}
                 onSell={handleManualSell}
               />

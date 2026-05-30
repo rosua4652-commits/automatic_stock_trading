@@ -11,6 +11,9 @@ def build_recommendations(
     cash_krw: float,
     config: AppConfig,
     held_symbols: set[str],
+    *,
+    tickers: dict | None = None,
+    usdt_krw: float = 1350.0,
 ) -> list[InvestmentRecommendation]:
     """진입 가능 후보에 투자 가능 현금을 점수 비중으로 배분."""
     budget = cash_krw * 0.85
@@ -48,6 +51,12 @@ def build_recommendations(
         if amount < MIN_BUY:
             continue
         weight_pct = round(w / total_w * 100, 1)
+        price_usdt = 0.0
+        qty_est = 0.0
+        if tickers and c.symbol in tickers:
+            price_usdt = float(tickers[c.symbol].get("lastPrice") or 0)
+            if price_usdt > 0 and usdt_krw > 0:
+                qty_est = round(amount / (price_usdt * usdt_krw), 6)
         allocated += amount
         recs.append(
             InvestmentRecommendation(
@@ -60,6 +69,8 @@ def build_recommendations(
                 entry_score=c.entry_score,
                 weight_pct=weight_pct,
                 amount_krw=amount,
+                price_usdt=price_usdt,
+                quantity_est=qty_est,
                 entry_detail=c.entry_detail or c.entry_outlook,
                 change_24h=c.change_24h,
                 trend=c.trend,
