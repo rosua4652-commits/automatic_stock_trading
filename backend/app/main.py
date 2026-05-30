@@ -115,6 +115,33 @@ async def _build_status() -> dict:
     payload["config"] = config_for_response(engine.config)
     payload["status_version"] = engine._status_version
     payload["all_trades"] = [t.model_dump() for t in portfolio.trades[-50:]]
+    outbound = await get_outbound_public_ip()
+    ip4 = await outbound_ipv4_via_same_stack()
+    cred = load_credentials()
+    ak = cred.get("api_access_key") or engine.config.api_access_key or ""
+    register_ip = ip4 or outbound or ""
+    payload["network"] = {
+        "outbound_ip": outbound or "",
+        "outbound_ipv4_stack": ip4 or "",
+        "register_on_upbit": register_ip,
+        "saved_access_key": mask_key(ak, 4) if ak else "",
+        "api_routes": {
+            "outbound_ip": "/api/network/outbound-ip",
+            "diagnose": "/api/network/diagnose",
+        },
+    }
+    if (
+        not link.linked
+        and engine.config.trade_mode == TradeMode.LIVE
+        and register_ip
+        and ("허용 IP" in (link.message or "") or "no_authorization_ip" in (link.message or ""))
+    ):
+        key_hint = mask_key(ak, 4) if ak else "????"
+        link.message = (
+            f"{link.message} "
+            f"(AIDI 나가는 IP: {register_ip} — 업비트 Open API 키 [{key_hint}] 허용 IP에 등록)"
+        )
+        payload["account_link"] = link.model_dump()
     return payload
 
 
@@ -154,7 +181,7 @@ async def lifespan(app: FastAPI):
     await close_all()
 
 
-app = FastAPI(title="AIDI Auto Invest", version="1.3.0", lifespan=lifespan)
+app = FastAPI(title="AIDI Auto Invest", version="1.3.1", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
