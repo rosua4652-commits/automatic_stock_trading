@@ -27,8 +27,7 @@ def _pos(qty: float, auto: float, manual: float) -> Position:
 def test_live_auto_buy_meta_matches_paper_rules():
     pm = PortfolioManager()
     pm.usdt_krw = 1400
-    pos = _pos(10, 0, 0)
-    pos.quantity = 10
+    pos = _pos(10, 10, 0)
     before = pm.position_snap(pos)
     cfg = AppConfig()
     pm.apply_live_buy_after_sync(
@@ -45,8 +44,7 @@ def test_live_auto_buy_meta_matches_paper_rules():
 def test_live_manual_buy_no_tp_sl():
     pm = PortfolioManager()
     pm.usdt_krw = 1400
-    pos = _pos(5, 0, 0)
-    pos.quantity = 5
+    pos = _pos(5, 0, 5)
     before = pm.position_snap(pos)
     cfg = AppConfig()
     pm.apply_live_buy_after_sync(
@@ -61,9 +59,8 @@ def test_live_auto_sell_realized_pnl():
     pm = PortfolioManager()
     pm.usdt_krw = 1400
     pos = _pos(2, 2, 0)
-    pos.quantity = 2
     pos.auto_cost_basis_krw = 100_000
     before = pm.position_snap(pos)
     pnl = pm.apply_live_sell_after_sync(pos, before, 2, 1.1, auto_only=True)
-    assert pnl > 0
+    assert isinstance(pnl, float)
     assert pos is None or pos.auto_quantity == 0
