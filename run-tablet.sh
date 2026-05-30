@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# 삼성 갤럭시 탭 등 Android — Termux에서 실행 (npm 불필요, dist 포함 가정)
+# 삼성 갤럭시 탭 · Termux — npm 불필요 (dist 포함)
+# 실행: bash run-tablet.sh  (Downloads/SD에서는 chmod 불가 → 홈 ~/aidi 에 풀기)
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 PORT="${PORT:-8000}"
