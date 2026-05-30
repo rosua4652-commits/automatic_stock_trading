@@ -1,30 +1,64 @@
-/** 서버 AIDI_BUILD 가 손익절 %·수동지정 API 를 포함하는지 */
+/** 서버·UI 빌드 호환 (구버전 배너 오탐 방지) */
 
-const NEW_ENOUGH_MARKERS = [
-  "small-sell-retry",
-  "small-sell-limit",
-  "sl-tp-apply-sell",
-  "sl-tp-pct",
-  "sl-tp-manual",
+export type AidiCapabilities = {
+  exit_plan_pct?: boolean;
+  manual_sl_tp?: boolean;
+  small_sell_retry?: boolean;
+};
+
+const LEGACY_ONLY = ["upbit-truth", "cost-basis"];
+
+const NEW_MARKERS = [
+  "small-sell",
+  "sl-tp",
   "chart-fix",
-] as const;
+  "apply-sell",
+];
 
-export const REQUIRED_BUILD_HINT = "sl-tp-apply-sell (또는 sl-tp-pct)";
+export const REQUIRED_BUILD_HINT = "최신 ZIP + run.bat (프론트 자동 재빌드)";
 
-export function isServerBuildNewEnough(buildId: string): boolean {
-  if (!buildId.trim()) return false;
-  if (NEW_ENOUGH_MARKERS.some((m) => buildId.includes(m))) return true;
-  return /sl-tp/.test(buildId);
+/** 서버 API 가 손익절·소액매도 등을 지원하는지 */
+export function serverHasModernFeatures(
+  buildId: string,
+  caps?: AidiCapabilities | null
+): boolean {
+  if (caps?.exit_plan_pct === true) {
+    return true;
+  }
+  const id = buildId.trim();
+  if (!id) {
+    return false;
+  }
+  if (LEGACY_ONLY.some((m) => id.includes(m)) && !NEW_MARKERS.some((m) => id.includes(m))) {
+    return false;
+  }
+  if (NEW_MARKERS.some((m) => id.includes(m))) {
+    return true;
+  }
+  return /2026-03-3\d/.test(id);
 }
 
-/** 서버·UI 빌드 문자열이 달라도 같은 기능 세대면 경고 생략 */
+export function isServerBuildNewEnough(
+  buildId: string,
+  caps?: AidiCapabilities | null
+): boolean {
+  return serverHasModernFeatures(buildId, caps);
+}
+
+/** UI 번들이 서버와 문자열이 달라도 같은 세대면 경고 생략 */
 export function isBuildGenerationCompatible(
   serverBuild: string,
-  uiBuild: string
+  uiBuild: string,
+  caps?: AidiCapabilities | null
 ): boolean {
-  if (!serverBuild || !uiBuild) return true;
-  if (serverBuild === uiBuild) return true;
+  if (!serverBuild || !uiBuild) {
+    return true;
+  }
+  if (serverBuild === uiBuild) {
+    return true;
+  }
   return (
-    isServerBuildNewEnough(serverBuild) && isServerBuildNewEnough(uiBuild)
+    serverHasModernFeatures(serverBuild, caps) &&
+    serverHasModernFeatures(uiBuild, null)
   );
 }

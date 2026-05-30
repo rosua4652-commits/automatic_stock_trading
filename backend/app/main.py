@@ -43,7 +43,7 @@ STATIC_DIR = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
 # PC에서 run.bat 시작 시 표시 — GitHub 최신과 비교용
-AIDI_BUILD = "2026-03-30-small-sell-retry"
+AIDI_BUILD = "2026-03-30-small-sell-retry2"
 
 
 def _load_pc_path_hint() -> str:
@@ -162,6 +162,11 @@ async def _build_status() -> dict:
     payload["config"] = config_for_response(engine.config)
     payload["status_version"] = engine._status_version
     payload["aidi_build"] = AIDI_BUILD
+    payload["aidi_capabilities"] = {
+        "exit_plan_pct": True,
+        "manual_sl_tp": True,
+        "small_sell_retry": True,
+    }
     payload["all_trades"] = [t.model_dump() for t in portfolio.trades[-50:]]
     outbound = await get_outbound_public_ip()
     ip4 = await outbound_ipv4_via_same_stack()

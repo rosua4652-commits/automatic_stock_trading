@@ -227,6 +227,11 @@ export interface StatusPayload {
   upbit_snapshot?: UpbitAccountSnapshot;
   status_version?: number;
   aidi_build?: string;
+  aidi_capabilities?: {
+    exit_plan_pct?: boolean;
+    manual_sl_tp?: boolean;
+    small_sell_retry?: boolean;
+  };
   network?: {
     outbound_ip?: string;
     outbound_ipv4_stack?: string;

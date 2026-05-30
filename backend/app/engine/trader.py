@@ -780,9 +780,8 @@ class TradingEngine:
 
         immediate = await self._try_immediate_exit_on_apply(sym)
         if immediate:
-            if "즉시 전량 매도 완료" in immediate:
-                return True, immediate
-            return False, immediate
+            ok_msg = "실패" not in immediate or "소액 포지션" in immediate
+            return ok_msg, immediate
 
         if self._is_live():
             await store.sync_live(self.config)
@@ -790,9 +789,8 @@ class TradingEngine:
             pos = self.portfolio.positions.get(sym) or pos
             immediate2 = await self._try_immediate_exit_on_apply(sym)
             if immediate2:
-                if "즉시 전량 매도 완료" in immediate2:
-                    return True, immediate2
-                return False, immediate2
+                ok_msg = "실패" not in immediate2 or "소액 포지션" in immediate2
+                return ok_msg, immediate2
 
         if not self._is_live():
             self._persist()

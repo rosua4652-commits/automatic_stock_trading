@@ -312,13 +312,14 @@ export default function App() {
   const stopping = data.bot.status === "stopping";
   const isPaper = data.config.trade_mode === "paper";
   const buildId = data.aidi_build || "";
-  const buildStale = !buildId;
-  const serverNewEnough = isServerBuildNewEnough(buildId);
-  const uiServerMismatch =
+  const caps = data.aidi_capabilities;
+  const serverNewEnough = isServerBuildNewEnough(buildId, caps);
+  const needPcUpdate = !serverNewEnough;
+  const uiStale =
+    serverNewEnough &&
     !!buildId &&
     buildId !== UI_BUILD &&
-    !isBuildGenerationCompatible(buildId, UI_BUILD);
-  const needPcUpdate = buildStale || !serverNewEnough;
+    !isBuildGenerationCompatible(buildId, UI_BUILD, caps);
   const canTrade = !stopping;
   const activeRec =
     editableRecs.find((r) => r.symbol === activeSymbol) ?? null;
@@ -414,21 +415,23 @@ export default function App() {
         <div className={`mode-banner ${isPaper ? "paper" : "live"}`}>
           {needPcUpdate ? (
             <strong style={{ display: "block", marginBottom: 4 }}>
-              ⚠ 구버전 — GitHub ZIP으로 폴더 덮어쓰기 → stop-aidi.bat → run.bat → Ctrl+F5
+              ⚠ 백엔드 구버전 — GitHub ZIP 덮어쓰기 → stop-aidi.bat → run.bat
               <br />
               <span style={{ fontWeight: 400, fontSize: "0.85em" }}>
-                서버: {buildId || "없음"} · 필요: {REQUIRED_BUILD_HINT} · 화면(UI):{" "}
-                {UI_BUILD}
-                {!serverNewEnough
-                  ? " · 손익절 %·수동지정 API 없음 (백엔드 구버전)"
-                  : uiServerMismatch
-                    ? " · 화면 JS 재빌드 필요 (run.bat)"
-                    : ""}
+                서버 빌드: {buildId || "없음"} · {REQUIRED_BUILD_HINT}
               </span>
             </strong>
-          ) : uiServerMismatch ? (
-            <span style={{ display: "block", fontSize: "0.85em", marginBottom: 4 }}>
-              빌드: 서버 {buildId} · UI {UI_BUILD} (기능 동일하면 무시 가능)
+          ) : uiStale ? (
+            <span
+              style={{
+                display: "block",
+                fontSize: "0.85em",
+                marginBottom: 4,
+                opacity: 0.92,
+              }}
+            >
+              화면만 구버전 — run.bat 한 번 실행 후 Ctrl+F5 (서버{" "}
+              {buildId} · UI {UI_BUILD})
             </span>
           ) : null}
           {isPaper

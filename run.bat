@@ -104,6 +104,10 @@ if "!NEED_FE_BUILD!"=="1" (
   if errorlevel 1 goto :npm_fail
   popd
   echo !EXPECTED_BUILD!> frontend\dist\.aidi-ui-build
+  findstr /C:"!EXPECTED_BUILD!" "frontend\dist\assets\index-*.js" >nul 2>&1
+  if errorlevel 1 (
+    echo   WARNING: Built JS does not contain !EXPECTED_BUILD! - run: cd frontend ^&^& npm run build
+  )
 )
 :fe_skip_rebuild
 
