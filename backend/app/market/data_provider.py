@@ -183,11 +183,14 @@ class MarketDataProvider:
             "1s": (-0.0008, 0.0008),
             "1m": (-0.004, 0.004),
         }.get(interval, (-0.018, 0.022))
-        now = int(time.time() * 1000)
+        now_sec = int(time.time())
         rows = []
         p = price * 0.92
         for i in range(limit):
-            ts = now - (limit - i) * step_ms
+            # 초봉은 현재 초까지 맞춤 (과거 시뮬이 아닌 실시간에 가깝게)
+            ts = (now_sec - (limit - 1 - i)) * 1000 if interval == "1s" else (
+                now_sec * 1000 - (limit - i) * step_ms
+            )
             change = rng.uniform(vol_scale[0], vol_scale[1])
             o = p
             c = p * (1 + change)
@@ -203,6 +206,12 @@ class MarketDataProvider:
             for r in rows:
                 for j in range(1, 5):
                     r[j] = str(float(r[j]) * factor)
+            # 마지막 봉은 현재가로 갱신 (초봉 실시간 느낌)
+            last = rows[-1]
+            px = str(price)
+            last[1] = last[4] = px
+            last[2] = str(max(float(last[2]), price))
+            last[3] = str(min(float(last[3]), price))
         return rows
 
     async def usdt_krw_rate(self) -> float:

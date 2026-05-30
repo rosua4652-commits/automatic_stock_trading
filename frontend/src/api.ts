@@ -76,8 +76,9 @@ export async function fetchChart(
   symbol: string,
   interval: string
 ): Promise<ChartResponse> {
+  const bust = interval === "1s" || interval === "1m" ? `&_=${Date.now()}` : "";
   return request(
-    `/api/chart/${encodeURIComponent(symbol)}?interval=${encodeURIComponent(interval)}`
+    `/api/chart/${encodeURIComponent(symbol)}?interval=${encodeURIComponent(interval)}${bust}`
   );
 }
 

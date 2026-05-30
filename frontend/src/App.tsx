@@ -20,7 +20,14 @@ import FundsTab from "./components/FundsTab";
 import PortfolioPanel from "./components/PortfolioPanel";
 import SettingsModal from "./components/SettingsModal";
 import type { AppConfig, Candle, MainView, StatusPayload } from "./types";
-import { DEFAULT_CONFIG, fmtKrw, isRunning, mergeWsPayload, MIN_BUY_KRW } from "./utils";
+import {
+  DEFAULT_CONFIG,
+  chartRefreshMs,
+  fmtKrw,
+  isRunning,
+  mergeWsPayload,
+  MIN_BUY_KRW,
+} from "./utils";
 
 export default function App() {
   const [data, setData] = useState<StatusPayload | null>(null);
@@ -70,16 +77,20 @@ export default function App() {
     });
   }, [applyPayload]);
 
-  // 차트 로드 — setInterval 이름 충돌 수정 (window.setInterval 사용)
+  // 차트 로드 — 초봉(1s)은 1초마다, 분봉은 3초, 그 외 12초
   useEffect(() => {
     let cancelled = false;
+    let initial = true;
     const sym = activeSymbol;
+    const iv = chartInterval;
 
     const load = async () => {
-      setChartLoading(true);
-      setChartError(null);
+      if (initial) {
+        setChartLoading(true);
+        setChartError(null);
+      }
       try {
-        const res = await fetchChart(sym, chartInterval);
+        const res = await fetchChart(sym, iv);
         if (!cancelled && activeSymbolRef.current === sym) {
           setCandles(res.candles || []);
         }
@@ -89,12 +100,17 @@ export default function App() {
           setChartError(e instanceof Error ? e.message : "차트 로드 실패");
         }
       } finally {
-        if (!cancelled) setChartLoading(false);
+        if (!cancelled) {
+          if (initial) {
+            setChartLoading(false);
+            initial = false;
+          }
+        }
       }
     };
 
     load();
-    const timerId = window.setInterval(load, 12000);
+    const timerId = window.setInterval(load, chartRefreshMs(iv));
     return () => {
       cancelled = true;
       window.clearInterval(timerId);

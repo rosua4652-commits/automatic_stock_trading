@@ -63,6 +63,13 @@ export function mergeWsPayload(
 /** 최소 매수 금액 (원) — 백엔드와 동일 */
 export const MIN_BUY_KRW = 5_000;
 
+/** 차트 자동 갱신 주기 (초봉은 1초마다) */
+export function chartRefreshMs(interval: string): number {
+  if (interval === "1s") return 1000;
+  if (interval === "1m") return 3000;
+  return 12000;
+}
+
 export const DEFAULT_CONFIG = {
   trade_mode: "paper" as const,
   target_profit_krw: 2_000_000,

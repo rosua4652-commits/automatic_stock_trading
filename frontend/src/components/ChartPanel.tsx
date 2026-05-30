@@ -51,6 +51,7 @@ export default function ChartPanel({
   const volRef = useRef<ISeriesApi<"Histogram"> | null>(null);
   const [visibleBars, setVisibleBarsState] = useState(DEFAULT_VISIBLE_BARS);
   const candleCountRef = useRef(0);
+  const lastBarTimeRef = useRef<number | null>(null);
 
   const applyVisibleRange = (barCount: number, visibleBars: number) => {
     const chart = chartRef.current;
@@ -90,10 +91,10 @@ export default function ChartPanel({
       timeScale: {
         borderVisible: false,
         timeVisible: true,
-        secondsVisible: false,
-        rightOffset: 6,
-        barSpacing: 8,
-        minBarSpacing: 4,
+        secondsVisible: chartInterval === "1s",
+        rightOffset: chartInterval === "1s" ? 2 : 6,
+        barSpacing: chartInterval === "1s" ? 4 : 8,
+        minBarSpacing: chartInterval === "1s" ? 2 : 4,
         fixLeftEdge: true,
         lockVisibleTimeRangeOnResize: true,
       },
@@ -164,9 +165,32 @@ export default function ChartPanel({
           ? "rgba(34,211,165,0.45)"
           : "rgba(248,113,113,0.45)",
     }));
+
+    const prevLen = candleCountRef.current;
+    const prevLast = lastBarTimeRef.current;
+    const last = cs[cs.length - 1];
+    const canPatch =
+      prevLen > 0 &&
+      last &&
+      (cs.length === prevLen || cs.length === prevLen + 1) &&
+      prevLast !== null &&
+      last.time >= prevLast;
+
+    if (canPatch && candleRef.current && volRef.current) {
+      candleRef.current.update(last);
+      volRef.current.update(vs[vs.length - 1]);
+      if (cs.length > prevLen) {
+        candleCountRef.current = cs.length;
+        applyVisibleRange(cs.length, visibleBars);
+      }
+      lastBarTimeRef.current = last.time as number;
+      return;
+    }
+
     candleRef.current.setData(cs);
     volRef.current.setData(vs);
     candleCountRef.current = cs.length;
+    lastBarTimeRef.current = last ? (last.time as number) : null;
     applyVisibleRange(cs.length, visibleBars);
   }, [candles, visibleBars]);
 
