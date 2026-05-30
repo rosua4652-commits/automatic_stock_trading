@@ -30,6 +30,23 @@ pip install -e .
 
 개발/테스트만 할 경우 별도 외부 패키지는 필요 없습니다.
 
+## 빠른 실행
+
+Windows:
+
+```bat
+start_dashboard.bat
+```
+
+Linux/macOS:
+
+```bash
+chmod +x start_dashboard.sh
+./start_dashboard.sh
+```
+
+스크립트는 `.env`가 없으면 `.env.example`에서 자동 생성하고, 가상환경을 만든 뒤 웹 UI를 실행합니다.
+
 ## 환경변수
 
 ```bash
