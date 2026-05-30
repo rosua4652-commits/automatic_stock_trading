@@ -26,6 +26,11 @@ import SettingsModal from "./components/SettingsModal";
 import type { AppConfig, Candle, MainView, StatusPayload } from "./types";
 import { useRecommendationAmounts } from "./hooks/useRecommendationAmounts";
 import type { ApplyItem } from "./hooks/useRecommendationAmounts";
+import {
+  isBuildGenerationCompatible,
+  isServerBuildNewEnough,
+  REQUIRED_BUILD_HINT,
+} from "./buildCheck";
 import { UI_BUILD } from "./uiBuild";
 import {
   DEFAULT_CONFIG,
@@ -308,9 +313,11 @@ export default function App() {
   const isPaper = data.config.trade_mode === "paper";
   const buildId = data.aidi_build || "";
   const buildStale = !buildId;
-  const serverNewEnough =
-    /sl-tp-pct/.test(buildId);
-  const uiServerMismatch = !!buildId && buildId !== UI_BUILD;
+  const serverNewEnough = isServerBuildNewEnough(buildId);
+  const uiServerMismatch =
+    !!buildId &&
+    buildId !== UI_BUILD &&
+    !isBuildGenerationCompatible(buildId, UI_BUILD);
   const needPcUpdate = buildStale || !serverNewEnough;
   const canTrade = !stopping;
   const activeRec =
@@ -410,10 +417,13 @@ export default function App() {
               ⚠ 구버전 — GitHub ZIP으로 폴더 덮어쓰기 → stop-aidi.bat → run.bat → Ctrl+F5
               <br />
               <span style={{ fontWeight: 400, fontSize: "0.85em" }}>
-                서버: {buildId || "없음"} · 필요: chart-fix · 화면(UI): {UI_BUILD}
+                서버: {buildId || "없음"} · 필요: {REQUIRED_BUILD_HINT} · 화면(UI):{" "}
+                {UI_BUILD}
                 {!serverNewEnough
-                  ? " · 손익절 %·수동지정 API 없음"
-                  : ""}
+                  ? " · 손익절 %·수동지정 API 없음 (백엔드 구버전)"
+                  : uiServerMismatch
+                    ? " · 화면 JS 재빌드 필요 (run.bat)"
+                    : ""}
               </span>
             </strong>
           ) : uiServerMismatch ? (
