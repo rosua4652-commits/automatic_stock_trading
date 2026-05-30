@@ -18,6 +18,7 @@ import RecommendationsPanel from "./components/RecommendationsPanel";
 import ChartPanel from "./components/ChartPanel";
 import CoinDetailBar from "./components/CoinDetailBar";
 import CoinSearchTabs from "./components/CoinSearchTabs";
+import FundsSummaryStrip from "./components/FundsSummaryStrip";
 import EntryAlertModal from "./components/EntryAlertModal";
 import EntryOpportunitiesPanel from "./components/EntryOpportunitiesPanel";
 import FundsTab from "./components/FundsTab";
@@ -48,7 +49,7 @@ export default function App() {
   const [botBusy, setBotBusy] = useState(false);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
-  const [mainView, setMainView] = useState<MainView>("chart");
+  const [mainView, setMainView] = useState<MainView>("summary");
   const [tradeBusy, setTradeBusy] = useState(false);
   const [entryAlertOpen, setEntryAlertOpen] = useState(false);
 
@@ -460,22 +461,42 @@ export default function App() {
         </header>
 
         <nav className="main-nav">
-        <button
-          type="button"
-          className={`nav-btn ${mainView === "chart" ? "active" : ""}`}
-          onClick={() => setMainView("chart")}
-        >
-          차트 · AI
-        </button>
-        <button
-          type="button"
-          className={`nav-btn ${mainView === "funds" ? "active" : ""}`}
-          onClick={() => setMainView("funds")}
-        >
-          자금 · 매매
-        </button>
+          <button
+            type="button"
+            className={`nav-btn ${mainView === "summary" ? "active" : ""}`}
+            onClick={() => setMainView("summary")}
+          >
+            자금 현황
+          </button>
+          <button
+            type="button"
+            className={`nav-btn ${mainView === "chart" ? "active" : ""}`}
+            onClick={() => setMainView("chart")}
+          >
+            차트 · AI
+          </button>
+          <button
+            type="button"
+            className={`nav-btn ${mainView === "funds" ? "active" : ""}`}
+            onClick={() => setMainView("funds")}
+          >
+            보유 · 매매
+          </button>
         </nav>
+
+        {mainView !== "summary" && (
+          <FundsSummaryStrip portfolio={data.portfolio} compact />
+        )}
       </div>
+
+      {mainView === "summary" && (
+        <div className="summary-screen">
+          <FundsSummaryStrip portfolio={data.portfolio} />
+          <p className="summary-hint">
+            코인 차트·매매는 「차트 · AI」「보유 · 매매」 탭에서 이용하세요.
+          </p>
+        </div>
+      )}
 
       {mainView === "chart" && (
         <div className="chart-screen">
@@ -484,6 +505,7 @@ export default function App() {
             selected={activeSymbol}
             portfolio={data.portfolio}
             candidates={data.bot.candidates}
+            tabQuotes={data.tab_quotes}
             onSelect={handleSelectCoin}
           />
           <main className="layout chart-layout">

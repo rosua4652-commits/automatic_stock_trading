@@ -1,4 +1,11 @@
-import type { CoinCandidate, InvestmentRecommendation, Portfolio, Position, StatusPayload } from "./types";
+import type {
+  CoinCandidate,
+  InvestmentRecommendation,
+  Portfolio,
+  Position,
+  StatusPayload,
+  TabQuote,
+} from "./types";
 
 export function fmtKrw(n: number) {
   return new Intl.NumberFormat("ko-KR").format(Math.round(n));
@@ -51,6 +58,32 @@ export type CoinMetaBrief = {
   base: string;
   pair_label: string;
 };
+
+/** 코인 탭 — 평단·현재가·수익률 (보유) / 현재가·24h (미보유) */
+export function coinTabDisplay(
+  symbol: string,
+  portfolio: Portfolio,
+  quote?: TabQuote
+) {
+  const pos = portfolio.positions.find((p) => p.symbol === symbol);
+  if (pos && pos.quantity > 0) {
+    return {
+      held: true,
+      avgKrw: Math.round(pos.cost_basis_krw / pos.quantity),
+      currentKrw: Math.round(pos.current_value_krw / pos.quantity),
+      pnlPct: pos.pnl_pct,
+      change24h: undefined as number | undefined,
+    };
+  }
+  const px = quote?.price_krw ?? 0;
+  return {
+    held: false,
+    avgKrw: undefined as number | undefined,
+    currentKrw: px > 0 ? px : undefined,
+    pnlPct: undefined as number | undefined,
+    change24h: quote?.change_24h,
+  };
+}
 
 export function resolveCoinMeta(
   symbol: string,

@@ -280,10 +280,17 @@ class AccountLinkInfo(BaseModel):
     exchange: str = ""
 
 
+class TabQuote(BaseModel):
+    price_usdt: float = 0.0
+    price_krw: float = 0.0
+    change_24h: float = 0.0
+
+
 class StatusResponse(BaseModel):
     bot: BotState
     portfolio: PortfolioSnapshot
     config: AppConfig
     view: CoinView
     tabs: list[str] = Field(default_factory=list)
+    tab_quotes: dict[str, TabQuote] = Field(default_factory=dict)
     account_link: AccountLinkInfo = Field(default_factory=AccountLinkInfo)

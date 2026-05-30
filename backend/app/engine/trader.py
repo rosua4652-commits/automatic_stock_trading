@@ -611,6 +611,29 @@ class TradingEngine:
                 unique.append(c)
         return unique
 
+    async def tab_quotes_map(self, limit: int = 120) -> dict[str, dict]:
+        """탭 UI용 시세 (USDT·원화·24h)."""
+        tickers = await binance.tickers_24h()
+        self.bind_portfolio()
+        rate = self.portfolio.usdt_krw
+        if rate <= 0:
+            rate = await binance.usdt_krw_rate()
+            self.portfolio.usdt_krw = rate
+        out: dict[str, dict] = {}
+        for sym in self.tab_symbols()[:limit]:
+            t = tickers.get(sym)
+            if not t:
+                continue
+            px = float(t.get("lastPrice", 0))
+            if px <= 0:
+                continue
+            out[sym] = {
+                "price_usdt": px,
+                "price_krw": round(px * rate),
+                "change_24h": float(t.get("priceChangePercent", 0)),
+            }
+        return out
+
     async def prices_map(self) -> dict[str, float]:
         tickers = await binance.tickers_24h()
         out: dict[str, float] = {}

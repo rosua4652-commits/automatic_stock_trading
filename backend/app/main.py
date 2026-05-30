@@ -98,6 +98,7 @@ async def _build_status() -> dict:
     view = engine.build_coin_view(engine.bot.view_symbol, prices, tickers)
     engine.bot.manual_mode = True
     engine.bot.recent_trades = portfolio.trades[-40:]
+    tab_quotes = await engine.tab_quotes_map()
 
     payload = StatusResponse(
         bot=engine.bot,
@@ -105,6 +106,7 @@ async def _build_status() -> dict:
         config=engine.config,
         view=view,
         tabs=engine.tab_symbols(),
+        tab_quotes=tab_quotes,
         account_link=link,
     ).model_dump()
     payload["config"] = config_for_response(engine.config)

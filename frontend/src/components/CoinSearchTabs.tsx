@@ -1,13 +1,15 @@
 import { useMemo, useState } from "react";
-import type { CoinCandidate, Portfolio } from "../types";
+import type { CoinCandidate, Portfolio, TabQuote } from "../types";
 import { matchCoinSearch, resolveCoinMeta } from "../utils";
 import CoinCell from "./CoinCell";
+import CoinTabCard from "./CoinTabCard";
 
 type Props = {
   tabs: string[];
   selected: string;
   portfolio: Portfolio;
   candidates: CoinCandidate[];
+  tabQuotes?: Record<string, TabQuote>;
   onSelect: (symbol: string) => void;
 };
 
@@ -16,6 +18,7 @@ export default function CoinSearchTabs({
   selected,
   portfolio,
   candidates,
+  tabQuotes,
   onSelect,
 }: Props) {
   const [query, setQuery] = useState("");
@@ -83,22 +86,26 @@ export default function CoinSearchTabs({
       )}
 
       <div className="coin-tabs" role="tablist" aria-label="코인 빠른 선택">
-        {filtered.slice(0, query.trim() ? 30 : 80).map((sym) => {
-          const meta = resolveCoinMeta(sym, portfolio, candidates);
-          return (
+        {filtered.slice(0, query.trim() ? 30 : 80).map((sym) => (
             <button
               key={sym}
               type="button"
               role="tab"
               aria-selected={selected === sym}
-              className={`coin-tab coin-tab-rich ${selected === sym ? "active" : ""}`}
+              className={`coin-tab coin-tab-rich ${selected === sym ? "active" : ""} ${
+                portfolio.positions.some((p) => p.symbol === sym) ? "held" : ""
+              }`}
               onClick={() => onSelect(sym)}
             >
-              <span className="coin-tab-name">{meta.name_ko}</span>
-              <span className="coin-tab-base">{meta.base}</span>
+              <CoinTabCard
+                symbol={sym}
+                portfolio={portfolio}
+                candidates={candidates}
+                quote={tabQuotes?.[sym]}
+                selected={selected === sym}
+              />
             </button>
-          );
-        })}
+        ))}
       </div>
     </div>
   );

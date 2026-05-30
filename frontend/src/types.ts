@@ -1,6 +1,12 @@
 export type BotStatus = "stopped" | "running" | "stopping";
 export type TradeMode = "paper" | "live";
-export type MainView = "chart" | "funds";
+export type MainView = "summary" | "chart" | "funds";
+
+export interface TabQuote {
+  price_usdt: number;
+  price_krw: number;
+  change_24h: number;
+}
 
 export interface AppConfig {
   trade_mode: TradeMode;
@@ -173,6 +179,7 @@ export interface StatusPayload {
   config: AppConfig;
   view: CoinView;
   tabs: string[];
+  tab_quotes?: Record<string, TabQuote>;
   account_link?: AccountLink;
   status_version?: number;
   all_trades?: TradeEvent[];

@@ -184,41 +184,6 @@ export default function FundsTab({
         </div>
       )}
 
-      <section className="funds-summary">
-        <h3>자금 현황</h3>
-        <div className="summary-grid">
-          <div className="sum-box">
-            <span>총 자산</span>
-            <strong>{fmtKrw(portfolio.total_value_krw)}원</strong>
-          </div>
-          <div className="sum-box">
-            <span>현금</span>
-            <strong>{fmtKrw(portfolio.cash_krw)}원</strong>
-          </div>
-          <div className="sum-box">
-            <span>투자 원금</span>
-            <strong>{fmtKrw(portfolio.principal_krw)}원</strong>
-          </div>
-          <div className="sum-box">
-            <span>평가 손익</span>
-            <strong className={portfolio.unrealized_pnl_krw >= 0 ? "up" : "down"}>
-              {portfolio.unrealized_pnl_krw >= 0 ? "+" : ""}
-              {fmtKrw(portfolio.unrealized_pnl_krw)}원
-            </strong>
-          </div>
-          <div className="sum-box">
-            <span>실현 손익</span>
-            <strong className={portfolio.realized_pnl_krw >= 0 ? "up" : "down"}>
-              {fmtKrw(portfolio.realized_pnl_krw)}원
-            </strong>
-          </div>
-          <div className="sum-box">
-            <span>목표 달성</span>
-            <strong>{portfolio.progress_pct.toFixed(0)}%</strong>
-          </div>
-        </div>
-      </section>
-
       {canTrade && (
         <section className="funds-manual-buy">
           <h3>수동 매수</h3>

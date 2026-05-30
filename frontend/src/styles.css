@@ -175,8 +175,53 @@ body {
 }
 
 .coin-tab-rich {
-  min-width: 88px;
+  min-width: 108px;
+  max-width: 132px;
+  align-items: stretch;
+  padding: 0.4rem 0.55rem;
+}
+
+.coin-tab-card {
+  display: flex;
+  flex-direction: column;
   align-items: flex-start;
+  gap: 0.06rem;
+  width: 100%;
+  text-align: left;
+}
+
+.coin-tab-card .ctc-name {
+  font-weight: 700;
+  font-size: 0.72rem;
+  color: var(--text);
+  line-height: 1.2;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.coin-tab-card .ctc-base {
+  font-size: 0.62rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  line-height: 1.15;
+}
+
+.coin-tab-card .ctc-row {
+  font-size: 0.58rem;
+  color: var(--text);
+  line-height: 1.2;
+}
+
+.coin-tab-card .ctc-row.dim {
+  color: var(--muted);
+}
+
+.coin-tab-card .ctc-pnl {
+  font-size: 0.65rem;
+  font-weight: 700;
+  margin-top: 0.08rem;
 }
 
 .coin-tab-name {
@@ -2127,6 +2172,73 @@ main.layout.chart-layout {
   gap: 0.35rem;
   padding: 0.35rem 0.75rem;
   border-bottom: 1px solid var(--border);
+}
+
+.funds-summary-strip {
+  padding: 0.5rem 0.75rem 0.6rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.funds-summary-strip.compact {
+  padding: 0.4rem 0.75rem;
+}
+
+.funds-strip-title {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  margin: 0 0 0.4rem;
+  font-weight: 600;
+}
+
+.funds-summary-strip.compact .funds-strip-title {
+  display: none;
+}
+
+.funds-strip-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+  gap: 0.35rem 0.65rem;
+}
+
+.funds-strip-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.funds-strip-item .fs-label {
+  font-size: 0.6rem;
+  color: var(--muted);
+}
+
+.funds-strip-item strong {
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.funds-strip-item strong.accent {
+  color: var(--accent);
+}
+
+.summary-screen {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0.75rem 1rem 1.5rem;
+}
+
+.summary-screen .funds-summary-strip {
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  margin-bottom: 0.75rem;
+}
+
+.summary-hint {
+  font-size: 0.78rem;
+  color: var(--muted);
+  margin: 0;
 }
 
 .funds-screen {
