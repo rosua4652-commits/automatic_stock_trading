@@ -48,6 +48,7 @@ from app.models import (
     DirectionSignalItem,
     ManualBuyRequest,
     ManualSellRequest,
+    Position,
     RecommendationApplyItem,
     TradeMode,
 )
