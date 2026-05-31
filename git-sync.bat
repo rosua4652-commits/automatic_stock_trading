@@ -48,7 +48,7 @@ if errorlevel 1 goto fail
 
 echo.
 echo  OK. Branch main tracks origin/main
-findstr "AIDI_BUILD" backend\app\main.py
+for /f "tokens=2 delims==" %%a in ('findstr /B /C:"AIDI_BUILD =" backend\app\main.py') do echo  Build %%a
 echo.
 echo  Next: run.bat
 echo.
