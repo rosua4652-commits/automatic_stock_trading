@@ -43,7 +43,7 @@ STATIC_DIR = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
 # PC에서 run.bat 시작 시 표시 — GitHub 최신과 비교용
-AIDI_BUILD = "2026-03-30-trade-history-merge"
+AIDI_BUILD = "2026-03-30-upbit-trades"
 
 
 def _load_pc_path_hint() -> str:
@@ -167,8 +167,9 @@ async def _build_status() -> dict:
         "manual_sl_tp": True,
         "small_sell_retry": True,
         "trade_history_merge": True,
+        "upbit_trade_history": True,
     }
-    payload["all_trades"] = [t.model_dump() for t in portfolio.trades[-50:]]
+    payload["all_trades"] = [t.model_dump() for t in portfolio.trades[-200:]]
     outbound = await get_outbound_public_ip()
     ip4 = await outbound_ipv4_via_same_stack()
     cred = load_credentials()
@@ -430,6 +431,7 @@ async def force_sync():
     """실거래 계정 강제 동기화."""
     if engine.config.trade_mode != TradeMode.LIVE:
         return {"ok": False, "message": "실거래 모드에서만 가능"}
+    store._live_meta["trades_force_sync"] = True
     msg = await store.sync_live(engine.config)
     engine.bind_portfolio()
     status = await _build_status()

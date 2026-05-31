@@ -8,7 +8,7 @@ from app.market.binance_live import binance_live
 from app.market.coin_registry import coin_meta
 from app.market.upbit_client import symbol_to_upbit, upbit_client, upbit_to_symbol
 from app.engine.trade_history import (
-    backfill_recent_sells,
+    load_trades_from_upbit,
     merge_trade_dicts,
     merge_trade_events,
 )
@@ -139,24 +139,6 @@ async def _sync_upbit(
     portfolio.usdt_krw = await upbit_feed.usdt_krw_rate()
     meta_map: dict = live_meta.get("positions_meta", {})
 
-    prev_qty: dict[str, float] = {}
-    for sym, pos in portfolio.positions.items():
-        prev_qty[sym.upper()] = float(
-            getattr(pos, "exchange_quantity", pos.quantity) or pos.quantity
-        )
-    for sym, qty in (live_meta.get("last_holdings_qty") or {}).items():
-        sym_u = str(sym).upper()
-        if sym_u not in prev_qty and float(qty or 0) > 1e-12:
-            prev_qty[sym_u] = float(qty)
-    pending_reasons: dict[str, str] = {}
-    for sym, pm in meta_map.items():
-        if not isinstance(pm, dict):
-            continue
-        pe = pm.get("pending_exit")
-        if isinstance(pe, dict):
-            pending_reasons[str(sym).upper()] = str(pe.get("reason") or "대기 매도")
-    markets_by_symbol: dict[str, str] = {}
-
     krw_cash = 0.0
     holdings: dict[str, float] = {}
     balances_by_currency: dict[str, dict] = {}
@@ -192,7 +174,6 @@ async def _sync_upbit(
         price_usdt = price_krw / portfolio.usdt_krw
         symbol = upbit_to_symbol(krw_market)
         base = krw_market.replace("KRW-", "")
-        markets_by_symbol[symbol.upper()] = krw_market
         pm = meta_map.get(symbol, {})
 
         auto_q = min(float(pm.get("auto_quantity", 0)), total_qty)
@@ -291,31 +272,14 @@ async def _sync_upbit(
     portfolio.cash_krw = krw_cash
     portfolio.realized_pnl_krw = float(live_meta.get("realized_pnl_krw", 0))
 
-    portfolio.trades = merge_trade_events(
-        portfolio.trades,
-        live_meta.get("trades", [])[-100:],
-        usdt_krw=portfolio.usdt_krw,
-        limit=100,
+    force_trades = bool(live_meta.pop("trades_force_sync", False)) or not (
+        live_meta.get("trades") and live_meta.get("trades_upbit_synced_at")
     )
-
-    new_qty = {
-        sym: float(pos.exchange_quantity or pos.quantity)
-        for sym, pos in new_positions.items()
-    }
-    await backfill_recent_sells(
-        portfolio,
-        live_meta,
+    portfolio.trades = await load_trades_from_upbit(
         upbit_client,
-        prev_qty=prev_qty,
-        new_qty=new_qty,
-        markets_by_symbol=markets_by_symbol,
-        pending_reasons=pending_reasons,
-    )
-    live_meta["trades"] = merge_trade_dicts(
-        live_meta.get("trades", [])[-100:],
-        [t.model_dump() for t in portfolio.trades],
+        live_meta,
         usdt_krw=portfolio.usdt_krw,
-        limit=100,
+        force=force_trades,
     )
 
     n = len(new_positions)

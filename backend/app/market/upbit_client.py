@@ -162,15 +162,52 @@ class UpbitClient:
         return row if isinstance(row, dict) else {}
 
     async def done_orders(
-        self, market: str | None = None, *, limit: int = 50
+        self, market: str | None = None, *, limit: int = 50, page: int = 1
     ) -> list[dict]:
         params: dict[str, str] = {
             "state": "done",
             "limit": str(min(max(limit, 1), 100)),
+            "page": str(max(page, 1)),
+            "order_by": "desc",
         }
         if market:
             params["market"] = market
         rows = await self._auth_get("/v1/orders", params)
+        return rows if isinstance(rows, list) else []
+
+    async def closed_orders(
+        self,
+        *,
+        market: str | None = None,
+        limit: int = 200,
+        order_by: str = "desc",
+        start_time: str | None = None,
+        end_time: str | None = None,
+        states: list[str] | None = None,
+    ) -> list[dict]:
+        """GET /v1/orders/closed — 최대 7일·1000건 구간."""
+        params: dict[str, Any] = {
+            "limit": str(min(max(limit, 1), 1000)),
+            "order_by": order_by,
+        }
+        if market:
+            params["market"] = market
+        if start_time:
+            params["start_time"] = start_time
+        if end_time:
+            params["end_time"] = end_time
+        st = states or ["done"]
+        params["states[]"] = st
+        rows = await self._auth_get("/v1/orders/closed", params)
+        return rows if isinstance(rows, list) else []
+
+    async def orders_by_uuids(self, uuids: list[str]) -> list[dict]:
+        """GET /v1/orders/uuids — 체결 trades[] 포함 (최대 100건)."""
+        clean = [str(u).strip() for u in uuids if u][:100]
+        if not clean:
+            return []
+        params: dict[str, Any] = {"uuids[]": clean}
+        rows = await self._auth_get("/v1/orders/uuids", params)
         return rows if isinstance(rows, list) else []
 
     async def open_orders(self, market: str | None = None) -> list[dict]:

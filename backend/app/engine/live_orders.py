@@ -6,9 +6,8 @@ from typing import Optional
 from app.engine.live_sync import export_live_meta, sync_live_portfolio
 from app.engine.portfolio import PortfolioManager
 from app.engine.portfolio_store import store
-from app.engine.trade_history import remember_order_uuid
+from app.engine.trade_history import remember_order_reason, remember_order_uuid
 from app.market.upbit_data import market
-from app.market.coin_registry import coin_meta
 from app.market.upbit_client import upbit_client
 from app.market.upbit_order_fill import (
     repair_trade_dict,
@@ -24,7 +23,7 @@ from app.market.upbit_sell import (
     set_pending_exit,
     smart_sell,
 )
-from app.models import AppConfig, Position, TradeEvent
+from app.models import AppConfig, Position
 from app.storage.credentials import get_active_keys
 from app.config import settings
 from app.storage.persistence import save_live_meta
@@ -78,6 +77,7 @@ async def live_market_buy(
         fills_price = 0.0
         price_krw = 0.0
         fill_krw = 0.0
+        order_uuid = ""
         try:
             from app.market.upbit_markets import get_upbit_krw_markets, resolve_upbit_market
 
@@ -108,12 +108,19 @@ async def live_market_buy(
                     executed_qty * max(portfolio.usdt_krw, 1.0), 1e-12
                 )
             quote_usdt = (fill_krw or amount_krw) / max(portfolio.usdt_krw, 1.0)
-            uid = str(order.get("uuid") or "")
-            if uid:
-                remember_order_uuid(store._live_meta, uid)
+            order_uuid = str(order.get("uuid") or "")
+            if order_uuid:
+                remember_order_uuid(store._live_meta, order_uuid)
+                remember_order_reason(
+                    store._live_meta,
+                    order_uuid,
+                    reason=reason,
+                    is_auto=as_auto,
+                )
         except Exception as e:
             return False, str(e)
 
+        store._live_meta["trades_force_sync"] = True
         await _sync_live_refresh(portfolio, config)
 
         pos = portfolio.positions.get(sym)
@@ -135,27 +142,6 @@ async def live_market_buy(
                 score=score,
                 entry_outlook=entry_outlook,
             )
-
-        m = coin_meta(sym)
-        portfolio.trades.append(
-            TradeEvent(
-                ts=time.time(),
-                symbol=sym,
-                base=m["base"],
-                display=m["display"],
-                side="BUY",
-                price=fills_price,
-                price_krw=round(
-                    price_krw if price_krw > 0 else amount_krw / max(executed_qty, 1e-12),
-                    4,
-                ),
-                quantity=executed_qty,
-                amount_krw=round(fill_krw or amount_krw, 0),
-                amount_usdt=round(quote_usdt, 4),
-                reason=reason,
-                is_auto=as_auto,
-            )
-        )
 
         _persist_live(portfolio)
         label = "업비트"
@@ -268,6 +254,12 @@ async def live_market_sell(
                 return False, f"매도 체결 정보 없음 ({sell_mode})"
             if order_uuid:
                 remember_order_uuid(store._live_meta, order_uuid)
+                remember_order_reason(
+                    store._live_meta,
+                    order_uuid,
+                    reason=reason,
+                    is_auto=auto_only,
+                )
             price = price_krw / max(portfolio.usdt_krw, 1.0) if price_krw > 0 else 0.0
             if price <= 0 and pos.current_price > 0:
                 price = pos.current_price
@@ -275,6 +267,7 @@ async def live_market_sell(
         except Exception as e:
             return False, str(e)
 
+        store._live_meta["trades_force_sync"] = True
         await _sync_live_refresh(portfolio, config)
 
         pos_after: Optional[Position] = portfolio.positions.get(sym)
@@ -282,24 +275,6 @@ async def live_market_sell(
             pos_after, before, executed_qty, price, auto_only
         )
         portfolio.realized_pnl_krw += pnl_delta
-
-        m = coin_meta(sym)
-        portfolio.trades.append(
-            TradeEvent(
-                ts=time.time(),
-                symbol=sym,
-                base=m["base"],
-                display=m["display"],
-                side="SELL",
-                price=price,
-                price_krw=round(price_krw, 4) if price_krw > 0 else 0.0,
-                quantity=executed_qty,
-                amount_krw=round(quote_krw, 0),
-                amount_usdt=round(quote, 4),
-                reason=reason,
-                is_auto=auto_only,
-            )
-        )
 
         _persist_live(portfolio)
         label = "업비트"

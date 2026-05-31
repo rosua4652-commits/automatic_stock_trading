@@ -240,6 +240,7 @@ class TradeEvent(BaseModel):
     amount_usdt: float
     reason: str
     is_auto: bool = True
+    order_uuid: str = ""
 
 
 class ChartMarker(BaseModel):

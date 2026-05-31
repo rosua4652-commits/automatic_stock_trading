@@ -93,6 +93,7 @@ class PortfolioStore:
             self.live.positions = {}
             self.live.trades = []
             self.live.cash_krw = 0
+            self._live_meta["trades_force_sync"] = True
             return await self.sync_live(config)
         else:
             self._load_paper()
