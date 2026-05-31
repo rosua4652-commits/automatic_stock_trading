@@ -14,6 +14,7 @@ from app.engine.trading_fees import net_pnl_pct_after_fees
 from app.market.upbit_data import market
 from app.aidi_log import get_aidi_logger
 from app.storage.persistence import load_backtest_state, save_backtest_state
+from app.util.numbers import as_float
 
 logger = get_aidi_logger()
 
@@ -68,11 +69,11 @@ class SideStats:
             trades=int(d.get("trades") or 0),
             wins=int(d.get("wins") or 0),
             losses=int(d.get("losses") or 0),
-            avg_return_pct=float(d.get("avg_return_pct") or 0),
-            win_rate_pct=float(d.get("win_rate_pct") or 0),
-            best_sl_pct=float(d.get("best_sl_pct") or 0),
-            best_tp_pct=float(d.get("best_tp_pct") or 0),
-            score=float(d.get("score") or 0),
+            avg_return_pct=as_float(d.get("avg_return_pct")),
+            win_rate_pct=as_float(d.get("win_rate_pct")),
+            best_sl_pct=as_float(d.get("best_sl_pct")),
+            best_tp_pct=as_float(d.get("best_tp_pct")),
+            score=as_float(d.get("score")),
         )
 
 
@@ -105,8 +106,8 @@ class BacktestAccumulator:
     def __init__(self, raw: dict[str, Any] | None = None) -> None:
         data = raw or load_backtest_state()
         self.cycles = int(data.get("cycles") or 0)
-        self.best_sl_pct = float(data.get("best_sl_pct") or 0)
-        self.best_tp_pct = float(data.get("best_tp_pct") or 0)
+        self.best_sl_pct = as_float(data.get("best_sl_pct"))
+        self.best_tp_pct = as_float(data.get("best_tp_pct"))
         self.updated_at = float(data.get("updated_at") or 0)
         self.symbols: dict[str, SymbolBacktestRecord] = {}
         for sym, row in (data.get("symbols") or {}).items():
@@ -145,9 +146,13 @@ class BacktestAccumulator:
     def best_global_params(
         self, default_sl: float, default_tp: float
     ) -> tuple[float, float]:
-        if self.best_sl_pct > 0 and self.best_tp_pct > 0:
-            return self.best_sl_pct, self.best_tp_pct
-        return default_sl, default_tp
+        sl = as_float(self.best_sl_pct)
+        tp = as_float(self.best_tp_pct)
+        d_sl = as_float(default_sl, 3.0)
+        d_tp = as_float(default_tp, 5.0)
+        if sl > 0 and tp > 0:
+            return sl, tp
+        return d_sl, d_tp
 
     def boost(self, symbol: str, side: str) -> float:
         """투자 제안·방향 분석 가중치 (0~22)."""

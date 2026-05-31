@@ -93,9 +93,12 @@ def _analyze_closes(closes: np.ndarray, volumes: np.ndarray) -> tuple[float, str
             reasons.append("고점 하락")
 
     # 거래량: 최근 상승봉에 거래량 동반
-    if len(volumes) >= 10:
-        up_vol = volumes[-5:][closes[-5:] > np.roll(closes, 1)[-5:]].mean() if len(volumes) >= 6 else 0
-        avg_vol = volumes[-20:-5].mean() + 1e-9
+    if len(volumes) >= 10 and len(closes) >= 6:
+        prev_c = np.roll(closes, 1)[-5:]
+        up_mask = closes[-5:] > prev_c
+        up_slice = volumes[-5:][up_mask]
+        up_vol = float(up_slice.mean()) if up_slice.size > 0 else 0.0
+        avg_vol = float(volumes[-20:-5].mean()) + 1e-9
         if up_vol > avg_vol * 1.05:
             score += 12
             reasons.append("거래량 동반")

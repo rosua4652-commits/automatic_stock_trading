@@ -5,6 +5,7 @@ from __future__ import annotations
 from app.engine.backtest_learning import compute_data_maturity, load_learning_state
 from app.engine.backtest_optimizer import BacktestAccumulator
 from app.models import AppConfig
+from app.util.numbers import as_float
 
 
 def apply_ai_settings(
@@ -23,13 +24,19 @@ def apply_ai_settings(
     g_sl, g_tp = acc.best_global_params(
         config.stop_loss_pct, config.take_profit_pct
     )
+    g_sl = as_float(g_sl, config.stop_loss_pct)
+    g_tp = as_float(g_tp, config.take_profit_pct)
+    l_sl = as_float(learn.long_sl_pct)
+    l_tp = as_float(learn.long_tp_pct)
 
-    if learn.long_sl_pct > 0:
-        config.stop_loss_pct = learn.long_sl_pct
-        config.take_profit_pct = learn.long_tp_pct or g_tp or config.take_profit_pct
+    if l_sl > 0:
+        config.stop_loss_pct = l_sl
+        config.take_profit_pct = l_tp or g_tp or config.take_profit_pct
     elif g_sl > 0:
         config.stop_loss_pct = g_sl
         config.take_profit_pct = g_tp
+    config.stop_loss_pct = as_float(config.stop_loss_pct, 3.0)
+    config.take_profit_pct = as_float(config.take_profit_pct, 5.0)
 
     # Scan thresholds track BT learning floors (slightly below for market pool)
     config.min_entry_score = max(

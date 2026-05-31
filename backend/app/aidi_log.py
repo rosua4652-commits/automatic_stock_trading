@@ -9,6 +9,55 @@ from typing import Any
 
 AIDI_LOGGER_NAME = "aidi"
 
+# Windows cp949 콘솔에서 깨지는 문자 (em dash 등)
+_CONSOLE_UNSAFE = str.maketrans(
+    {
+        "\u2014": "-",  # —
+        "\u2013": "-",  # –
+        "\u2212": "-",  # −
+        "\u00a0": " ",
+    }
+)
+
+
+def sanitize_log_text(msg: str) -> str:
+    if not msg:
+        return msg
+    return msg.translate(_CONSOLE_UNSAFE)
+
+
+class ConsoleSafeFormatter(logging.Formatter):
+    """콘솔 인코딩(cp949)에서도 로그가 끊기지 않게 정규화."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        return sanitize_log_text(super().format(record))
+
+
+class ConsoleSafeStreamHandler(logging.StreamHandler):
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            super().emit(record)
+        except UnicodeEncodeError:
+            try:
+                msg = sanitize_log_text(self.format(record))
+                stream = self.stream
+                enc = getattr(stream, "encoding", None) or "utf-8"
+                stream.write(msg.encode(enc, errors="replace").decode(enc, errors="replace"))
+                stream.write(self.terminator)
+                self.flush()
+            except Exception:
+                self.handleError(record)
+
+
+def _configure_windows_console_utf8() -> None:
+    if sys.platform != "win32":
+        return
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[attr-defined]
+        except Exception:
+            pass
+
 # uvicorn access 로그에서 숨길 폴링 경로 (차트·상태)
 _QUIET_ACCESS = re.compile(
     r'"(?:GET|HEAD) /api/(?:chart/[^"]+|status)(?:\?[^"]*)? HTTP'
@@ -27,16 +76,28 @@ class QuietPollingAccessFilter(logging.Filter):
 
 def setup_aidi_logging() -> logging.Logger:
     """uvicorn 시작 전·lifespan에서 한 번 호출."""
-    fmt = logging.Formatter(
+    _configure_windows_console_utf8()
+    fmt = ConsoleSafeFormatter(
         "%(asctime)s | AIDI | %(levelname)s | %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
     )
 
     root = logging.getLogger()
     if not root.handlers:
-        handler = logging.StreamHandler(sys.stdout)
+        handler = ConsoleSafeStreamHandler(sys.stdout)
         handler.setFormatter(fmt)
         root.addHandler(handler)
+    else:
+        for h in root.handlers:
+            if isinstance(h, logging.StreamHandler):
+                h.setFormatter(fmt)
+                if type(h) is logging.StreamHandler:
+                    # 기본 StreamHandler → cp949 안전 핸들러로 교체
+                    root.removeHandler(h)
+                    safe = ConsoleSafeStreamHandler(h.stream)
+                    safe.setFormatter(fmt)
+                    safe.setLevel(h.level)
+                    root.addHandler(safe)
     root.setLevel(logging.INFO)
 
     for name in ("aidi", "app", "app.engine", "app.market"):
@@ -59,7 +120,7 @@ def setup_aidi_logging() -> logging.Logger:
     logging.getLogger("uvicorn.error").setLevel(logging.INFO)
 
     aidi.info(
-        "로그 모드 — 스캔·자동투자·버튼·백테스트 기록 "
+        "로그 모드 - 스캔·자동투자·버튼·백테스트 기록 "
         "(HTTP 요청·차트/상태 폴링은 생략)"
     )
     return aidi

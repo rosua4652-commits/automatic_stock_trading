@@ -8,6 +8,7 @@ from typing import Any
 
 from app.engine.backtest_optimizer import BacktestAccumulator, SideStats
 from app.storage.persistence import load_backtest_state, save_backtest_state
+from app.util.numbers import as_float
 
 
 @dataclass
@@ -57,13 +58,13 @@ class BacktestLearningState:
         if not isinstance(blocked, list):
             blocked = []
         return cls(
-            long_min_bt_score=float(d.get("long_min_bt_score") or 42.0),
-            scalp_min_bt_score=float(d.get("scalp_min_bt_score") or 38.0),
-            long_sl_pct=float(d.get("long_sl_pct") or 0.0),
-            long_tp_pct=float(d.get("long_tp_pct") or 0.0),
-            scalp_sl_pct=float(d.get("scalp_sl_pct") or 0.0),
-            scalp_tp_pct=float(d.get("scalp_tp_pct") or 0.0),
-            recent_batch_win_rate=float(d.get("recent_batch_win_rate") or 0.0),
+            long_min_bt_score=as_float(d.get("long_min_bt_score"), 42.0),
+            scalp_min_bt_score=as_float(d.get("scalp_min_bt_score"), 38.0),
+            long_sl_pct=as_float(d.get("long_sl_pct")),
+            long_tp_pct=as_float(d.get("long_tp_pct")),
+            scalp_sl_pct=as_float(d.get("scalp_sl_pct")),
+            scalp_tp_pct=as_float(d.get("scalp_tp_pct")),
+            recent_batch_win_rate=as_float(d.get("recent_batch_win_rate")),
             recent_batch_trades=int(d.get("recent_batch_trades") or 0),
             adjust_cycles=int(d.get("adjust_cycles") or 0),
             blocked_symbols=[str(s).upper() for s in blocked],
@@ -170,18 +171,27 @@ def resolve_sl_tp_from_backtest(
             "BT종목",
         )
 
-    g_sl, g_tp = acc.best_global_params(default_sl, default_tp)
+    d_sl = as_float(default_sl, 3.0)
+    d_tp = as_float(default_tp, 5.0)
+    g_sl, g_tp = acc.best_global_params(d_sl, d_tp)
+    g_sl = as_float(g_sl, d_sl)
+    g_tp = as_float(g_tp, d_tp)
 
-    if mode == "long" and learning.long_sl_pct > 0:
+    l_sl = as_float(learning.long_sl_pct)
+    l_tp = as_float(learning.long_tp_pct)
+    s_sl = as_float(learning.scalp_sl_pct)
+    s_tp = as_float(learning.scalp_tp_pct)
+
+    if mode == "long" and l_sl > 0:
         return (
-            learning.long_sl_pct,
-            learning.long_tp_pct or g_tp or default_tp,
+            l_sl,
+            l_tp or g_tp or d_tp,
             "BT학습·롱",
         )
-    if mode == "scalp" and learning.scalp_sl_pct > 0:
+    if mode == "scalp" and s_sl > 0:
         return (
-            learning.scalp_sl_pct,
-            learning.scalp_tp_pct or max(learning.scalp_sl_pct * 1.8, g_tp * 0.55),
+            s_sl,
+            s_tp or max(s_sl * 1.8, g_tp * 0.55),
             "BT학습·단타",
         )
 
@@ -193,11 +203,11 @@ def resolve_sl_tp_from_backtest(
         return g_sl, g_tp, "BT전역"
 
     if mode == "scalp":
-        tight_sl = max(2.5, round(default_sl * 0.55, 2))
-        tight_tp = max(tight_sl * 1.5, round(default_tp * 0.55, 2))
+        tight_sl = max(2.5, round(d_sl * 0.55, 2))
+        tight_tp = max(tight_sl * 1.5, round(d_tp * 0.55, 2))
         return tight_sl, tight_tp, "설정·단타"
 
-    return default_sl, default_tp, "설정"
+    return d_sl, d_tp, "설정"
 
 
 def strategy_sl_tp(
@@ -246,7 +256,15 @@ def update_learning_from_batch(
     learning.data_maturity_pct = compute_data_maturity(acc)
     maturity = learning.data_maturity_pct / 100.0
 
-    g_sl, g_tp = acc.best_global_params(default_sl, default_tp)
+    d_sl = as_float(default_sl, 3.0)
+    d_tp = as_float(default_tp, 5.0)
+    g_sl, g_tp = acc.best_global_params(d_sl, d_tp)
+    g_sl = as_float(g_sl, d_sl)
+    g_tp = as_float(g_tp, d_tp)
+    learning.long_sl_pct = as_float(learning.long_sl_pct)
+    learning.long_tp_pct = as_float(learning.long_tp_pct)
+    learning.scalp_sl_pct = as_float(learning.scalp_sl_pct)
+    learning.scalp_tp_pct = as_float(learning.scalp_tp_pct)
     if learning.long_sl_pct <= 0:
         learning.long_sl_pct, learning.long_tp_pct = g_sl, g_tp
     if learning.scalp_sl_pct <= 0:

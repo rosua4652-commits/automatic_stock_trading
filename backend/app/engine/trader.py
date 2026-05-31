@@ -32,6 +32,7 @@ from app.engine.flash_crash_guard import (
     is_symbol_flash_blocked,
 )
 from app.engine.scalp_filters import apply_scalp_liquidity_to_candidate
+from app.util.numbers import as_float
 from app.engine.recommendations import (
     build_recommendations,
     cap_apply_amounts,
@@ -699,9 +700,9 @@ class TradingEngine:
                 bt_boost = acc.boost(sym, side)
                 eff_min = min_score - (8 if bt_boost >= 12 else 0)
                 sig = await analyze_direction(sym, side, min_score=eff_min)
-                combined = sig.score + bt_boost
+                combined = as_float(sig.score) + as_float(bt_boost)
                 if st and st.trades >= 1:
-                    combined = combined * 0.55 + st.score * 0.45
+                    combined = combined * 0.55 + as_float(st.score) * 0.45
                 return sym, sig, combined, bt_boost, st
 
         results = await asyncio.gather(*[one(s) for s in sym_order[:scan_cap]])
@@ -992,7 +993,7 @@ class TradingEngine:
                     f"급락 차단 — {', '.join(blocked[:4])} 매수 보류"
                 )
             else:
-                self.bot.auto_invest_message = "자동 매수 없음 — " + diag
+                self.bot.auto_invest_message = "자동 매수 없음 - " + diag
             self._log("자동", self.bot.auto_invest_message, "warn")
             return
 
