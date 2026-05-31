@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from app.engine.backtest_learning import load_learning_state, resolve_sl_tp_from_backtest
-from app.engine.backtest_optimizer import BacktestAccumulator, get_accumulator
+from app.engine.backtest_optimizer import BacktestAccumulator
+from app.engine.backtest_runner import get_accumulator
 from app.engine.trade_feedback import _mode_from_outlook
 from app.models import AppConfig, Position
 

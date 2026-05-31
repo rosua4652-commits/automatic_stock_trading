@@ -5,7 +5,8 @@ from __future__ import annotations
 from typing import Any
 
 from app.engine.backtest_learning import load_learning_state
-from app.engine.backtest_optimizer import PARAM_GRID, BacktestAccumulator, get_accumulator
+from app.engine.backtest_optimizer import PARAM_GRID, BacktestAccumulator
+from app.engine.backtest_runner import get_accumulator
 
 
 def build_backtest_report() -> dict[str, Any]:
