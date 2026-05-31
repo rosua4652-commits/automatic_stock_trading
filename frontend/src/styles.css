@@ -3781,6 +3781,12 @@ main.layout.chart-layout {
   color: #fbbf24;
 }
 
+.auto-live-hint {
+  font-size: 0.65rem;
+  white-space: nowrap;
+  color: var(--muted);
+}
+
 .auto-invest-dashboard {
   margin-bottom: 0.75rem;
   padding: 0.65rem 0.85rem;

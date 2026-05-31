@@ -45,7 +45,7 @@ from app.aidi_middleware import AidiActionLogMiddleware
 STATIC_DIR = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
 
 # PC에서 run.bat 시작 시 표시 — GitHub 최신과 비교용
-AIDI_BUILD = "2026-06-01-features-v1"
+AIDI_BUILD = "2026-06-01-live-auto-invest"
 
 
 engine = TradingEngine()
@@ -159,6 +159,7 @@ async def _build_status() -> dict:
         "auto_invest_long_scalp": True,
         "backtest_learning": True,
         "paper_full_auto": True,
+        "live_auto_invest": True,
         "daily_loss_kill": True,
         "execution_feedback": True,
         "flash_crash_guard": True,

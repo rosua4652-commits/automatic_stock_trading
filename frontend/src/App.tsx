@@ -191,8 +191,15 @@ export default function App() {
 
   const startAutoInvest = async () => {
     if (botBusy || !data || running || stopping) return;
-    if (data.config.trade_mode !== "paper") {
-      showToast("완전 자동화는 모의투자 전용입니다. 설정에서 모의투자로 전환하세요.");
+    const isLiveMode = data.config.trade_mode === "live";
+    if (isLiveMode && !data.config.allow_live_auto_invest) {
+      showToast(
+        "설정에서 「실거래 자동투자 허용」을 켜고 저장한 뒤 다시 시도하세요"
+      );
+      return;
+    }
+    if (isLiveMode && !data.account_link?.linked) {
+      showToast("실거래: API 키 저장·연결 테스트 후 자동 투자를 시작하세요");
       return;
     }
     if (!autoLong && !autoScalp) {
@@ -229,9 +236,10 @@ export default function App() {
             : autoLong
               ? "롱"
               : "단타";
+        const modeLabel = isLiveMode ? "실거래" : "모의";
         showToast(
           s.message ||
-            `모의 완전자동(${mix}) · BT·체결 학습 · 스캔·매수·익절/손절`
+            `${modeLabel} 완전자동(${mix}) · BT·스캔·매수·익절/손절`
         );
       }
     } catch (e) {
@@ -385,6 +393,8 @@ export default function App() {
   const running = isRunning(data.bot.status);
   const stopping = data.bot.status === "stopping";
   const isPaper = data.config.trade_mode === "paper";
+  const isLiveMode = data.config.trade_mode === "live";
+  const allowLiveAuto = !!data.config.allow_live_auto_invest;
   const buildId = data.aidi_build || "";
   const caps = data.aidi_capabilities;
   const serverNewEnough = isServerBuildNewEnough(buildId, caps);
@@ -548,8 +558,15 @@ export default function App() {
             variant="topbar"
           />
           <div className="top-actions">
-            {!running && !stopping && isPaper ? (
-              <div className="auto-invest-opts" title="모의투자 완전 자동화">
+            {!running && !stopping ? (
+              <div
+                className="auto-invest-opts"
+                title={
+                  isPaper
+                    ? "모의투자 완전 자동화"
+                    : "실거래 완전 자동화 (업비트 API)"
+                }
+              >
                 <label className="auto-check">
                   <input
                     type="checkbox"
@@ -572,8 +589,13 @@ export default function App() {
                   onClick={startAutoInvest}
                   disabled={botBusy}
                 >
-                  자동 투자 시작
+                  {isLiveMode ? "실거래 자동 투자" : "자동 투자 시작"}
                 </button>
+                {isLiveMode && !allowLiveAuto && (
+                  <span className="auto-live-hint dim">
+                    설정에서 허용 필요
+                  </span>
+                )}
               </div>
             ) : data.bot.auto_invest_active ? (
               <>

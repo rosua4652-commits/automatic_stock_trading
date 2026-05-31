@@ -395,6 +395,54 @@ export default function SettingsModal({
         </section>
 
         <section className="settings-section">
+          <h3>완전 자동투자 (모의·실거래)</h3>
+          <p className="warn subtle">
+            상단 「자동 투자 시작」/「실거래 자동 투자」 — 롱·단타 후 스캔·자동 매수·익절/손절.
+            실거래는 「실거래 자동투자 허용」 및 API 키 필요.
+          </p>
+          <div className="field-grid">
+            <label className="field">
+              <span>스캔당 최대 자동 매수 (건)</span>
+              <input
+                type="number"
+                min={0}
+                max={10}
+                value={draft.paper_max_auto_buys_per_scan ?? 4}
+                onChange={(e) =>
+                  set("paper_max_auto_buys_per_scan", Number(e.target.value))
+                }
+              />
+            </label>
+            <label className="field">
+              <span>스캔당 현금 배분 (%)</span>
+              <input
+                type="number"
+                min={5}
+                max={90}
+                value={draft.paper_auto_deploy_pct ?? 40}
+                onChange={(e) =>
+                  set("paper_auto_deploy_pct", Number(e.target.value))
+                }
+              />
+            </label>
+            <label className="field">
+              <span>일손실 킬 스위치 (%)</span>
+              <input
+                type="number"
+                min={1}
+                max={25}
+                step={0.5}
+                value={draft.daily_loss_limit_pct ?? 5}
+                onChange={(e) =>
+                  set("daily_loss_limit_pct", Number(e.target.value))
+                }
+              />
+              <small>당일 총자산 하락이 이 %를 넘으면 자동 매수 중지</small>
+            </label>
+          </div>
+        </section>
+
+        <section className="settings-section">
           <h3>백업</h3>
           <p className="panel-hint">
             data 폴더·포지션 메타 백업. API 키는 마스킹되어 포함됩니다.
@@ -405,56 +453,6 @@ export default function SettingsModal({
             </a>
           </div>
         </section>
-
-        {draft.trade_mode === "paper" && (
-          <section className="settings-section">
-            <h3>모의 완전 자동투자</h3>
-            <p className="warn subtle">
-              「자동 투자 시작」은 모의투자 전용입니다. 스캔·BT·체결 학습·매수·익절/손절이
-              자동으로 동작합니다.
-            </p>
-            <div className="field-grid">
-              <label className="field">
-                <span>스캔당 최대 자동 매수 (건)</span>
-                <input
-                  type="number"
-                  min={0}
-                  max={10}
-                  value={draft.paper_max_auto_buys_per_scan ?? 4}
-                  onChange={(e) =>
-                    set("paper_max_auto_buys_per_scan", Number(e.target.value))
-                  }
-                />
-              </label>
-              <label className="field">
-                <span>스캔당 현금 배분 (%)</span>
-                <input
-                  type="number"
-                  min={5}
-                  max={90}
-                  value={draft.paper_auto_deploy_pct ?? 40}
-                  onChange={(e) =>
-                    set("paper_auto_deploy_pct", Number(e.target.value))
-                  }
-                />
-              </label>
-              <label className="field">
-                <span>일손실 킬 스위치 (%)</span>
-                <input
-                  type="number"
-                  min={1}
-                  max={25}
-                  step={0.5}
-                  value={draft.daily_loss_limit_pct ?? 5}
-                  onChange={(e) =>
-                    set("daily_loss_limit_pct", Number(e.target.value))
-                  }
-                />
-                <small>당일 총자산 하락이 이 %를 넘으면 자동 매수 중지</small>
-              </label>
-            </div>
-          </section>
-        )}
 
         {draft.trade_mode === "live" && (
           <section className="settings-section">

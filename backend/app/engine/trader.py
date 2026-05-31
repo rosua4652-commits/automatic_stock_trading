@@ -246,9 +246,14 @@ class TradingEngine:
         if auto_invest and self._is_live() and not getattr(
             self.config, "allow_live_auto_invest", False
         ):
+            from app.engine.paper_validation import paper_auto_days_count
+
+            need = int(getattr(self.config, "paper_days_before_live_auto", 3) or 3)
+            got = paper_auto_days_count()
             return (
                 False,
-                "실거래 자동투자는 비활성입니다. 모의투자에서 완전 자동화를 먼저 검증하세요.",
+                f"설정에서 「실거래 자동투자 허용」을 켜세요 "
+                f"(모의 자동투자 검증 {got}/{need}일)",
             )
 
         if self._is_live():
@@ -282,7 +287,8 @@ class TradingEngine:
             mix = "·".join(parts)
             if auto_long and auto_scalp:
                 mix += " 혼합"
-            self.bot.paper_auto_full = not self._is_live()
+            # 모의·실거래 동일 — 스캔당 매수 건수·현금 배분(paper_* 설정) 적용
+            self.bot.paper_auto_full = True
             self.bot.activity_log = []
             acc = self._backtest_acc or get_accumulator()
             if getattr(self.config, "ai_auto_settings", True):
@@ -304,8 +310,13 @@ class TradingEngine:
                 if self._paper_relax_bt() and learn.data_maturity_pct < 15
                 else ""
             )
+            auto_tag = (
+                "[실거래 완전자동] "
+                if self._is_live()
+                else "[모의 완전자동] "
+            )
             self.bot.auto_invest_message = (
-                f"{'[모의 완전자동] ' if self.bot.paper_auto_full else ''}"
+                f"{auto_tag}"
                 f"자동투자 {mix} · BT성숙 {learn.data_maturity_pct:.0f}% · "
                 f"롱≥{learn.long_min_bt_score:.0f} 단타≥{learn.scalp_min_bt_score:.0f} · "
                 f"일손실한도 {limit:.1f}%{relax}"
