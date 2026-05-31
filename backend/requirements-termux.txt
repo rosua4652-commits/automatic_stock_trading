@@ -1,9 +1,0 @@
-# Termux/삼성탭: numpy는 pkg로 설치 권장 (python-numpy)
-fastapi==0.115.6
-uvicorn==0.34.0
-httpx==0.28.1
-pydantic==2.10.4
-pydantic-settings==2.7.0
-python-multipart==0.0.20
-websockets==14.1
-PyJWT==2.10.1

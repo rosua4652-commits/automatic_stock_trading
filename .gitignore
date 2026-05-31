@@ -7,4 +7,6 @@ frontend/node_modules/
 frontend/dist/
 *.pyc
 .DS_Store
-aidi-pc-dongil3-final.zip
+_tablet_pkg/
+aidi-*.zip
+*.zip

@@ -43,27 +43,10 @@ from app.aidi_log import get_aidi_logger, setup_aidi_logging
 from app.aidi_middleware import AidiActionLogMiddleware
 
 STATIC_DIR = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
-REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
 # PC에서 run.bat 시작 시 표시 — GitHub 최신과 비교용
-AIDI_BUILD = "2026-05-31-flash-crash-guard"
+AIDI_BUILD = "2026-05-31-repo-cleanup"
 
-
-def _load_pc_path_hint() -> str:
-    hint_file = REPO_ROOT / "pc-path.txt"
-    if not hint_file.is_file():
-        return ""
-    try:
-        for line in hint_file.read_text(encoding="utf-8").splitlines():
-            line = line.strip()
-            if line and not line.startswith("#"):
-                return line
-    except OSError:
-        pass
-    return ""
-
-
-PC_PATH_HINT = _load_pc_path_hint()
 
 engine = TradingEngine()
 _ws_clients: set[WebSocket] = set()
@@ -284,7 +267,6 @@ async def api_version():
         "build": AIDI_BUILD,
         "app": app.version,
         "ok": True,
-        "pc_path_hint": PC_PATH_HINT,
         "features": {
             "network_routes": True,
             "upbit_probe": True,
