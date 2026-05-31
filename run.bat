@@ -18,6 +18,10 @@ if not "%PREP_EC%"=="0" (
     echo.
     echo  Run update-zip.bat then run.bat again.
   )
+  if "%PREP_EC%"=="7" (
+    echo.
+    echo  frontend folder missing — run update-zip.bat then run.bat again.
+  )
   pause
   exit /b %PREP_EC%
 )

@@ -151,11 +151,38 @@ function Install-Pip([string]$VenvPy, [string]$Root) {
     if ($LASTEXITCODE -ne 0) { throw "pip install failed" }
 }
 
+function Show-MissingFrontendHelp {
+    Write-Host ""
+    Write-Host "  ERROR: frontend folder is missing (browser UI cannot be built)."
+    Write-Host ""
+    Write-Host "  Your folder only has backend, or the copy was incomplete."
+    Write-Host "  Fix (keep backend\data — settings are safe):"
+    Write-Host "    1. Close AIDI"
+    Write-Host "    2. Run update-zip.bat  (downloads full project from GitHub)"
+    Write-Host "    3. Run run-log.bat again"
+    Write-Host ""
+    Write-Host "  Or download ZIP from GitHub and extract over this folder:"
+    Write-Host "    https://github.com/rosua4652-commits/automatic_stock_trading"
+    Write-Host ""
+}
+
+function Test-FrontendPresent([string]$Root) {
+    return Test-Path -LiteralPath (Join-Path $Root "frontend\package.json")
+}
+
 function Build-Frontend([string]$Root, [string]$BuildId, [string]$UiBuildId) {
+    if (-not (Test-FrontendPresent $Root)) {
+        Show-MissingFrontendHelp
+        exit 7
+    }
     if (-not (Get-Command npm -ErrorAction SilentlyContinue)) {
         throw "npm not found — install Node.js for frontend build"
     }
     $fe = Join-Path $Root "frontend"
+    if (-not (Test-Path -LiteralPath $fe)) {
+        Show-MissingFrontendHelp
+        exit 7
+    }
     if (-not (Test-Path (Join-Path $fe "node_modules"))) {
         Write-Info "  npm install (first time)..."
         Push-Location $fe
@@ -195,7 +222,16 @@ if (-not (Test-Path -LiteralPath $mainPy)) {
 }
 
 $localBuild = Read-BuildId $mainPy 'AIDI_BUILD\s*=\s*"([^"]+)"'
-$uiSrc = Read-BuildId (Join-Path $RepoRoot "frontend\src\uiBuild.ts") 'UI_BUILD\s*=\s*"([^"]+)"'
+$uiBuildPath = Join-Path $RepoRoot "frontend\src\uiBuild.ts"
+$uiSrc = if (Test-Path -LiteralPath $uiBuildPath) {
+    Read-BuildId $uiBuildPath 'UI_BUILD\s*=\s*"([^"]+)"'
+} else {
+    ""
+}
+if (-not (Test-FrontendPresent $RepoRoot)) {
+    Show-MissingFrontendHelp
+    exit 7
+}
 $stampPath = Join-Path $RepoRoot "frontend\dist\.aidi-ui-build"
 $distStamp = ""
 if (Test-Path -LiteralPath $stampPath) {
@@ -309,6 +345,9 @@ if ($distStamp -ne $localBuild) { $needFe = $true }
 if ($uiSrc -and $distStamp -ne $uiSrc) { $needFe = $true }
 
 if ($needFe) {
+    if (-not $uiSrc) {
+        $uiSrc = $localBuild
+    }
     try {
         Build-Frontend $RepoRoot $localBuild $uiSrc
     } catch {

@@ -34,6 +34,11 @@ if not "%PREP_EC%"=="0" (
     echo.
     echo  Run update-zip.bat then run-log.bat again.
   )
+  if "%PREP_EC%"=="7" (
+    echo.
+    echo  frontend folder missing — run update-zip.bat then run-log.bat again.
+    echo  backend\data is kept ^(settings, API keys, portfolios^).
+  )
   pause
   exit /b %PREP_EC%
 )
