@@ -1,5 +1,6 @@
 import asyncio
 import time
+import uuid
 from typing import Callable, Optional
 
 from app.engine.exit_rules import (
@@ -16,6 +17,7 @@ from app.engine.portfolio_store import store
 from app.engine.recommendations import build_recommendations, cap_apply_amounts
 from app.market.upbit_data import market
 from app.market.coin_registry import coin_meta
+from app.market.direction_analyzer import analyze_direction
 from app.market.entry_analyzer import analyze_entry, format_entry_detail
 from app.market.scanner import build_ticker_candidates, scan_market, top_usdt_symbols
 from app.models import (
@@ -25,6 +27,7 @@ from app.models import (
     CoinCandidate,
     CoinMeta,
     CoinView,
+    DirectionSignalItem,
     ManualBuyRequest,
     ManualSellRequest,
     RecommendationApplyItem,
@@ -336,6 +339,71 @@ class TradingEngine:
         self.bot.recent_trades = self.portfolio.trades[-30:]
         self._notify()
         return True, f"{pos.display} 모의 {req.percent:.0f}% 매도"
+
+    async def scan_direction_signals(self, side: str) -> tuple[bool, str]:
+        """롱/숏 버튼 분석 — 결과는 bot.long_signals / short_signals."""
+        side = side.lower()
+        if side not in ("long", "short"):
+            return False, "side는 long 또는 short"
+
+        self.bind_portfolio()
+        try:
+            symbols = self.bot.liquid_symbols or await top_usdt_symbols(
+                settings.tab_symbol_limit
+            )
+        except Exception as e:
+            return False, f"종목 목록 실패: {e}"
+
+        sem = asyncio.Semaphore(10)
+        min_score = max(48.0, self.config.min_entry_score - 5)
+
+        async def one(sym: str):
+            async with sem:
+                return sym, await analyze_direction(sym, side, min_score=min_score)
+
+        results = await asyncio.gather(*[one(s) for s in symbols[:60]])
+        items: list[DirectionSignalItem] = []
+        now = time.time()
+        for sym, sig in results:
+            if not sig.ok:
+                continue
+            m = coin_meta(sym)
+            items.append(
+                DirectionSignalItem(
+                    signal_id=str(uuid.uuid4()),
+                    symbol=sym.upper(),
+                    base=m["base"],
+                    name_ko=m["name_ko"],
+                    display=m["display"],
+                    side=side,
+                    score=sig.score,
+                    price_usdt=sig.price_usdt,
+                    rsi=sig.rsi,
+                    trend=sig.trend,
+                    outlook=sig.outlook,
+                    detail=sig.detail,
+                    reasons=sig.reasons[:8],
+                    scanned_at=now,
+                )
+            )
+        items.sort(key=lambda x: x.score, reverse=True)
+        items = items[:30]
+
+        if side == "long":
+            self.bot.long_signals = items
+        else:
+            self.bot.short_signals = items
+
+        label = "롱" if side == "long" else "숏"
+        if items:
+            self.bot.direction_scan_message = (
+                f"{label} 추천 {len(items)}건 (일목·이평·BB·RSI)"
+            )
+        else:
+            self.bot.direction_scan_message = f"{label} 추천 없음 — 조건 맞는 종목 없음"
+        self._bump_version()
+        self._notify()
+        return True, self.bot.direction_scan_message
 
     async def manual_sell_all(self, percent: float = 100.0) -> tuple[bool, str]:
         if not self.can_manual_trade():
@@ -871,6 +939,7 @@ class TradingEngine:
                 100.0,
                 reason,
                 auto_only=not full,
+                reason_is_auto=True,
             )
             if ok:
                 self.bind_portfolio()

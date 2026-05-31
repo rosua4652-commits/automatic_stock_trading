@@ -160,6 +160,12 @@ export async function sellAll(percent = 100): Promise<StatusPayload> {
   });
 }
 
+export async function scanDirectionSignals(
+  side: "long" | "short"
+): Promise<StatusPayload> {
+  return request(`/api/signals/scan/${side}`, { method: "POST" });
+}
+
 export function connectWs(
   onMessage: (data: StatusPayload) => void,
   onError?: () => void

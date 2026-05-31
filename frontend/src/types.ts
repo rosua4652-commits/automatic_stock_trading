@@ -207,12 +207,43 @@ export interface InvestmentRecommendation {
   selected?: boolean;
 }
 
+export interface DirectionSignalItem {
+  signal_id: string;
+  symbol: string;
+  base: string;
+  name_ko: string;
+  display: string;
+  side: string;
+  score: number;
+  price_usdt: number;
+  rsi: number;
+  trend: string;
+  outlook: string;
+  detail: string;
+  reasons: string[];
+  scanned_at: number;
+}
+
+export interface BacktestStatus {
+  running: boolean;
+  last_run: number;
+  message: string;
+  symbols_tested: number;
+  win_rate_pct: number;
+  avg_return_pct: number;
+  trades_simulated: number;
+}
+
 export interface BotState {
   status: BotStatus;
   view_symbol: string;
   message: string;
   candidates: CoinCandidate[];
   recommendations?: InvestmentRecommendation[];
+  long_signals?: DirectionSignalItem[];
+  short_signals?: DirectionSignalItem[];
+  direction_scan_message?: string;
+  backtest?: BacktestStatus;
   recent_trades: TradeEvent[];
   manual_mode: boolean;
 }

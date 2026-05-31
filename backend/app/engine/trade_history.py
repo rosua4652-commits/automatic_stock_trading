@@ -129,41 +129,68 @@ def _f(val: Any) -> float:
         return 0.0
 
 
+def classify_exit_kind(reason: str, side: str) -> str:
+    """tp | sl | manual | approval | ''"""
+    text = (reason or "").strip()
+    is_buy = str(side).upper() == "BUY"
+    if "익절" in text:
+        return "tp"
+    if "손절" in text or "급락" in text:
+        return "sl"
+    if is_buy:
+        if "승인" in text or "ai" in text.lower():
+            return "approval"
+        if "수동" in text:
+            return "manual"
+        return ""
+    if "수동" in text:
+        return "manual"
+    return ""
+
+
 def normalize_trade_reason(
     side: str,
     raw_reason: str,
     *,
     is_auto: bool = False,
     has_aidi_hint: bool = False,
+    exit_kind: str = "",
 ) -> str:
     """
-    표시용 사유 (4~5종):
-    익절 · 손절 · 수동 매수 · 수동 매도 · 승인 매수(AIDI 승인 버튼)
-    업비트에만 있고 AIDI 로그 없음 → 수동 매수/매도
+    익절 · 손절 · 수동 매수 · 수동 매도 · 승인 매수
+    손익절 설정·자동 감시 매도 → 익절/손절 (수동 매도 아님)
+    업비트만 체결·AIDI 로그 없음 → 수동 매수/매도
     """
     text = (raw_reason or "").strip()
     is_buy = str(side).upper() == "BUY"
+    kind = (exit_kind or "").lower()
 
-    if "익절" in text:
+    if kind == "tp" or "익절" in text:
         return "익절"
-    if "손절" in text or "급락" in text:
+    if kind == "sl" or "손절" in text or "급락" in text:
         return "손절"
 
     if is_buy:
         if not has_aidi_hint:
             return "수동 매수"
-        if "수동" in text:
-            return "수동 매수"
-        if "승인" in text or "ai" in text.lower():
+        if kind == "approval" or "승인" in text or "ai" in text.lower():
             return "승인 매수"
-        return "수동 매수"
+        if kind == "manual" or "수동" in text:
+            return "수동 매수"
+        return "승인 매수" if is_auto else "수동 매수"
 
     if not has_aidi_hint:
         return "수동 매도"
-    if "수동" in text:
+    if kind == "manual" or (
+        "수동" in text and kind not in ("tp", "sl") and "익절" not in text and "손절" not in text
+    ):
         return "수동 매도"
-    if is_auto and not text:
-        return "익절"
+    # 손익절 감시·설정 매도 (전량 매도 시 is_auto=False 여도 exit_kind/사유로 구분)
+    if kind in ("tp", "sl") or is_auto:
+        if kind == "sl" or "손절" in text or "급락" in text:
+            return "손절"
+        if kind == "tp" or "익절" in text:
+            return "익절"
     return "수동 매도"
 
 
@@ -186,6 +213,7 @@ def collect_reason_hints(live_meta: dict[str, Any]) -> dict[str, dict[str, Any]]
                 hints[uid] = {
                     "reason": str(pe.get("reason") or "손절"),
                     "is_auto": True,
+                    "exit_kind": str(pe.get("exit_kind") or ""),
                 }
 
     for row in live_meta.get("trades") or []:
@@ -211,10 +239,12 @@ def remember_order_reason(
     if not uid:
         return
     bag: dict = live_meta.setdefault("order_reasons", {})
+    side_u = str(side or ("BUY" if "매도" not in reason else "SELL")).upper()
     bag[uid] = {
         "reason": reason,
         "is_auto": bool(is_auto),
-        "side": str(side or "").upper(),
+        "side": side_u,
+        "exit_kind": classify_exit_kind(reason, side_u),
     }
     if len(bag) > ORDER_REASONS_KEEP:
         for key in list(bag.keys())[: len(bag) - ORDER_REASONS_KEEP]:
@@ -401,6 +431,7 @@ def order_to_trade_dict(
         raw_reason,
         is_auto=is_auto,
         has_aidi_hint=has_hint,
+        exit_kind=str(hint.get("exit_kind") or ""),
     )
 
     qty, funds, px_krw = _fill_from_order(order)
@@ -567,11 +598,13 @@ async def load_trades_from_upbit(
     )
     for row in merged_rows:
         uid = str(row.get("order_uuid") or "")
+        hint_row = hints.get(uid) or {}
         row["reason"] = normalize_trade_reason(
             str(row.get("side") or ""),
             str(row.get("reason") or ""),
             is_auto=bool(row.get("is_auto")),
             has_aidi_hint=bool(uid and uid in hints),
+            exit_kind=str(hint_row.get("exit_kind") or ""),
         )
     live_meta["trades"] = merged_rows
     live_meta["trades_display_count"] = len(merged_rows)

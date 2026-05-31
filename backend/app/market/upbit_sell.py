@@ -241,6 +241,7 @@ def set_pending_exit(
         "min_bid_krw": round(min_bid_krw, 4),
         "limit_price_krw": round(limit_price_krw, 4),
         "order_uuid": str(order_uuid or ""),
+        "exit_kind": "tp" if "익절" in reason else "sl" if "손절" in reason else "",
     }
 
 

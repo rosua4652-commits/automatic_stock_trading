@@ -8,13 +8,14 @@ import {
   manualSell,
   sellAll,
   saveConfig,
+  scanDirectionSignals,
   setPositionExclude,
   setPositionExitPlan,
   setViewSymbol,
   startBot,
   stopBot,
 } from "./api";
-import EntryAlertsPanel from "./components/EntryAlertsPanel";
+import AlertsHub from "./components/AlertsHub";
 import RecommendationsPanel from "./components/RecommendationsPanel";
 import ChartPanel from "./components/ChartPanel";
 import CoinDetailBar from "./components/CoinDetailBar";
@@ -479,8 +480,14 @@ export default function App() {
             onClick={() => setMainView("alerts")}
           >
             알림
-            {editableRecs.length > 0 && (
-              <span className="nav-badge">{editableRecs.length}</span>
+            {(editableRecs.length > 0 ||
+              (data?.bot.long_signals?.length ?? 0) > 0 ||
+              (data?.bot.short_signals?.length ?? 0) > 0) && (
+              <span className="nav-badge">
+                {editableRecs.length +
+                  (data?.bot.long_signals?.length ?? 0) +
+                  (data?.bot.short_signals?.length ?? 0)}
+              </span>
             )}
           </button>
           <button
@@ -501,13 +508,22 @@ export default function App() {
       </div>
 
       {mainView === "alerts" && (
-        <EntryAlertsPanel
-          list={editableRecs}
+        <AlertsHub
+          recommendations={editableRecs}
+          longSignals={data.bot.long_signals ?? []}
+          shortSignals={data.bot.short_signals ?? []}
+          directionMessage={data.bot.direction_scan_message}
+          backtestMessage={data.bot.backtest?.message}
           botStatus={data.bot.status}
           cashKrw={data.portfolio.cash_krw}
           feePct={appConfig.trading_fee_pct}
           busy={tradeBusy}
-          onApply={applyRecs}
+          onApplyRecs={applyRecs}
+          onScanDirection={async (side) => {
+            const s = await scanDirectionSignals(side);
+            applyPayload(s);
+            setToast(s.message ?? (side === "long" ? "롱 분석 완료" : "숏 분석 완료"));
+          }}
           onOpenChart={() => setMainView("chart")}
           onSelectSymbol={goChart}
         />

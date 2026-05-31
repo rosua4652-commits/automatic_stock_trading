@@ -296,6 +296,33 @@ class ApplyRecommendationsRequest(BaseModel):
     )
 
 
+class DirectionSignalItem(BaseModel):
+    signal_id: str
+    symbol: str
+    base: str
+    name_ko: str = ""
+    display: str = ""
+    side: str  # long | short
+    score: float = 0.0
+    price_usdt: float = 0.0
+    rsi: float = 0.0
+    trend: str = ""
+    outlook: str = ""
+    detail: str = ""
+    reasons: list[str] = Field(default_factory=list)
+    scanned_at: float = 0.0
+
+
+class BacktestStatus(BaseModel):
+    running: bool = False
+    last_run: float = 0.0
+    message: str = ""
+    symbols_tested: int = 0
+    win_rate_pct: float = 0.0
+    avg_return_pct: float = 0.0
+    trades_simulated: int = 0
+
+
 class BotState(BaseModel):
     status: BotStatus = BotStatus.STOPPED
     view_symbol: str = "BTCUSDT"
@@ -307,6 +334,10 @@ class BotState(BaseModel):
         description="거래대금 상위 종목 (탭 표시용, 추천과 별개)",
     )
     recommendations: list[InvestmentRecommendation] = Field(default_factory=list)
+    long_signals: list[DirectionSignalItem] = Field(default_factory=list)
+    short_signals: list[DirectionSignalItem] = Field(default_factory=list)
+    direction_scan_message: str = ""
+    backtest: BacktestStatus = Field(default_factory=BacktestStatus)
     recent_trades: list[TradeEvent] = Field(default_factory=list)
     manual_mode: bool = True
 

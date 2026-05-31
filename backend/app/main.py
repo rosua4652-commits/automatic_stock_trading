@@ -43,7 +43,7 @@ STATIC_DIR = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
 # PC에서 run.bat 시작 시 표시 — GitHub 최신과 비교용
-AIDI_BUILD = "2026-03-30-trade-reason-labels"
+AIDI_BUILD = "2026-03-30-alerts-direction"
 
 
 def _load_pc_path_hint() -> str:
@@ -234,10 +234,14 @@ async def lifespan(app: FastAPI):
     engine.config = apply_credentials_to_config(engine.config)
     engine.bind_portfolio()
     engine.ensure_auto_guard()
+    from app.engine.backtest_runner import ensure_backtest_loop, stop_backtest_loop
+
+    ensure_backtest_loop(engine)
     _broadcast_task = asyncio.create_task(_broadcast_loop())
     yield
     if _broadcast_task:
         _broadcast_task.cancel()
+    stop_backtest_loop()
     if engine._guard_task:
         engine._guard_task.cancel()
     await engine.stop()
@@ -424,6 +428,16 @@ async def bot_stop():
     engine._persist()
     status = await _build_status()
     status["ok"] = True
+    return status
+
+
+@api.post("/signals/scan/{side}")
+async def scan_direction_signals(side: str):
+    """side: long | short — 버튼으로 롱/숏 분석."""
+    ok, msg = await engine.scan_direction_signals(side)
+    status = await _build_status()
+    status["ok"] = ok
+    status["message"] = msg
     return status
 
 

@@ -61,15 +61,15 @@ def custom_exit_triggered(
     tp_r = (pos.custom_take_profit_pct or config.take_profit_pct) / 100
     pnl = (current - entry) / entry
     if pnl <= -sl_r + eps:
-        return True, "손절(지정%)"
+        return True, "손절"
     if pnl >= tp_r - eps:
-        return True, "익절(지정%)"
+        return True, "익절"
 
     sl_krw, tp_krw = _level_prices_krw(pos, usdt_krw)
     if sl_krw > 0 and current <= sl_krw * 1.0001:
-        return True, "손절(지정가)"
+        return True, "손절"
     if tp_krw > 0 and current >= tp_krw * 0.9999:
-        return True, "익절(지정가)"
+        return True, "익절"
     return False, ""
 
 

@@ -7,6 +7,7 @@ from app.engine.live_sync import export_live_meta, sync_live_portfolio
 from app.engine.portfolio import PortfolioManager
 from app.engine.portfolio_store import store
 from app.engine.trade_history import (
+    classify_exit_kind,
     merge_trade_events,
     normalize_trade_reason,
     remember_order_reason,
@@ -195,7 +196,11 @@ async def live_market_sell(
     percent: float,
     reason: str,
     auto_only: bool = False,
+    *,
+    reason_is_auto: bool | None = None,
 ) -> tuple[bool, str]:
+    record_auto = reason_is_auto if reason_is_auto is not None else auto_only
+
     async with store._lock:
         portfolio = store.live
         sym = symbol.upper()
@@ -263,6 +268,13 @@ async def live_market_sell(
                 )
                 if order_uuid:
                     remember_order_uuid(meta, order_uuid)
+                    remember_order_reason(
+                        meta,
+                        order_uuid,
+                        reason=reason,
+                        is_auto=True,
+                        side="SELL",
+                    )
                 save_live_meta(meta)
                 need_tick = format_upbit_price(need_bid)
                 lim = format_upbit_price(outcome.limit_price_krw)
@@ -297,7 +309,7 @@ async def live_market_sell(
                     store._live_meta,
                     order_uuid,
                     reason=reason,
-                    is_auto=auto_only,
+                    is_auto=record_auto,
                     side="SELL",
                 )
             price = price_krw / max(portfolio.usdt_krw, 1.0) if price_krw > 0 else 0.0
@@ -319,7 +331,11 @@ async def live_market_sell(
         if order_uuid and executed_qty > 0:
             m = coin_meta(sym)
             reason_label = normalize_trade_reason(
-                "SELL", reason, is_auto=auto_only, has_aidi_hint=True
+                "SELL",
+                reason,
+                is_auto=record_auto,
+                has_aidi_hint=True,
+                exit_kind=classify_exit_kind(reason, "SELL"),
             )
             portfolio.trades = merge_trade_events(
                 portfolio.trades,
@@ -399,7 +415,12 @@ async def retry_pending_exit_sells(config: AppConfig) -> None:
 
     for sym, reason, qty_before in retry_jobs:
         ok, _msg = await live_market_sell(
-            config, sym, 100.0, reason, auto_only=False
+            config,
+            sym,
+            100.0,
+            reason,
+            auto_only=False,
+            reason_is_auto=True,
         )
         if not ok:
             continue
