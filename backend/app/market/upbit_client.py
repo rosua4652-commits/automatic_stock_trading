@@ -157,6 +157,10 @@ class UpbitClient:
         }
         return await self._auth_post("/v1/orders", body)
 
+    async def get_order(self, uuid: str) -> dict:
+        row = await self._auth_get("/v1/order", {"uuid": uuid})
+        return row if isinstance(row, dict) else {}
+
     async def open_orders(self, market: str | None = None) -> list[dict]:
         params: dict[str, str] = {"state": "wait"}
         if market:

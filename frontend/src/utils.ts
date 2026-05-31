@@ -32,6 +32,7 @@ export function tradeUnitPriceKrw(t: {
 }) {
   if (t.price_krw && t.price_krw > 0) return t.price_krw;
   if (t.quantity > 1e-12 && t.amount_krw > 0) return t.amount_krw / t.quantity;
+  if (t.price > 0) return t.price * 1350;
   return 0;
 }
 

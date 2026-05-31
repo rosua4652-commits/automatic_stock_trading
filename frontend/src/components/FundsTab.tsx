@@ -507,22 +507,25 @@ export default function FundsTab({
                     const qty = tradeQuantity(t);
                     const amt = tradeAmountKrw(t);
                     const pxKrw = tradeUnitPriceKrw(t);
-                    const liveKrw =
-                      tradeMode === "live" || t.price_krw != null;
+                    const pxText =
+                      pxKrw > 0
+                        ? `${fmtKrw(pxKrw)}원`
+                        : t.price > 0
+                          ? `$${fmtUsd(t.price)}`
+                          : "—";
                     return (
-                    <tr key={`${t.ts}-${i}`} className={t.side === "BUY" ? "buy" : "sell"}>
-                      <td>{fmtTime(t.ts)}</td>
-                      <td>{t.display}</td>
-                      <td>{t.side === "BUY" ? "매수" : "매도"}</td>
-                      <td>
-                        {liveKrw && pxKrw > 0
-                          ? `${fmtKrw(pxKrw)}원`
-                          : `$${fmtUsd(t.price)}`}
-                      </td>
-                      <td>{fmtQty(qty)}</td>
-                      <td>{amt > 0 ? `${fmtKrw(amt)}원` : "—"}</td>
-                      <td>{t.reason}</td>
-                    </tr>
+                      <tr
+                        key={`${t.ts}-${i}`}
+                        className={t.side === "BUY" ? "buy" : "sell"}
+                      >
+                        <td>{fmtTime(t.ts)}</td>
+                        <td>{t.display}</td>
+                        <td>{t.side === "BUY" ? "매수" : "매도"}</td>
+                        <td>{pxText}</td>
+                        <td>{fmtQty(qty)}</td>
+                        <td>{amt > 0 ? `${fmtKrw(amt)}원` : "—"}</td>
+                        <td>{t.reason}</td>
+                      </tr>
                     );
                   })
               )}

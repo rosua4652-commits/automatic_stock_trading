@@ -9,7 +9,10 @@ from app.engine.portfolio_store import store
 from app.market.upbit_data import market
 from app.market.coin_registry import coin_meta
 from app.market.upbit_client import symbol_to_upbit, upbit_client
-from app.market.upbit_order_fill import parse_upbit_order_fill
+from app.market.upbit_order_fill import (
+    repair_trade_dict,
+    resolve_upbit_fill,
+)
 from app.market.upbit_sell import (
     MIN_MARKET_ASK_KRW,
     clear_pending_exit,
@@ -32,6 +35,11 @@ def _persist_live(portfolio: PortfolioManager) -> None:
     prev = store._live_meta
     store._live_meta = export_live_meta(portfolio, preserve=prev)
     store._live_meta["realized_pnl_krw"] = portfolio.realized_pnl_krw
+    rate = max(portfolio.usdt_krw, 1.0)
+    store._live_meta["trades"] = [
+        repair_trade_dict(t.model_dump(), usdt_krw=rate)
+        for t in portfolio.trades[-100:]
+    ]
     save_live_meta(store._live_meta)
 
 
@@ -76,15 +84,13 @@ async def live_market_buy(
         tick = await upbit_client.tickers([upbit_market])
         if tick.get(upbit_market):
             price_hint = float(tick[upbit_market].get("trade_price") or 0)
-        executed_qty, fill_krw, price_krw = parse_upbit_order_fill(
+        executed_qty, fill_krw, price_krw = await resolve_upbit_fill(
+            upbit_client,
             order,
             amount_krw_hint=amount_krw,
             price_krw_hint=price_hint,
+            fallback_qty=amount_krw / max(price_hint, 1.0) if price_hint > 0 else 0.0,
         )
-        if executed_qty <= 0 and price_hint > 0:
-            executed_qty = amount_krw / price_hint
-            fill_krw = amount_krw
-            price_krw = price_hint
         fills_price = (
             price_krw / max(portfolio.usdt_krw, 1.0) if price_krw > 0 else 0.0
         )
@@ -189,13 +195,17 @@ async def live_market_sell(
             bid_hint = pos.current_price_krw
         elif pos.current_price > 0 and portfolio.usdt_krw > 0:
             bid_hint = pos.current_price * portfolio.usdt_krw
+        if bid_hint <= 0:
+            tick = await upbit_client.tickers([upbit_market])
+            if tick.get(upbit_market):
+                bid_hint = float(tick[upbit_market].get("trade_price") or 0)
         outcome = await smart_sell(
             upbit_client, upbit_market, sell_qty, bid_hint_krw=bid_hint
         )
         order = outcome.order
         sell_mode = outcome.mode
-        executed_qty = order_executed_qty(order)
-        if outcome.pending and executed_qty <= sell_qty * 1e-6:
+        raw_qty = order_executed_qty(order)
+        if outcome.pending and raw_qty <= sell_qty * 1e-6:
             meta = store._live_meta
             need_bid = outcome.min_bid_for_market or min_bid_for_market_sell(
                 sell_qty
@@ -216,20 +226,25 @@ async def live_market_sell(
                 f"(매수호가 {need_tick}원↑ 시 시장가 자동 재시도). "
                 "업비트 앱 미체결에서도 확인 가능.",
             )
-        if executed_qty <= sell_qty * 1e-6:
-            return False, f"매도 체결 없음 ({sell_mode})"
+        if raw_qty <= sell_qty * 1e-6:
+            filled_now, _, _ = await resolve_upbit_fill(
+                upbit_client,
+                order,
+                price_krw_hint=bid_hint,
+                fallback_qty=sell_qty,
+            )
+            if filled_now <= sell_qty * 1e-6:
+                return False, f"매도 체결 없음 ({sell_mode})"
+            raw_qty = filled_now
         clear_pending_exit(store._live_meta, sym)
-        executed_qty, quote_krw, price_krw = parse_upbit_order_fill(
+        executed_qty, quote_krw, price_krw = await resolve_upbit_fill(
+            upbit_client,
             order,
             price_krw_hint=bid_hint,
+            fallback_qty=max(raw_qty, sell_qty),
         )
-        if quote_krw <= 0 and bid_hint > 0:
-            quote_krw = executed_qty * bid_hint
-        if price_krw <= 0 and executed_qty > 0 and quote_krw > 0:
-            price_krw = quote_krw / executed_qty
-        elif price_krw <= 0 and pos.current_price_krw > 0:
-            price_krw = pos.current_price_krw
-            quote_krw = executed_qty * price_krw
+        if executed_qty <= 1e-12:
+            return False, f"매도 체결 정보 없음 ({sell_mode})"
         price = price_krw / max(portfolio.usdt_krw, 1.0) if price_krw > 0 else 0.0
         if price <= 0 and pos.current_price > 0:
             price = pos.current_price

@@ -7,6 +7,7 @@ from app.market.upbit_data import market as upbit_feed
 from app.market.binance_live import binance_live
 from app.market.coin_registry import coin_meta
 from app.market.upbit_client import symbol_to_upbit, upbit_client, upbit_to_symbol
+from app.market.upbit_order_fill import repair_trade_dict
 from app.models import (
     AppConfig,
     Position,
@@ -266,7 +267,10 @@ async def _sync_upbit(
     portfolio.cash_krw = krw_cash
     portfolio.realized_pnl_krw = float(live_meta.get("realized_pnl_krw", 0))
 
-    local_trades = [TradeEvent(**t) for t in live_meta.get("trades", [])[-100:]]
+    local_trades = [
+        TradeEvent(**repair_trade_dict(t, usdt_krw=portfolio.usdt_krw))
+        for t in live_meta.get("trades", [])[-100:]
+    ]
     portfolio.trades = local_trades
 
     n = len(new_positions)
@@ -392,7 +396,10 @@ async def _sync_binance(
     portfolio.cash_krw = portfolio.usdt_to_krw(usdt_free)
     portfolio.realized_pnl_krw = float(live_meta.get("realized_pnl_krw", 0))
 
-    local_trades = [TradeEvent(**t) for t in live_meta.get("trades", [])[-100:]]
+    local_trades = [
+        TradeEvent(**repair_trade_dict(t, usdt_krw=portfolio.usdt_krw))
+        for t in live_meta.get("trades", [])[-100:]
+    ]
     portfolio.trades = local_trades
 
     n = len(new_positions)

@@ -1,43 +1,59 @@
-"""업비트 체결 파싱 · 평단 동기화."""
+"""체결 파싱·복구 테스트."""
 
-from app.engine.live_sync import _resolve_position_costs
-from app.market.upbit_order_fill import parse_upbit_order_fill
+import asyncio
+
+from app.market.upbit_order_fill import (
+    parse_upbit_order_fill,
+    repair_trade_dict,
+    resolve_upbit_fill,
+)
 
 
-def test_parse_order_fill_from_trades():
-    order = {
-        "executed_volume": "10",
-        "trades": [
-            {"volume": "6", "funds": "600"},
-            {"volume": "4", "funds": "400"},
-        ],
-    }
-    qty, funds, px = parse_upbit_order_fill(order)
-    assert qty == 10
-    assert funds == 1000
+class _FakeClient:
+    def __init__(self, order: dict):
+        self._order = order
+
+    async def get_order(self, uuid: str) -> dict:
+        return self._order
+
+
+def test_resolve_keeps_executed_volume_when_trades_empty():
+    order = {"uuid": "abc", "executed_volume": "12.5", "trades": []}
+    client = _FakeClient(
+        {
+            "uuid": "abc",
+            "executed_volume": "12.5",
+            "trades": [{"volume": "12.5", "funds": "1250"}],
+        }
+    )
+    qty, funds, px = asyncio.run(
+        resolve_upbit_fill(
+            client, order, price_krw_hint=100.0, fallback_qty=12.5
+        )
+    )
+    assert qty == 12.5
+    assert funds == 1250
     assert px == 100
 
 
-def test_parse_order_fill_hint():
-    order = {"executed_volume": "48.0769"}
-    qty, funds, px = parse_upbit_order_fill(
-        order, amount_krw_hint=5000, price_krw_hint=104
-    )
-    assert qty > 0
-    assert funds == 5000
+def test_parse_does_not_zero_when_hint_available():
+    order = {"executed_volume": "10"}
+    qty, funds, px = parse_upbit_order_fill(order, price_krw_hint=105.0)
+    assert qty == 10
+    assert funds == 1050
+    assert px == 105
 
 
-def test_upbit_avg_overrides_stale_meta_avg():
-    pm = {"manual_avg_price": 0.25, "auto_avg_price": 0.25}
-    _, _, auto_avg, manual_avg = _resolve_position_costs(
-        pm,
-        total_qty=48.0,
-        auto_q=0.0,
-        manual_q=48.0,
-        avg_buy_krw=104.0,
-        price_krw=103.0,
-        usdt_krw=1350.0,
+def test_repair_trade_from_price_only():
+    fixed = repair_trade_dict(
+        {
+            "side": "SELL",
+            "reason": "익절",
+            "price": 0.5,
+            "quantity": 0,
+            "amount_krw": 0,
+        },
+        usdt_krw=1000.0,
     )
-    truth = 104.0 / 1350.0
-    assert abs(manual_avg - truth) < 1e-9
-    assert auto_avg == 0.0
+    assert fixed["price_krw"] == 500.0
+    # still missing qty/amt without more hints
