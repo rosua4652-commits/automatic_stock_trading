@@ -213,23 +213,31 @@ class TradingEngine:
         return self._status_version
 
     def _refresh_auto_risk_status(self) -> str:
+        from app.engine.risk_manager import kill_switch_active_for, mode_equity_start
         from app.models import AutoInvestRiskStatus
 
         self.bind_portfolio()
+        mode = "live" if self._is_live() else "paper"
         snap = self.portfolio.snapshot({}, self.config)
         state, daily_pnl, daily_pct = evaluate_daily_risk(
             self.config,
             snap,
             realized_pnl_krw=self.portfolio.realized_pnl_krw,
+            mode=mode,
         )
+        start = mode_equity_start(state, mode) or state.equity_start_krw
+        kill_on = kill_switch_active_for(state, mode)
         self.bot.auto_risk = AutoInvestRiskStatus(
-            kill_switch=state.kill_switch,
-            kill_reason=state.kill_reason,
+            kill_switch=kill_on,
+            kill_reason=state.kill_reason if kill_on else "",
             daily_pnl_krw=round(daily_pnl, 0),
             daily_pnl_pct=round(daily_pct, 2),
-            day_equity_start_krw=round(state.equity_start_krw, 0),
-            message=state.kill_reason
-            or f"당일 {daily_pct:+.2f}% ({daily_pnl:+,.0f}원)",
+            day_equity_start_krw=round(start, 0),
+            message=(
+                state.kill_reason
+                if kill_on
+                else f"당일 {daily_pct:+.2f}% ({daily_pnl:+,.0f}원)"
+            ),
         )
         return self.bot.auto_risk.message
 
@@ -461,6 +469,10 @@ class TradingEngine:
         self.config = cfg
         switch_msg = await store.on_mode_change(old_mode, cfg.trade_mode, cfg)
         self.bind_portfolio()
+        from app.engine.risk_manager import on_trade_mode_switch
+
+        snap = self.portfolio.snapshot({}, cfg)
+        on_trade_mode_switch(cfg.trade_mode.value, snap.total_value_krw)
         if cfg.trade_mode == TradeMode.PAPER:
             self.portfolio.apply_config(cfg)
             self._persist()

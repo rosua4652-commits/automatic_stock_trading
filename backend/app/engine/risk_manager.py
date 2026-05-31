@@ -25,6 +25,7 @@ class RiskDayState:
     live_equity_start_krw: float = 0.0
     realized_start_krw: float = 0.0
     kill_switch: bool = False
+    kill_switch_mode: str = ""
     kill_reason: str = ""
     updated_at: float = 0.0
 
@@ -36,6 +37,7 @@ class RiskDayState:
             "live_equity_start_krw": round(self.live_equity_start_krw, 0),
             "realized_start_krw": round(self.realized_start_krw, 0),
             "kill_switch": self.kill_switch,
+            "kill_switch_mode": self.kill_switch_mode or "",
             "kill_reason": self.kill_reason,
             "updated_at": self.updated_at,
         }
@@ -51,9 +53,65 @@ class RiskDayState:
             live_equity_start_krw=float(d.get("live_equity_start_krw") or 0),
             realized_start_krw=float(d.get("realized_start_krw") or 0),
             kill_switch=bool(d.get("kill_switch")),
+            kill_switch_mode=str(d.get("kill_switch_mode") or ""),
             kill_reason=str(d.get("kill_reason") or ""),
             updated_at=float(d.get("updated_at") or 0),
         )
+
+
+def _mode_attr(mode: str) -> str:
+    return "live_equity_start_krw" if mode == "live" else "paper_equity_start_krw"
+
+
+def kill_switch_active_for(state: RiskDayState, mode: str) -> bool:
+    if not state.kill_switch:
+        return False
+    ks_mode = (state.kill_switch_mode or "").strip().lower()
+    if not ks_mode:
+        return True
+    return ks_mode == mode
+
+
+def _clear_stale_kill(state: RiskDayState, mode: str) -> RiskDayState:
+    if state.kill_switch and not kill_switch_active_for(state, mode):
+        state.kill_switch = False
+        state.kill_reason = ""
+        state.kill_switch_mode = ""
+    return state
+
+
+def _maybe_fix_mode_baseline_mix(
+    state: RiskDayState,
+    mode: str,
+    total_equity: float,
+) -> tuple[RiskDayState, float]:
+    """모의 당일 시작(천만)이 실거래 평가에 섞인 경우 자동 보정."""
+    cur = max(float(total_equity or 0), 0.0)
+    key = _mode_attr(mode)
+    start = float(getattr(state, key) or 0)
+    if start <= 0:
+        return state, 0.0
+    other = (
+        float(state.paper_equity_start_krw or 0)
+        if mode == "live"
+        else float(state.live_equity_start_krw or 0)
+    )
+    mixed = (
+        cur > 0
+        and start > cur * 2.5
+        and start >= 500_000
+        and (other <= 0 or start >= other * 1.5)
+    )
+    if mixed or (mode == "live" and start >= 1_000_000 and cur < start * 0.15):
+        setattr(state, key, max(cur, 1.0))
+        state.equity_start_krw = float(getattr(state, key))
+        state.kill_switch = False
+        state.kill_reason = ""
+        state.kill_switch_mode = ""
+        state.updated_at = time.time()
+        save_risk_state(state)
+        return state, float(getattr(state, key))
+    return state, start
 
 
 def mode_equity_start(state: RiskDayState, mode: str) -> float:
@@ -110,6 +168,7 @@ def _ensure_day(
             live_equity_start_krw=0.0,
             realized_start_krw=realized_pnl_krw,
             kill_switch=False,
+            kill_switch_mode="",
             kill_reason="",
             updated_at=time.time(),
         )
@@ -152,21 +211,37 @@ def evaluate_daily_risk(
     mode: str = "paper",
 ) -> tuple[RiskDayState, float, float]:
     """(state, daily_pnl_krw, daily_pnl_pct) — 초과 시 kill_switch 설정."""
+    mode = "live" if mode == "live" else "paper"
+    state = _clear_stale_kill(load_risk_state(), mode)
     state = _ensure_day(
-        load_risk_state(),
+        state,
         total_equity=snap.total_value_krw,
         realized_pnl_krw=realized_pnl_krw,
         mode=mode,
     )
-    start_eq = max(mode_equity_start(state, mode) or state.equity_start_krw, 1.0)
+    state, start_eq = _maybe_fix_mode_baseline_mix(
+        state, mode, snap.total_value_krw
+    )
+    if start_eq <= 0:
+        start_eq = max(mode_equity_start(state, mode), 0.0)
+    if start_eq <= 0:
+        start_eq = max(snap.total_value_krw, 1.0)
+    else:
+        start_eq = max(start_eq, 1.0)
+
     daily_pnl = snap.total_value_krw - start_eq
     daily_pct = daily_pnl / start_eq * 100
 
     limit = float(getattr(config, "daily_loss_limit_pct", 5.0) or 5.0)
-    if not state.kill_switch and daily_pct <= -abs(limit):
+    if (
+        not kill_switch_active_for(state, mode)
+        and daily_pct <= -abs(limit)
+    ):
         state.kill_switch = True
+        state.kill_switch_mode = mode
+        mode_label = "실거래" if mode == "live" else "모의"
         state.kill_reason = (
-            f"일손실 한도 {limit:.1f}% 초과 (당일 {daily_pct:+.2f}% · "
+            f"일손실 한도 {limit:.1f}% 초과 ({mode_label} · 당일 {daily_pct:+.2f}% · "
             f"{daily_pnl:+,.0f}원) — 자동 매수 중지"
         )
         state.updated_at = time.time()
@@ -219,7 +294,7 @@ def check_auto_invest_allowed(
     state, daily_pnl, daily_pct = evaluate_daily_risk(
         config, snap, realized_pnl_krw=realized_pnl_krw, mode=mode
     )
-    if state.kill_switch:
+    if kill_switch_active_for(state, mode):
         return False, state.kill_reason or "일손실 킬 스위치 작동 중", state
 
     max_pos = int(getattr(config, "max_positions", 0) or 0)
@@ -247,6 +322,7 @@ def reset_risk_day_baseline(
     state.kill_switch = False
     state.kill_reason = ""
     state.updated_at = time.time()
+    state.kill_switch_mode = ""
     if mode == "live":
         state.live_equity_start_krw = eq
     else:
@@ -254,10 +330,36 @@ def reset_risk_day_baseline(
     save_risk_state(state)
 
 
-def reset_kill_switch() -> str:
+def reset_kill_switch(
+    mode: str,
+    total_equity_krw: float,
+    realized_pnl_krw: float = 0.0,
+) -> str:
+    """킬 해제 + 해당 모드 당일 시작 자산을 현재 총자산으로 재설정."""
+    mode = "live" if mode == "live" else "paper"
+    eq = max(float(total_equity_krw), 1.0)
     state = load_risk_state()
+    state.day_key = _today_kst()
     state.kill_switch = False
+    state.kill_switch_mode = ""
     state.kill_reason = ""
+    state.realized_start_krw = float(realized_pnl_krw)
     state.updated_at = time.time()
+    setattr(state, _mode_attr(mode), eq)
+    state.equity_start_krw = eq
     save_risk_state(state)
-    return "일손실 킬 스위치 해제 (당일 기준 리셋)"
+    label = "실거래" if mode == "live" else "모의"
+    return f"킬 스위치 해제 · {label} 당일 기준 {eq:,.0f}원으로 재설정"
+
+
+def on_trade_mode_switch(mode: str, total_equity_krw: float) -> None:
+    """모드 전환 시 다른 모드 킬·잘못된 기준 자산 정리."""
+    mode = "live" if mode == "live" else "paper"
+    state = _clear_stale_kill(load_risk_state(), mode)
+    eq = max(float(total_equity_krw), 1.0)
+    key = _mode_attr(mode)
+    if getattr(state, key) <= 0:
+        setattr(state, key, eq)
+        state.equity_start_krw = eq
+        state.updated_at = time.time()
+        save_risk_state(state)

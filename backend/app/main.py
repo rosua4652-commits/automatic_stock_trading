@@ -45,7 +45,7 @@ from app.aidi_middleware import AidiActionLogMiddleware
 STATIC_DIR = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
 
 # PC에서 run.bat 시작 시 표시 — GitHub 최신과 비교용
-AIDI_BUILD = "2026-06-02-stats-dual-mode"
+AIDI_BUILD = "2026-06-02-risk-kill-fix"
 
 
 engine = TradingEngine()
@@ -473,7 +473,27 @@ async def risk_reset_kill():
     """일손실 킬 스위치 수동 해제 (당일)."""
     from app.engine.risk_manager import reset_kill_switch
 
-    msg = reset_kill_switch()
+    engine.bind_portfolio()
+    prices = await engine.prices_map()
+    upbit_synced_at = None
+    upbit_truth = False
+    if engine.config.trade_mode == TradeMode.LIVE:
+        raw = store._live_meta.get("upbit_snapshot")
+        if raw:
+            upbit_truth = True
+            upbit_synced_at = raw.get("synced_at") if isinstance(raw, dict) else None
+    snap = engine.portfolio.snapshot(
+        prices,
+        engine.config,
+        upbit_truth=upbit_truth,
+        upbit_synced_at=upbit_synced_at,
+    )
+    mode = engine.config.trade_mode.value
+    msg = reset_kill_switch(
+        mode,
+        snap.total_value_krw,
+        engine.portfolio.realized_pnl_krw,
+    )
     engine._refresh_auto_risk_status()
     status = await _build_status()
     status["ok"] = True
