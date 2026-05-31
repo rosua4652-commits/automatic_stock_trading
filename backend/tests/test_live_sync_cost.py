@@ -45,8 +45,9 @@ def test_resolve_costs_splits_upbit_total_by_meta_ratio():
     assert auto_cost + man_cost == 9990
     assert abs(auto_cost - 5994) < 0.01
     assert abs(man_cost - 3996) < 0.01
-    assert auto_avg == 0.5
-    assert manual_avg == 0.4
+    truth = 999.0 / 1350.0
+    assert abs(auto_avg - truth) < 1e-9
+    assert abs(manual_avg - truth) < 1e-9
 
 
 def test_resolve_sl_tp_ref_price_manual_only():
