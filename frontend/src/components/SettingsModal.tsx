@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { testCredentials } from "../api";
+import { resetBacktestData, resetPaperData, testCredentials } from "../api";
+import type { StatusPayload } from "../types";
 import type { AppConfig } from "../types";
 import { fmtKrw, roundPct2 } from "../utils";
 
@@ -10,6 +11,7 @@ type Props = {
   onSave: () => void;
   onClose: () => void;
   saving: boolean;
+  onAfterReset?: (status: StatusPayload) => void;
 };
 
 export default function SettingsModal({
@@ -19,8 +21,10 @@ export default function SettingsModal({
   onSave,
   onClose,
   saving,
+  onAfterReset,
 }: Props) {
   const [testing, setTesting] = useState(false);
+  const [resetBusy, setResetBusy] = useState<"paper" | "backtest" | null>(null);
   const [testMsg, setTestMsg] = useState<string | null>(null);
   const [testOk, setTestOk] = useState<boolean | null>(null);
 
@@ -432,6 +436,73 @@ export default function SettingsModal({
             )}
           </section>
         )}
+
+        <section className="settings-section settings-danger">
+          <h3>데이터 초기화</h3>
+          <p className="warn subtle">
+            되돌릴 수 없습니다. 실거래(API) 잔고는 거래소 기준이라 여기서 지우지 않습니다.
+          </p>
+          <div className="reset-actions">
+            <button
+              type="button"
+              className="btn-danger-outline"
+              disabled={!!resetBusy || saving || draft.trade_mode !== "paper"}
+              title={
+                draft.trade_mode !== "paper"
+                  ? "모의투자 모드에서만 사용"
+                  : undefined
+              }
+              onClick={async () => {
+                const bal = draft.initial_balance_krw;
+                if (
+                  !window.confirm(
+                    `모의투자를 초기화합니다.\n\n· 보유 코인·거래 내역·실현손익 삭제\n· 현금 ${bal.toLocaleString()}원으로 복구\n· 분석 중이면 중지됩니다\n\n계속할까요?`
+                  )
+                ) {
+                  return;
+                }
+                setResetBusy("paper");
+                try {
+                  const s = await resetPaperData();
+                  onAfterReset?.(s);
+                } catch (e) {
+                  alert(e instanceof Error ? e.message : "초기화 실패");
+                } finally {
+                  setResetBusy(null);
+                }
+              }}
+            >
+              {resetBusy === "paper" ? "초기화 중..." : "모의투자 초기화"}
+            </button>
+            <button
+              type="button"
+              className="btn-danger-outline"
+              disabled={!!resetBusy || saving}
+              onClick={async () => {
+                if (
+                  !window.confirm(
+                    "백테스트 누적 데이터를 삭제합니다.\n\n· 종목별 BT 결과·학습 점수·차단 목록\n· 체결 피드백\n\n프로그램을 켜 두면 다시 쌓입니다.\n\n계속할까요?"
+                  )
+                ) {
+                  return;
+                }
+                setResetBusy("backtest");
+                try {
+                  const s = await resetBacktestData();
+                  onAfterReset?.(s);
+                } catch (e) {
+                  alert(e instanceof Error ? e.message : "초기화 실패");
+                } finally {
+                  setResetBusy(null);
+                }
+              }}
+            >
+              {resetBusy === "backtest"
+                ? "삭제 중..."
+                : "백테스트 데이터 초기화"}
+            </button>
+          </div>
+        </section>
 
         <div className="modal-actions">
           <button type="button" className="btn-ghost wide" onClick={onClose}>

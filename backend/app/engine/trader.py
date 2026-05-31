@@ -1,6 +1,7 @@
 import asyncio
 import time
 import uuid
+from pathlib import Path
 from typing import Callable, Optional
 
 from app.aidi_log import get_aidi_logger
@@ -43,6 +44,7 @@ from app.market.entry_analyzer import analyze_entry, format_entry_detail
 from app.market.scanner import build_ticker_candidates, scan_market, top_usdt_symbols
 from app.models import (
     AppConfig,
+    BacktestStatus,
     BotState,
     BotStatus,
     CoinCandidate,
@@ -347,6 +349,64 @@ class TradingEngine:
         logger.info("[분석 중지] 루프 종료 · 제안·수동 매매만 가능")
         self._bump_version()
         self._notify()
+
+    async def reset_paper_data(self) -> str:
+        """모의 포트폴리오·손익·거래 초기화 (설정 initial_balance 기준)."""
+        if self._is_live():
+            return "실거래 모드에서는 모의 초기화를 할 수 없습니다. 모의투자로 전환하세요."
+        was_running = self.is_running()
+        if was_running:
+            await self.stop()
+
+        bal = float(self.config.initial_balance_krw)
+        store.reset_paper(bal)
+        self.bind_portfolio()
+        self.portfolio.apply_config(self.config)
+
+        from app.engine.risk_manager import reset_risk_day_baseline
+
+        snap = self.portfolio.snapshot({}, self.config)
+        reset_risk_day_baseline(snap.total_value_krw, 0.0)
+
+        self.bot.recommendations = []
+        self.bot.candidates = []
+        self.bot.recent_trades = []
+        self.bot.activity_log = []
+        self.bot.auto_invest_message = ""
+        self.bot.message = f"모의투자 초기화 완료 · 현금 {bal:,.0f}원"
+        self._flash_guard.clear()
+        self._flash_block_until.clear()
+
+        prep = Path(__file__).resolve().parent.parent.parent / "data" / ".aidi-prep-state"
+        if prep.is_file():
+            prep.unlink(missing_ok=True)
+
+        self._bump_version()
+        self._notify()
+        self._log("설정", self.bot.message, "ok")
+        logger.info("[모의 초기화] 잔고 %s원 · 포지션·거래·킬 기준 리셋", f"{bal:,.0f}")
+        return self.bot.message
+
+    async def reset_backtest_data(self) -> str:
+        """백테스트 누적 파일·메모리 학습 데이터 삭제."""
+        from app.storage.persistence import reset_backtest_state
+        from app.engine.backtest_learning import BacktestLearningState, save_learning_state
+
+        reset_backtest_state()
+        self._backtest_acc = get_accumulator()
+        save_learning_state(BacktestLearningState())
+
+        self.bot.backtest = BacktestStatus(
+            running=self.bot.backtest.running if self.bot.backtest else False,
+            message="백테스트 데이터 초기화됨 · 0종목부터 다시 누적",
+            symbols_in_store=0,
+            cycles=0,
+        )
+        self._log("설정", "백테스트·학습 데이터 초기화", "ok")
+        logger.info("[백테스트 초기화] accumulator·learning·체결피드백 삭제")
+        self._bump_version()
+        self._notify()
+        return "백테스트·학습 데이터를 초기화했습니다. 프로그램을 켜 두면 다시 쌓입니다."
 
     async def update_config(self, cfg: AppConfig) -> str:
         old_mode = self.config.trade_mode

@@ -104,6 +104,9 @@ _ACTION_ROUTES: list[tuple[str, str]] = [
     ("/api/trade/sell-all", "전체 매도"),
     ("/api/signals/scan/", "롱·숏 분석"),
     ("/api/position/", "포지션 손익절·제외"),
+    ("/api/data/reset-paper", "모의투자 초기화"),
+    ("/api/data/reset-backtest", "백테스트 데이터 초기화"),
+    ("/api/risk/reset-kill", "킬 스위치 해제"),
     ("/api/view/", "차트 탭 선택"),
     ("/api/chart/select/", "차트 종목 선택"),
 ]

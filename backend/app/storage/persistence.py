@@ -89,4 +89,34 @@ def _default_backtest_state() -> dict[str, Any]:
         "best_sl_pct": 0.0,
         "best_tp_pct": 0.0,
         "updated_at": 0.0,
+        "learning": {},
+        "execution_feedback": [],
     }
+
+
+def reset_paper_state(initial_balance_krw: float) -> None:
+    """모의 잔고·포지션·거래내역 초기화."""
+    save_paper_state(
+        {
+            "cash_krw": float(initial_balance_krw),
+            "realized_pnl_krw": 0.0,
+            "usdt_krw": 1350.0,
+            "positions": {},
+            "trades": [],
+        }
+    )
+
+
+def clear_paper_state_file() -> None:
+    ensure_data_dir()
+    if PAPER_FILE.exists():
+        PAPER_FILE.unlink()
+
+
+def reset_backtest_state() -> None:
+    """백테스트 누적·학습·체결 피드백 전부 삭제."""
+    import time
+
+    data = _default_backtest_state()
+    data["updated_at"] = time.time()
+    save_backtest_state(data)

@@ -114,15 +114,13 @@ class BacktestAccumulator:
                 self.symbols[str(sym).upper()] = SymbolBacktestRecord.from_dict(row)
 
     def save(self) -> None:
-        save_backtest_state(
-            {
-                "cycles": self.cycles,
-                "best_sl_pct": self.best_sl_pct,
-                "best_tp_pct": self.best_tp_pct,
-                "updated_at": self.updated_at,
-                "symbols": {k: v.to_dict() for k, v in self.symbols.items()},
-            }
-        )
+        raw = load_backtest_state()
+        raw["cycles"] = self.cycles
+        raw["best_sl_pct"] = self.best_sl_pct
+        raw["best_tp_pct"] = self.best_tp_pct
+        raw["updated_at"] = self.updated_at
+        raw["symbols"] = {k: v.to_dict() for k, v in self.symbols.items()}
+        save_backtest_state(raw)
 
     def merge_record(self, rec: SymbolBacktestRecord) -> None:
         sym = rec.symbol.upper()

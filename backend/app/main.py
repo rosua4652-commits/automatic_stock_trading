@@ -45,7 +45,7 @@ from app.aidi_middleware import AidiActionLogMiddleware
 STATIC_DIR = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
 
 # PC에서 run.bat 시작 시 표시 — GitHub 최신과 비교용
-AIDI_BUILD = "2026-05-31-chart-sl-tp-lines"
+AIDI_BUILD = "2026-05-31-reset-paper-bt"
 
 
 engine = TradingEngine()
@@ -432,6 +432,26 @@ async def bot_start(body: BotStartRequest | None = None):
     )
     status = await _build_status()
     status["ok"] = ok
+    status["message"] = msg
+    return status
+
+
+@api.post("/data/reset-paper")
+async def data_reset_paper():
+    """모의 잔고·보유·거래·당일 리스크 기준 초기화."""
+    msg = await engine.reset_paper_data()
+    status = await _build_status()
+    status["ok"] = True
+    status["message"] = msg
+    return status
+
+
+@api.post("/data/reset-backtest")
+async def data_reset_backtest():
+    """백테스트 누적·학습·체결 피드백 파일 초기화."""
+    msg = await engine.reset_backtest_data()
+    status = await _build_status()
+    status["ok"] = True
     status["message"] = msg
     return status
 

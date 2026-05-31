@@ -45,6 +45,16 @@ class PortfolioStore:
             except Exception:
                 continue
 
+    def reset_paper(self, initial_balance_krw: float) -> None:
+        from app.storage.persistence import reset_paper_state
+
+        self.paper = PortfolioManager()
+        self.paper.cash_krw = float(initial_balance_krw)
+        self.paper.realized_pnl_krw = 0.0
+        self.paper.positions = {}
+        self.paper.trades = []
+        reset_paper_state(initial_balance_krw)
+
     def save_paper(self) -> None:
         from app.models import Position
 

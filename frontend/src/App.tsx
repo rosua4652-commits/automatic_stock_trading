@@ -806,6 +806,11 @@ export default function App() {
           onSave={handleSaveSettings}
           onClose={() => setSettingsOpen(false)}
           saving={saving}
+          onAfterReset={(s) => {
+            applyPayload(s);
+            setConfigDraft(s.config);
+            showToast(s.message || "초기화 완료");
+          }}
         />
       )}
     </div>

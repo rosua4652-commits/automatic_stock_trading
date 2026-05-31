@@ -1801,6 +1801,36 @@ main.layout.chart-layout {
   color: var(--muted);
 }
 
+.settings-danger {
+  border-color: rgba(248, 113, 113, 0.35);
+}
+
+.reset-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.btn-danger-outline {
+  padding: 0.45rem 0.75rem;
+  border-radius: 8px;
+  border: 1px solid rgba(248, 113, 113, 0.55);
+  background: rgba(248, 113, 113, 0.08);
+  color: #fca5a5;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.btn-danger-outline:hover:not(:disabled) {
+  background: rgba(248, 113, 113, 0.18);
+}
+
+.btn-danger-outline:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .chart-level-kind {
   padding: 0.1rem 0.35rem;
   border-radius: 4px;

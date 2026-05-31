@@ -86,6 +86,14 @@ export async function resetRiskKill(): Promise<StatusPayload> {
   return request("/api/risk/reset-kill", { method: "POST" });
 }
 
+export async function resetPaperData(): Promise<StatusPayload> {
+  return request("/api/data/reset-paper", { method: "POST" });
+}
+
+export async function resetBacktestData(): Promise<StatusPayload> {
+  return request("/api/data/reset-backtest", { method: "POST" });
+}
+
 export type RecommendationApplyItem = {
   symbol: string;
   amount_krw: number;

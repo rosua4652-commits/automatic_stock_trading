@@ -156,6 +156,19 @@ def check_auto_invest_allowed(
     return True, f"리스크 OK · 당일 {daily_pct:+.2f}% ({daily_pnl:+,.0f}원)", state
 
 
+def reset_risk_day_baseline(total_equity_krw: float, realized_pnl_krw: float = 0.0) -> None:
+    """모의 초기화 후 당일 기준 자산 재설정."""
+    state = RiskDayState(
+        day_key=_today_kst(),
+        equity_start_krw=max(float(total_equity_krw), 1.0),
+        realized_start_krw=float(realized_pnl_krw),
+        kill_switch=False,
+        kill_reason="",
+        updated_at=time.time(),
+    )
+    save_risk_state(state)
+
+
 def reset_kill_switch() -> str:
     state = load_risk_state()
     state.kill_switch = False
