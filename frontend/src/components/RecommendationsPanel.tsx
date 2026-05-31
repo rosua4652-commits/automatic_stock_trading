@@ -9,6 +9,7 @@ type Props = {
   aiAmounts: Record<string, number>;
   botStatus: string;
   cashKrw: number;
+  feePct?: number;
   busy: boolean;
   onAmountChange: (symbol: string, amount: number) => void;
   onResetAi: (symbol: string) => void;
@@ -21,6 +22,7 @@ export default function RecommendationsPanel({
   aiAmounts,
   botStatus,
   cashKrw,
+  feePct = 0.05,
   busy,
   onAmountChange,
   onResetAi,
@@ -43,7 +45,7 @@ export default function RecommendationsPanel({
   const running = isRunning(botStatus);
   const picked = list.filter((r) => selected[r.symbol] !== false);
   const total = picked.reduce((s, r) => s + r.amount_krw, 0);
-  const deployable = deployableCashKrw(cashKrw);
+  const deployable = deployableCashKrw(cashKrw, feePct);
   const overBudget = total > deployable + 500;
 
   const toggle = (sym: string) => {
@@ -81,7 +83,10 @@ export default function RecommendationsPanel({
     <section className={`rec-panel ${sidebar ? "rec-sidebar" : ""}`}>
       <div className="rec-head">
         <h3>투자 제안</h3>
-        <p className="panel-hint">AI 금액 수정 가능 · 승인 시 손절/익절 자동</p>
+        <p className="panel-hint">
+          AI 금액 수정 가능 · 승인 시 손절/익절 자동 · 수수료 편도 {feePct}% (왕복{" "}
+          {(feePct * 2).toFixed(2)}% 반영)
+        </p>
         <span className="rec-meta">
           현금 {fmtKrw(cashKrw)}원 · 배분 가능 {fmtKrw(deployable)}원 · 선택{" "}
           {picked.length}건 · 합계 {fmtKrw(total)}원

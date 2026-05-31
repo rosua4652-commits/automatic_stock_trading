@@ -118,10 +118,15 @@ async def run_backtest_once(engine=None) -> BacktestStatus:
             symbols_in_store=len(acc.symbols),
         )
 
+    fee_pct = 0.05
+    if engine is not None:
+        fee_pct = float(getattr(engine.config, "trading_fee_pct", 0.05) or 0.05)
+
     acc, tested, updated = await run_accumulator_cycle(
         symbols,
         default_sl=default_sl,
         default_tp=default_tp,
+        fee_pct=fee_pct,
     )
     logger.info(
         "[백테스트 주기] 배치 %d종 분석 · %d건 갱신 · 누적 %d회 · 저장 %d종",

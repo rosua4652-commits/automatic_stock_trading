@@ -29,7 +29,8 @@ function enrich(
     r.price_usdt ?? 0,
     usdtKrw,
     config.stop_loss_pct,
-    config.take_profit_pct
+    config.take_profit_pct,
+    config.trading_fee_pct ?? 0.05
   );
   return {
     ...r,

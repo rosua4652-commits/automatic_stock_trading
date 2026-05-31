@@ -666,6 +666,7 @@ export default function App() {
                 aiAmounts={aiAmounts}
                 botStatus={data.bot.status}
                 cashKrw={data.portfolio.cash_krw}
+                feePct={appConfig.trading_fee_pct ?? 0.05}
                 busy={tradeBusy}
                 onAmountChange={setRecAmount}
                 onResetAi={resetRecAi}
@@ -721,6 +722,7 @@ export default function App() {
             aiAmounts={aiAmounts}
             botStatus={data.bot.status}
             cashKrw={data.portfolio.cash_krw}
+            feePct={appConfig.trading_fee_pct ?? 0.05}
             busy={tradeBusy}
             onAmountChange={setRecAmount}
             onResetAi={resetRecAi}

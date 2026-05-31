@@ -46,7 +46,7 @@ STATIC_DIR = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
 # PC에서 run.bat 시작 시 표시 — GitHub 최신과 비교용
-AIDI_BUILD = "2026-05-31-paper-full-auto"
+AIDI_BUILD = "2026-05-31-fee-005-roundtrip"
 
 
 def _load_pc_path_hint() -> str:

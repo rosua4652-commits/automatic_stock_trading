@@ -10,6 +10,7 @@ from typing import Any
 import numpy as np
 
 from app.config import settings
+from app.engine.trading_fees import net_pnl_pct_after_fees
 from app.market.upbit_data import market
 from app.aidi_log import get_aidi_logger
 from app.storage.persistence import load_backtest_state, save_backtest_state
@@ -221,6 +222,7 @@ def _simulate_side(
     side: str,
     sl_pct: float,
     tp_pct: float,
+    fee_pct: float = 0.05,
 ) -> tuple[int, int, list[float]]:
     """한 (sl,tp) 조합으로 단일 방향 시뮬."""
     sl = sl_pct / 100
@@ -252,8 +254,9 @@ def _simulate_side(
                 break
         if outcome is None:
             continue
-        rets.append(outcome * 100)
-        if outcome >= 0:
+        net_pct = net_pnl_pct_after_fees(outcome * 100, fee_pct)
+        rets.append(net_pct)
+        if net_pct >= 0:
             wins += 1
         else:
             losses += 1
@@ -261,14 +264,23 @@ def _simulate_side(
     return wins, losses, rets
 
 
-def _optimize_side(closes: np.ndarray, side: str, base_sl: float, base_tp: float) -> SideStats:
+def _optimize_side(
+    closes: np.ndarray,
+    side: str,
+    base_sl: float,
+    base_tp: float,
+    *,
+    fee_pct: float = 0.05,
+) -> SideStats:
     grid = list(PARAM_GRID)
     if (base_sl, base_tp) not in grid:
         grid.insert(0, (base_sl, base_tp))
 
     best = SideStats()
     for sl_p, tp_p in grid:
-        w, l, rets = _simulate_side(closes, side=side, sl_pct=sl_p, tp_pct=tp_p)
+        w, l, rets = _simulate_side(
+            closes, side=side, sl_pct=sl_p, tp_pct=tp_p, fee_pct=fee_pct
+        )
         total = w + l
         if total < 1:
             continue
@@ -292,6 +304,7 @@ async def simulate_symbol(
     *,
     default_sl: float,
     default_tp: float,
+    fee_pct: float = 0.05,
 ) -> SymbolBacktestRecord | None:
     try:
         raw = await market.klines(symbol, "1h", 120)
@@ -301,8 +314,8 @@ async def simulate_symbol(
     if len(raw) < 65:
         return None
     closes = np.array([float(r[4]) for r in raw], dtype=float)
-    long_st = _optimize_side(closes, "long", default_sl, default_tp)
-    short_st = _optimize_side(closes, "short", default_sl, default_tp)
+    long_st = _optimize_side(closes, "long", default_sl, default_tp, fee_pct=fee_pct)
+    short_st = _optimize_side(closes, "short", default_sl, default_tp, fee_pct=fee_pct)
     if long_st.trades < 1 and short_st.trades < 1:
         return None
     return SymbolBacktestRecord(
@@ -345,6 +358,7 @@ async def run_accumulator_cycle(
     default_sl: float,
     default_tp: float,
     batch_size: int | None = None,
+    fee_pct: float = 0.05,
 ) -> tuple[BacktestAccumulator, int, int]:
     """심볼 배치 시뮬 → 파일 누적. 반환: (accumulator, tested, new_records)."""
     global _cycle_offset
@@ -370,7 +384,9 @@ async def run_accumulator_cycle(
     tested = 0
     updated = 0
     for sym in batch:
-        rec = await simulate_symbol(sym, default_sl=default_sl, default_tp=default_tp)
+        rec = await simulate_symbol(
+            sym, default_sl=default_sl, default_tp=default_tp, fee_pct=fee_pct
+        )
         tested += 1
         if rec:
             acc.merge_record(rec)

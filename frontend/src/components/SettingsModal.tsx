@@ -190,7 +190,10 @@ export default function SettingsModal({
                 value={draft.trading_fee_pct ?? 0.05}
                 onChange={(e) => set("trading_fee_pct", Number(e.target.value))}
               />
-              <small>모의투자 체결 시 반영 · 실거래는 거래소 수수료</small>
+              <small>
+                편도 0.05% 기본 · 제안·자동매수·백테스트는 왕복 약 0.10% 반영 · 모의
+                체결 시 매수·매도 각각 차감
+              </small>
             </label>
             <label className="field">
               <span>시장 스캔 최소 점수</span>

@@ -240,10 +240,20 @@ export function mergeWsPayload(
 /** 최소 매수 금액 (원) — 백엔드와 동일 */
 export const MIN_BUY_KRW = 5_000;
 
-/** 수수료 반영 후 AI 배분 가능 현금 */
+/** 편도 fee% · 왕복(매수+매도) 반영 후 배분 가능 매수 원금 */
 export function deployableCashKrw(cashKrw: number, feePct = 0.05) {
   const feeR = Math.max(0, feePct) / 100;
-  return Math.max(0, cashKrw / (1 + feeR) * 0.92);
+  const roundTrip = (1 + feeR) ** 2;
+  return Math.max(0, (cashKrw / roundTrip) * 0.98);
+}
+
+export function roundTripFeePct(feePct = 0.05) {
+  return Math.max(0, feePct) * 2;
+}
+
+export function cashRequiredForBuy(principalKrw: number, feePct = 0.05) {
+  const feeR = Math.max(0, feePct) / 100;
+  return principalKrw * (1 + feeR);
 }
 
 /** 제안 금액 합이 현금을 넘지 않도록 비중 재배분 */
@@ -359,7 +369,8 @@ export function computeTradePlan(
   priceUsdt: number,
   usdtKrw: number,
   stopLossPct: number,
-  takeProfitPct: number
+  takeProfitPct: number,
+  feePct = 0.05
 ) {
   if (priceUsdt <= 0 || usdtKrw <= 0 || amountKrw <= 0) {
     return {
@@ -375,8 +386,11 @@ export function computeTradePlan(
   const slPrice = priceUsdt * (1 - slR);
   const tpPrice = priceUsdt * (1 + tpR);
   const qty = amountKrw / (priceUsdt * usdtKrw);
-  const slKrw = Math.max(0, (priceUsdt - slPrice) * qty * usdtKrw);
-  const tpKrw = Math.max(0, (tpPrice - priceUsdt) * qty * usdtKrw);
+  let slKrw = Math.max(0, (priceUsdt - slPrice) * qty * usdtKrw);
+  let tpKrw = Math.max(0, (tpPrice - priceUsdt) * qty * usdtKrw);
+  const feesRt = amountKrw * (Math.max(0, feePct) / 100) * 2;
+  slKrw = Math.max(0, slKrw + feesRt);
+  tpKrw = Math.max(0, tpKrw - feesRt);
   return {
     quantity_est: Math.round(qty * 1e6) / 1e6,
     stop_loss_price_usdt: slPrice,

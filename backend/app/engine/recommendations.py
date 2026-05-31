@@ -1,6 +1,11 @@
 """AI 투자 제안: 비중·금액 산출."""
 
 from app.config import settings
+from app.engine.trading_fees import (
+    cash_required_for_buy,
+    deployable_cash_krw,
+    fee_krw_round_trip,
+)
 from app.engine.backtest_learning import (
     load_learning_state,
     symbol_passes_learning,
@@ -54,10 +59,21 @@ def _trade_plan(
     return round(qty, 6), sl_price, tp_price, round(sl_krw, 0), round(tp_krw, 0)
 
 
-def deployable_cash_krw(cash_krw: float, fee_pct: float = 0.05) -> float:
-    """수수료·여유분 반영 후 배분 가능 현금."""
-    fee_r = max(0.0, fee_pct) / 100
-    return max(0.0, cash_krw / (1 + fee_r) * 0.92)
+def _trade_plan_with_fees(
+    amount_krw: float,
+    price_usdt: float,
+    usdt_krw: float,
+    stop_loss_pct: float,
+    take_profit_pct: float,
+    fee_pct: float,
+) -> tuple[float, float, float, float, float]:
+    qty, sl_price, tp_price, sl_krw, tp_krw = _trade_plan(
+        amount_krw, price_usdt, usdt_krw, stop_loss_pct, take_profit_pct
+    )
+    fees = fee_krw_round_trip(amount_krw, fee_pct)
+    sl_krw = max(0.0, sl_krw + fees)
+    tp_krw = max(0.0, tp_krw - fees)
+    return qty, sl_price, tp_price, round(sl_krw, 0), round(tp_krw, 0)
 
 
 def allocate_amounts_by_weights(
@@ -150,12 +166,24 @@ def cap_apply_amounts(
     budget = deployable_cash_krw(cash_krw, fee_pct)
     total = sum(amounts.values())
     if total <= budget:
-        return {k: max(MIN_BUY, round(v, -3)) for k, v in amounts.items() if v >= MIN_BUY}
+        out = {k: max(MIN_BUY, round(v, -3)) for k, v in amounts.items() if v >= MIN_BUY}
+    else:
+        keys = list(amounts.keys())
+        weights = [amounts[k] for k in keys]
+        scaled = allocate_amounts_by_weights(weights, cash_krw, fee_pct)
+        out = {k: scaled[i] for i, k in enumerate(keys) if scaled[i] >= MIN_BUY}
 
-    keys = list(amounts.keys())
-    weights = [amounts[k] for k in keys]
-    scaled = allocate_amounts_by_weights(weights, cash_krw, fee_pct)
-    return {k: scaled[i] for i, k in enumerate(keys) if scaled[i] >= MIN_BUY}
+    # 매수 원금 + 편도 수수료 합이 현금을 넘지 않도록 최종 검증
+    principal_sum = sum(out.values())
+    need = cash_required_for_buy(principal_sum, fee_pct)
+    if need > cash_krw and principal_sum > 0:
+        scale = deployable_cash_krw(cash_krw, fee_pct) / principal_sum
+        out = {
+            k: max(MIN_BUY, round(v * scale, -3))
+            for k, v in out.items()
+            if v * scale >= MIN_BUY
+        }
+    return out
 
 
 def build_recommendations(
@@ -222,12 +250,13 @@ def build_recommendations(
         if tickers and c.symbol in tickers:
             price_usdt = float(tickers[c.symbol].get("lastPrice") or 0)
             if price_usdt > 0 and usdt_krw > 0:
-                qty_est, sl_price, tp_price, sl_krw, tp_krw = _trade_plan(
+                qty_est, sl_price, tp_price, sl_krw, tp_krw = _trade_plan_with_fees(
                     amount,
                     price_usdt,
                     usdt_krw,
                     sl_use,
                     tp_use,
+                    fee_pct,
                 )
         tier = (
             "auto"
