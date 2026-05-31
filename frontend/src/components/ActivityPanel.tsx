@@ -1,8 +1,7 @@
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import type { ActivityEntry, BotState } from "../types";
 import { isRunning } from "../utils";
 
-const COLLAPSED_LINES = 3;
 const STORAGE_KEY = "aidi-activity-collapsed";
 
 function readCollapsedPref(): boolean {
@@ -26,6 +25,10 @@ function fmtTime(ts: number): string {
   });
 }
 
+function formatLogInline(entry: ActivityEntry): string {
+  return `${fmtTime(entry.ts)} [${entry.phase}]${entry.message}`;
+}
+
 type Props = {
   bot: BotState;
 };
@@ -47,11 +50,23 @@ export default function ActivityPanel({ bot }: Props) {
     });
   }, []);
 
+  const latestInline = useMemo(() => {
+    if (logs.length > 0) {
+      return formatLogInline(logs[0]);
+    }
+    if (bot.phase_detail) {
+      return bot.phase_detail;
+    }
+    if (bot.phase) {
+      return bot.phase;
+    }
+    return "스캔·자동매수 단계가 여기 표시됩니다";
+  }, [logs, bot.phase, bot.phase_detail]);
+
   if (!running && logs.length === 0) {
     return null;
   }
 
-  const visibleLogs = collapsed ? logs.slice(0, COLLAPSED_LINES) : logs;
   const totalLogs = logs.length;
 
   return (
@@ -69,13 +84,23 @@ export default function ActivityPanel({ bot }: Props) {
           {collapsed ? "▶" : "▼"}
         </span>
         <span className="activity-title">진행 · 로그</span>
-        {running && (bot.seconds_until_scan ?? 0) > 0 && (
-          <span className="activity-countdown">
-            다음 스캔 {bot.seconds_until_scan}초
+        {collapsed ? (
+          <span className="activity-latest-inline" title={latestInline}>
+            {latestInline}
           </span>
-        )}
-        {bot.phase && running && !collapsed && (
-          <span className="activity-phase">{bot.phase_detail || bot.phase}</span>
+        ) : (
+          <>
+            {running && (bot.seconds_until_scan ?? 0) > 0 && (
+              <span className="activity-countdown">
+                다음 스캔 {bot.seconds_until_scan}초
+              </span>
+            )}
+            {bot.phase && running && (
+              <span className="activity-phase">
+                {bot.phase_detail || bot.phase}
+              </span>
+            )}
+          </>
         )}
         <span className="activity-toggle-pill">
           {collapsed ? "펼치기" : "접기"}
@@ -96,25 +121,20 @@ export default function ActivityPanel({ bot }: Props) {
           로그 {totalLogs}줄 · 아래 목록 스크롤
         </p>
       )}
-      <div
-        className={`activity-list-wrap${collapsed ? " activity-list-wrap--mini" : ""}`}
-      >
-        <ul className="activity-list" role="log">
-          {visibleLogs.length === 0 ? (
-            <li className="activity-item muted">
-              스캔·자동매수 단계가 여기 표시됩니다
-            </li>
-          ) : (
-            visibleLogs.map((e, i) => (
-              <ActivityLine key={`${e.ts}-${i}`} entry={e} />
-            ))
-          )}
-        </ul>
-      </div>
-      {collapsed && totalLogs > COLLAPSED_LINES && (
-        <p className="activity-more-hint">
-          최근 {COLLAPSED_LINES}줄 · 전체 {totalLogs}줄 — 위 「펼치기」 클릭
-        </p>
+      {!collapsed && (
+        <div className="activity-list-wrap">
+          <ul className="activity-list" role="log">
+            {logs.length === 0 ? (
+              <li className="activity-item muted">
+                스캔·자동매수 단계가 여기 표시됩니다
+              </li>
+            ) : (
+              logs.map((e, i) => (
+                <ActivityLine key={`${e.ts}-${i}`} entry={e} />
+              ))
+            )}
+          </ul>
+        </div>
       )}
       {!collapsed && (
         <p className="activity-hint">
