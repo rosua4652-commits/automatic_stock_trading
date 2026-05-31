@@ -1,6 +1,4 @@
 @echo off
-setlocal EnableDelayedExpansion
-chcp 65001 >nul 2>nul
 cd /d "%~dp0"
 set "PORT=8000"
 if not "%PORT_OVERRIDE%"=="" set "PORT=%PORT_OVERRIDE%"
@@ -17,7 +15,7 @@ set "PREP_EC=%ERRORLEVEL%"
 if not "%PREP_EC%"=="0" (
   if "%PREP_EC%"=="3" (
     echo.
-    echo  Git 없음/구버전: update-zip.bat 실행 후 run.bat 다시 실행하세요.
+    echo  Run update-zip.bat then run.bat again.
   )
   pause
   exit /b %PREP_EC%
@@ -25,7 +23,7 @@ if not "%PREP_EC%"=="0" (
 
 call "%~dp0scripts\aidi-port-check.bat" %PORT%
 if errorlevel 1 (
-  echo  Port %PORT% in use — stopping old server...
+  echo  Port %PORT% in use - stopping old server...
   call "%~dp0stop-aidi.bat" silent
   timeout /t 2 /nobreak >nul
 )

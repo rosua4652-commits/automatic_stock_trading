@@ -1,23 +1,23 @@
 @echo off
-chcp 65001 >nul 2>nul
-setlocal
 cd /d "%~dp0"
 
 where git >nul 2>&1
 if errorlevel 1 (
-  echo ERROR: Git not installed. Use update-zip.bat instead.
+  echo ERROR: Git not installed or not in PATH.
+  echo Install Git, open a NEW CMD window, then run this again.
+  echo Or use update-zip.bat instead.
   pause
   exit /b 1
 )
 
 if not exist "backend\app\main.py" (
-  echo ERROR: Run from project root ^(backend\app\main.py missing^).
+  echo ERROR: Run from project root. backend\app\main.py not found.
   pause
   exit /b 1
 )
 
 echo.
-echo  AIDI — git sync with GitHub main
+echo  AIDI - git sync with GitHub main
 echo  =================================
 echo  Folder: %CD%
 echo.
@@ -25,7 +25,7 @@ echo.
 if not exist ".git" (
   echo Initializing git...
   git init
-  if errorlevel 1 goto :fail
+  if errorlevel 1 goto fail
 )
 
 git remote get-url origin >nul 2>&1
@@ -37,18 +37,18 @@ if errorlevel 1 (
 
 echo Fetching origin...
 git fetch origin
-if errorlevel 1 goto :fail
+if errorlevel 1 goto fail
 
-echo Switching to main and matching GitHub...
+echo Switching to main...
 git checkout -f -B main origin/main
-if errorlevel 1 goto :fail
+if errorlevel 1 goto fail
 
 git branch --set-upstream-to=origin/main main
-if errorlevel 1 goto :fail
+if errorlevel 1 goto fail
 
 echo.
-echo  OK. Local branch: main  ^(tracks origin/main^)
-for /f "delims=" %%b in ('findstr /R "AIDI_BUILD" backend\app\main.py') do echo  %%b
+echo  OK. Branch main tracks origin/main
+findstr "AIDI_BUILD" backend\app\main.py
 echo.
 echo  Next: run.bat
 echo.
@@ -57,8 +57,7 @@ exit /b 0
 
 :fail
 echo.
-echo  ERROR: git sync failed.
-echo  Try: update-zip.bat  ^(no git needed^)
+echo  ERROR: git sync failed. Try update-zip.bat
 echo.
 pause
 exit /b 1
