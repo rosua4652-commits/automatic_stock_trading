@@ -1319,18 +1319,39 @@ body {
   gap: 0.45rem;
   width: 100%;
   margin: 0;
-  padding: 0.35rem 0.15rem;
-  border: none;
-  background: transparent;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid rgba(56, 139, 253, 0.55);
+  border-radius: 8px;
+  background: rgba(56, 139, 253, 0.1);
   color: var(--text);
   font-size: 0.95rem;
   font-weight: 600;
   cursor: pointer;
   text-align: left;
+  box-sizing: border-box;
 }
 
 .collapsible-tab:hover {
-  color: var(--accent);
+  border-color: var(--accent);
+  background: rgba(56, 139, 253, 0.18);
+}
+
+.collapsible-tab-action {
+  margin-left: auto;
+  padding: 0.22rem 0.65rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #fff;
+  background: var(--accent);
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+
+.collapsible-collapsed-hint {
+  margin: 0.35rem 0 0;
+  padding: 0 0.15rem;
+  font-size: 0.78rem;
+  color: var(--muted);
 }
 
 .collapsible-chevron {
@@ -1345,10 +1366,10 @@ body {
 }
 
 .collapsible-tab-badge {
-  margin-left: auto;
   font-size: 0.72rem;
   font-weight: 500;
-  color: var(--muted);
+  color: var(--accent);
+  flex-shrink: 0;
 }
 
 .collapsible-body {

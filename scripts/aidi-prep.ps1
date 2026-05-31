@@ -136,7 +136,8 @@ function Test-FastReady(
     [string]$RemoteBuild
 ) {
     if (-not $LocalBuild -or -not $VenvOk -or -not $DistOk) { return $false }
-    if ($UiSrc -ne $LocalBuild) { return $false }
+    # UI 소스 빌드 ID와 백엔드가 달라도 dist 스탬프만 맞으면 OK
+    if ($UiSrc -ne $LocalBuild -and $DistStamp -ne $UiSrc) { return $false }
     if ($DistStamp -ne $LocalBuild) { return $false }
     if ($RemoteBuild -and $RemoteBuild -ne $LocalBuild) { return $false }
     return $true
@@ -246,7 +247,7 @@ if (-not (Test-Path $dataDir)) { New-Item -ItemType Directory -Path $dataDir | O
 $needFe = $false
 if (-not $distOk) { $needFe = $true }
 if ($uiSrc -ne $localBuild) { $needFe = $true }
-if ($distStamp -ne $localBuild) { $needFe = $true }
+if ($distStamp -ne $uiSrc) { $needFe = $true }
 
 if ($needFe) {
     try {

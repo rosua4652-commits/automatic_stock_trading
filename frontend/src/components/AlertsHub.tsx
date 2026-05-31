@@ -75,8 +75,13 @@ export default function AlertsHub({
       <CollapsibleSection
         title="투자 제안"
         storageKey="aidi-alerts-rec-collapsed"
-        defaultCollapsed={true}
+        defaultCollapsed={visibleRecs.length === 0}
         count={visibleRecs.length}
+        collapsedHint={
+          visibleRecs.length === 0
+            ? "제안 없음 · 「펼치기」로 안내 보기"
+            : `${visibleRecs.length}건 · 「펼치기」`
+        }
         className="alerts-hub-section alerts-hub-recs"
       >
         <div className="alerts-hub-section-head">

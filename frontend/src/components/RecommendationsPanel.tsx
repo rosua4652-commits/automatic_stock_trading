@@ -236,12 +236,20 @@ export default function RecommendationsPanel({
       </>
     );
 
+  const collapsedHint =
+    list.length === 0 && running
+      ? "분석 중… · 파란 「펼치기」를 누르면 안내 표시"
+      : list.length > 0
+        ? `${list.length}건 · 「펼치기」로 목록 보기`
+        : undefined;
+
   return (
     <CollapsibleSection
       title="투자 제안"
       storageKey={REC_PANEL_STORAGE}
-      defaultCollapsed={true}
+      defaultCollapsed={list.length === 0}
       count={list.length}
+      collapsedHint={collapsedHint}
       className={panelClass}
     >
       {body}

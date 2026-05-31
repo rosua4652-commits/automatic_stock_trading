@@ -7,6 +7,8 @@ type Props = {
   defaultCollapsed?: boolean;
   count?: number;
   countLabel?: string;
+  /** 접힌 때 탭 아래 한 줄 안내 */
+  collapsedHint?: string;
   className?: string;
   children: ReactNode;
 };
@@ -25,9 +27,10 @@ function readCollapsed(key: string, defaultCollapsed: boolean): boolean {
 export default function CollapsibleSection({
   title,
   storageKey,
-  defaultCollapsed = true,
+  defaultCollapsed = false,
   count,
   countLabel = "건",
+  collapsedHint,
   className = "",
   children,
 }: Props) {
@@ -70,7 +73,13 @@ export default function CollapsibleSection({
             {countLabel}
           </span>
         )}
+        <span className="collapsible-tab-action">
+          {collapsed ? "펼치기" : "접기"}
+        </span>
       </button>
+      {collapsed && collapsedHint ? (
+        <p className="collapsible-collapsed-hint">{collapsedHint}</p>
+      ) : null}
       {!collapsed && <div className="collapsible-body">{children}</div>}
     </section>
   );
