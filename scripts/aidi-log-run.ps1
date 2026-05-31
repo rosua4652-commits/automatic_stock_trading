@@ -7,6 +7,16 @@ param(
 
 $ErrorActionPreference = "Continue"
 $root = Split-Path -Parent $PSScriptRoot
+
+# Python stdout UTF-8 <-> PowerShell (한글 로그 깨짐 방지)
+$env:PYTHONIOENCODING = "utf-8"
+$env:PYTHONUTF8 = "1"
+try {
+    chcp.com 65001 | Out-Null
+} catch {}
+[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding $false
+[Console]::InputEncoding = New-Object System.Text.UTF8Encoding $false
+
 Set-Location (Join-Path $root "backend")
 
 $py = Join-Path $root "backend\.venv\Scripts\python.exe"
@@ -37,8 +47,9 @@ function Write-TeeLine {
 Write-TeeLine "uvicorn app.main:app --host 0.0.0.0 --port $Port"
 
 $bindErr = $false
-& $py -m uvicorn app.main:app --host 0.0.0.0 --port $Port 2>&1 | ForEach-Object {
+& $py -X utf8 -m uvicorn app.main:app --host 0.0.0.0 --port $Port 2>&1 | ForEach-Object {
     $line = [string]$_
+    if ($line -match '^\xEF\xBB\xBF') { $line = $line.TrimStart([char]0xFEFF) }
     Write-TeeLine $line
     if ($line -match '10048|Address already in use|bind on address') {
         $bindErr = $true

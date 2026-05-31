@@ -1,6 +1,7 @@
 @echo off
 setlocal EnableDelayedExpansion
 cd /d "%~dp0"
+call "%~dp0scripts\aidi-console-utf8.bat"
 set "PORT=8000"
 if not "%PORT_OVERRIDE%"=="" set "PORT=%PORT_OVERRIDE%"
 

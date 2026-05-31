@@ -45,7 +45,7 @@ from app.aidi_middleware import AidiActionLogMiddleware
 STATIC_DIR = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
 
 # PC에서 run.bat 시작 시 표시 — GitHub 최신과 비교용
-AIDI_BUILD = "2026-05-31-reset-paper-bt"
+AIDI_BUILD = "2026-05-31-win-console-utf8"
 
 
 engine = TradingEngine()
@@ -228,7 +228,7 @@ setup_aidi_logging()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global _broadcast_task
-    get_aidi_logger().info("AIDI 서버 시작 · 빌드 %s", AIDI_BUILD)
+    get_aidi_logger().info("AIDI 서버 시작 - 빌드 %s", AIDI_BUILD)
     engine.config = apply_credentials_to_config(engine.config)
     engine.bind_portfolio()
     engine.ensure_auto_guard()

@@ -16,6 +16,7 @@ _CONSOLE_UNSAFE = str.maketrans(
         "\u2013": "-",  # –
         "\u2212": "-",  # −
         "\u00a0": " ",
+        "\u00b7": " ",  # middle dot
     }
 )
 
@@ -26,37 +27,81 @@ def sanitize_log_text(msg: str) -> str:
     return msg.translate(_CONSOLE_UNSAFE)
 
 
-class ConsoleSafeFormatter(logging.Formatter):
-    """콘솔 인코딩(cp949)에서도 로그가 끊기지 않게 정규화."""
+def _win_console_encoding() -> str:
+    enc = getattr(sys.stdout, "encoding", None) or ""
+    enc = enc.lower().replace("_", "-")
+    if enc.startswith("utf"):
+        return "utf-8"
+    if enc in ("cp949", "euc-kr", "mbcs", "ansi", "cp936"):
+        return "cp949"
+    return "utf-8"
 
+
+class ConsoleSafeFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
         return sanitize_log_text(super().format(record))
 
 
-class ConsoleSafeStreamHandler(logging.StreamHandler):
+class WindowsAwareStreamHandler(logging.StreamHandler):
+    """Windows: UTF-8 buffer or cp949 — 한글 깨짐 방지."""
+
     def emit(self, record: logging.LogRecord) -> None:
         try:
-            super().emit(record)
+            msg = sanitize_log_text(self.format(record))
+            term = self.terminator
+            line = msg + term
+            stream = self.stream
+            enc = _win_console_encoding() if sys.platform == "win32" else "utf-8"
+            buf = getattr(stream, "buffer", None)
+            if enc == "utf-8" and buf is not None:
+                buf.write(line.encode("utf-8", errors="replace"))
+                buf.flush()
+                return
+            if sys.platform == "win32" and enc == "cp949":
+                safe = line.encode("cp949", errors="replace").decode("cp949")
+                stream.write(safe)
+                self.flush()
+                return
+            stream.write(line)
+            self.flush()
         except UnicodeEncodeError:
             try:
-                msg = sanitize_log_text(self.format(record))
                 stream = self.stream
-                enc = getattr(stream, "encoding", None) or "utf-8"
-                stream.write(msg.encode(enc, errors="replace").decode(enc, errors="replace"))
-                stream.write(self.terminator)
-                self.flush()
+                buf = getattr(stream, "buffer", None)
+                if buf is not None:
+                    buf.write(
+                        (sanitize_log_text(self.format(record)) + self.terminator).encode(
+                            "utf-8", errors="replace"
+                        )
+                    )
+                    buf.flush()
+                else:
+                    stream.write(
+                        sanitize_log_text(self.format(record)) + self.terminator
+                    )
+                    self.flush()
             except Exception:
                 self.handleError(record)
+        except Exception:
+            self.handleError(record)
 
 
 def _configure_windows_console_utf8() -> None:
     if sys.platform != "win32":
         return
+    try:
+        import ctypes
+
+        ctypes.windll.kernel32.SetConsoleOutputCP(65001)
+        ctypes.windll.kernel32.SetConsoleCP(65001)
+    except Exception:
+        pass
     for stream in (sys.stdout, sys.stderr):
         try:
             stream.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[attr-defined]
         except Exception:
             pass
+
 
 # uvicorn access 로그에서 숨길 폴링 경로 (차트·상태)
 _QUIET_ACCESS = re.compile(
@@ -74,6 +119,28 @@ class QuietPollingAccessFilter(logging.Filter):
         return True
 
 
+def _install_root_handler(handler: logging.Handler, fmt: logging.Formatter) -> None:
+    root = logging.getLogger()
+    handler.setFormatter(fmt)
+    if not root.handlers:
+        root.addHandler(handler)
+        root.setLevel(logging.INFO)
+        return
+    replaced = False
+    for h in list(root.handlers):
+        if isinstance(h, logging.StreamHandler):
+            root.removeHandler(h)
+            if not replaced:
+                nh = WindowsAwareStreamHandler(h.stream)
+                nh.setFormatter(fmt)
+                nh.setLevel(h.level)
+                root.addHandler(nh)
+                replaced = True
+    if not replaced:
+        root.addHandler(handler)
+    root.setLevel(logging.INFO)
+
+
 def setup_aidi_logging() -> logging.Logger:
     """uvicorn 시작 전·lifespan에서 한 번 호출."""
     _configure_windows_console_utf8()
@@ -81,38 +148,17 @@ def setup_aidi_logging() -> logging.Logger:
         "%(asctime)s | AIDI | %(levelname)s | %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
     )
-
-    root = logging.getLogger()
-    if not root.handlers:
-        handler = ConsoleSafeStreamHandler(sys.stdout)
-        handler.setFormatter(fmt)
-        root.addHandler(handler)
-    else:
-        for h in root.handlers:
-            if isinstance(h, logging.StreamHandler):
-                h.setFormatter(fmt)
-                if type(h) is logging.StreamHandler:
-                    # 기본 StreamHandler → cp949 안전 핸들러로 교체
-                    root.removeHandler(h)
-                    safe = ConsoleSafeStreamHandler(h.stream)
-                    safe.setFormatter(fmt)
-                    safe.setLevel(h.level)
-                    root.addHandler(safe)
-    root.setLevel(logging.INFO)
+    _install_root_handler(WindowsAwareStreamHandler(sys.stdout), fmt)
 
     for name in ("aidi", "app", "app.engine", "app.market"):
         lg = logging.getLogger(name)
         lg.setLevel(logging.INFO)
         lg.propagate = True
 
-    # httpx INFO floods logs (every Upbit/ipify request)
     for name in ("httpx", "httpcore", "h11"):
         logging.getLogger(name).setLevel(logging.WARNING)
 
     aidi = logging.getLogger(AIDI_LOGGER_NAME)
-    if not aidi.handlers:
-        # root로만 전파
-        pass
 
     access = logging.getLogger("uvicorn.access")
     access.addFilter(QuietPollingAccessFilter())
@@ -152,7 +198,6 @@ def log_action(
     log_event(" ".join(parts))
 
 
-# POST 경로 → 한글 라벨 (와일드카드는 prefix 매칭)
 _ACTION_ROUTES: list[tuple[str, str]] = [
     ("/api/bot/start", "분석/자동투자 시작"),
     ("/api/bot/stop", "분석 중지"),
