@@ -11,6 +11,7 @@ type Props = {
   directionMessage?: string;
   backtestMessage?: string;
   backtest?: BacktestStatus;
+  autoInvestMessage?: string;
   botStatus: string;
   cashKrw: number;
   feePct?: number;
@@ -28,6 +29,7 @@ export default function AlertsHub({
   directionMessage,
   backtestMessage,
   backtest,
+  autoInvestMessage,
   botStatus,
   cashKrw,
   feePct = 0.05,
@@ -65,7 +67,7 @@ export default function AlertsHub({
         <div className="alerts-hub-section-head">
           <h2 className="alerts-hub-title">투자 제안</h2>
           <p className="panel-hint">
-            AI 분석 시작 후 자동 추천 · 승인 시 매수 (익절/손절 자동 감시)
+            분석 시작=제안만 · 자동 투자 시작=롱/단타 체크 후 BT·학습 통과 시 자동 매수
           </p>
           {visibleRecs.length > 0 && (
             <button
@@ -146,6 +148,17 @@ export default function AlertsHub({
               · 최적 손익절 {backtest.best_sl_pct}%/{backtest.best_tp_pct}%
             </span>
           ) : null}
+          {backtest?.learning?.long_min_bt_score != null ? (
+            <span className="alerts-backtest-params">
+              {" "}
+              · 학습 롱≥{backtest.learning.long_min_bt_score?.toFixed(0)} 단타≥
+              {backtest.learning.scalp_min_bt_score?.toFixed(0)}
+              {backtest.learning.last_adjust_message
+                ? ` (${backtest.learning.last_adjust_message})`
+                : ""}
+            </span>
+          ) : null}
+          {autoInvestMessage ? ` · ${autoInvestMessage}` : null}
           {running && " · 분석 실행 중"}
         </footer>
       )}

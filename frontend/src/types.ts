@@ -21,6 +21,7 @@ export interface AppConfig {
   scan_interval_sec: number;
   min_buy_score: number;
   min_entry_score: number;
+  max_auto_buys_per_scan?: number;
   exchange?: string;
   api_access_key?: string;
   api_secret_key?: string;
@@ -226,6 +227,19 @@ export interface DirectionSignalItem {
   scanned_at: number;
 }
 
+export interface BacktestLearningStatus {
+  long_min_bt_score?: number;
+  scalp_min_bt_score?: number;
+  long_sl_pct?: number;
+  long_tp_pct?: number;
+  scalp_sl_pct?: number;
+  scalp_tp_pct?: number;
+  recent_batch_win_rate?: number;
+  adjust_cycles?: number;
+  blocked_count?: number;
+  last_adjust_message?: string;
+}
+
 export interface BacktestStatus {
   running: boolean;
   last_run: number;
@@ -239,6 +253,7 @@ export interface BacktestStatus {
   best_tp_pct?: number;
   symbols_in_store?: number;
   last_batch_updated?: number;
+  learning?: BacktestLearningStatus;
 }
 
 export interface BotState {
@@ -253,6 +268,10 @@ export interface BotState {
   backtest?: BacktestStatus;
   recent_trades: TradeEvent[];
   manual_mode: boolean;
+  auto_invest_active?: boolean;
+  auto_invest_long?: boolean;
+  auto_invest_scalp?: boolean;
+  auto_invest_message?: string;
 }
 
 export interface StatusPayload {
@@ -270,6 +289,8 @@ export interface StatusPayload {
     exit_plan_pct?: boolean;
     manual_sl_tp?: boolean;
     small_sell_retry?: boolean;
+    auto_invest_long_scalp?: boolean;
+    backtest_learning?: boolean;
   };
   network?: {
     outbound_ip?: string;

@@ -36,6 +36,12 @@ class AppConfig(BaseModel):
     scan_interval_sec: int = Field(default=30, ge=15, le=300)
     min_buy_score: float = Field(default=28.0, ge=15.0, le=90.0)
     min_entry_score: float = Field(default=38.0, ge=25.0, le=90.0)
+    max_auto_buys_per_scan: int = Field(
+        default=2,
+        ge=0,
+        le=8,
+        description="자동투자 시 스캔당 최대 매수 건수",
+    )
     exchange: str = Field(default="upbit", description="upbit | binance")
     api_access_key: str = ""
     api_secret_key: str = ""
@@ -313,6 +319,19 @@ class DirectionSignalItem(BaseModel):
     scanned_at: float = 0.0
 
 
+class BacktestLearningStatus(BaseModel):
+    long_min_bt_score: float = 42.0
+    scalp_min_bt_score: float = 38.0
+    long_sl_pct: float = 0.0
+    long_tp_pct: float = 0.0
+    scalp_sl_pct: float = 0.0
+    scalp_tp_pct: float = 0.0
+    recent_batch_win_rate: float = 0.0
+    adjust_cycles: int = 0
+    blocked_count: int = 0
+    last_adjust_message: str = ""
+
+
 class BacktestStatus(BaseModel):
     running: bool = False
     last_run: float = 0.0
@@ -326,6 +345,15 @@ class BacktestStatus(BaseModel):
     best_tp_pct: float = 0.0
     symbols_in_store: int = 0
     last_batch_updated: int = 0
+    learning: BacktestLearningStatus = Field(default_factory=BacktestLearningStatus)
+
+
+class BotStartRequest(BaseModel):
+    """분석만 vs 자동투자(롱·단타·혼합)."""
+
+    auto_invest: bool = False
+    auto_long: bool = False
+    auto_scalp: bool = False
 
 
 class BotState(BaseModel):
@@ -333,6 +361,10 @@ class BotState(BaseModel):
     view_symbol: str = "BTCUSDT"
     last_scan: Optional[float] = None
     message: str = "대기 중"
+    auto_invest_active: bool = False
+    auto_invest_long: bool = False
+    auto_invest_scalp: bool = False
+    auto_invest_message: str = ""
     candidates: list[CoinCandidate] = Field(default_factory=list)
     liquid_symbols: list[str] = Field(
         default_factory=list,

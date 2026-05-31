@@ -64,8 +64,18 @@ export async function testCredentials(cfg: AppConfig): Promise<CredentialsTestRe
   });
 }
 
-export async function startBot(): Promise<StatusPayload> {
-  return request("/api/bot/start", { method: "POST" });
+export type BotStartOptions = {
+  auto_invest?: boolean;
+  auto_long?: boolean;
+  auto_scalp?: boolean;
+};
+
+export async function startBot(opts?: BotStartOptions): Promise<StatusPayload> {
+  return request("/api/bot/start", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(opts ?? {}),
+  });
 }
 
 export async function stopBot(): Promise<StatusPayload> {

@@ -436,6 +436,7 @@ export const DEFAULT_CONFIG = {
   scan_interval_sec: 30,
   min_buy_score: 28,
   min_entry_score: 38,
+  max_auto_buys_per_scan: 2,
   exchange: "upbit",
   api_access_key: "",
   api_secret_key: "",

@@ -18,6 +18,7 @@ from app.models import (
     AccountLinkInfo,
     AppConfig,
     ApplyRecommendationsRequest,
+    BotStartRequest,
     ManualBuyRequest,
     ManualSellRequest,
     PositionExcludeRequest,
@@ -45,7 +46,7 @@ STATIC_DIR = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
 # PC에서 run.bat 시작 시 표시 — GitHub 최신과 비교용
-AIDI_BUILD = "2026-05-31-detail-logs"
+AIDI_BUILD = "2026-05-31-auto-invest-learning"
 
 
 def _load_pc_path_hint() -> str:
@@ -170,6 +171,8 @@ async def _build_status() -> dict:
         "small_sell_retry": True,
         "trade_history_merge": True,
         "upbit_trade_history": True,
+        "auto_invest_long_scalp": True,
+        "backtest_learning": True,
     }
     payload["all_trades"] = [t.model_dump() for t in portfolio.trades[-500:]]
     if engine.config.trade_mode == TradeMode.LIVE:
@@ -424,8 +427,21 @@ async def network_diagnose():
 
 
 @api.post("/bot/start")
-async def bot_start():
-    ok, msg = await engine.start()
+async def bot_start(body: BotStartRequest | None = None):
+    req = body or BotStartRequest()
+    if req.auto_invest and not (req.auto_long or req.auto_scalp):
+        return JSONResponse(
+            {
+                "ok": False,
+                "message": "자동투자: 롱 또는 단타를 하나 이상 선택하세요",
+            },
+            status_code=400,
+        )
+    ok, msg = await engine.start(
+        auto_invest=req.auto_invest,
+        auto_long=req.auto_long,
+        auto_scalp=req.auto_scalp,
+    )
     status = await _build_status()
     status["ok"] = ok
     status["message"] = msg

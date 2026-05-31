@@ -1,6 +1,11 @@
-"""AI 투자 제안: 비중·금액 산출 (자동 체결 없음)."""
+"""AI 투자 제안: 비중·금액 산출."""
 
 from app.config import settings
+from app.engine.backtest_learning import (
+    load_learning_state,
+    symbol_passes_learning,
+)
+from app.engine.backtest_optimizer import BacktestAccumulator
 from app.models import AppConfig, CoinCandidate, InvestmentRecommendation
 
 MIN_BUY = settings.min_buy_krw
@@ -256,3 +261,55 @@ def build_recommendations(
             )
         )
     return recs
+
+
+def filter_recommendations_for_auto(
+    recs: list[InvestmentRecommendation],
+    *,
+    auto_long: bool,
+    auto_scalp: bool,
+    acc: BacktestAccumulator | None,
+    max_picks: int,
+) -> list[InvestmentRecommendation]:
+    """롱·단타·혼합 — 학습 임계값 통과한 제안만."""
+    if not recs or max_picks <= 0:
+        return []
+    if not auto_long and not auto_scalp:
+        return []
+
+    learning = load_learning_state()
+    acc = acc or BacktestAccumulator()
+
+    long_pool: list[InvestmentRecommendation] = []
+    scalp_pool: list[InvestmentRecommendation] = []
+    for r in recs:
+        tier = (r.entry_tier or "").lower()
+        if auto_long and tier == "auto":
+            ok, _ = symbol_passes_learning(acc, learning, r.symbol, mode="long")
+            if ok:
+                long_pool.append(r)
+        elif auto_scalp and tier == "scalp":
+            ok, _ = symbol_passes_learning(acc, learning, r.symbol, mode="scalp")
+            if ok:
+                scalp_pool.append(r)
+
+    long_pool.sort(key=lambda x: x.entry_score + x.market_score, reverse=True)
+    scalp_pool.sort(key=lambda x: x.entry_score + x.market_score, reverse=True)
+
+    picks: list[InvestmentRecommendation] = []
+    if auto_long and auto_scalp:
+        li, si = 0, 0
+        while len(picks) < max_picks and (li < len(long_pool) or si < len(scalp_pool)):
+            if li < len(long_pool) and len(picks) < max_picks:
+                picks.append(long_pool[li])
+                li += 1
+            if si < len(scalp_pool) and len(picks) < max_picks:
+                picks.append(scalp_pool[si])
+                si += 1
+            if li >= len(long_pool) and si >= len(scalp_pool):
+                break
+    elif auto_long:
+        picks = long_pool[:max_picks]
+    else:
+        picks = scalp_pool[:max_picks]
+    return picks

@@ -181,8 +181,13 @@ def _merge_side(prev: SideStats, new: SideStats) -> SideStats:
     losses = prev.losses + new.losses
     avg = prev.avg_return_pct * pw + new.avg_return_pct * w
     wr = (wins / t * 100) if t else 0.0
-    score = max(prev.score, new.score)
-    if new.score >= prev.score and new.best_sl_pct > 0:
+    # 점수는 최댓값만 쓰지 않고 EMA로 완만히 개선·악화 반영
+    if new.trades > 0:
+        score = prev.score * 0.65 + new.score * 0.35
+    else:
+        score = prev.score
+    score = max(0.0, min(100.0, score))
+    if new.score >= prev.score * 0.95 and new.best_sl_pct > 0:
         sl, tp = new.best_sl_pct, new.best_tp_pct
     else:
         sl, tp = prev.best_sl_pct, prev.best_tp_pct
@@ -365,4 +370,7 @@ async def run_accumulator_cycle(
     _update_global_best(acc)
     acc.prune(250)
     acc.save()
+    from app.engine.backtest_learning import update_learning_from_batch
+
+    update_learning_from_batch(acc, batch, default_sl=default_sl, default_tp=default_tp)
     return acc, tested, updated

@@ -9,7 +9,8 @@ from app.config import settings
 from app.engine.backtest_optimizer import BacktestAccumulator, run_accumulator_cycle
 from app.aidi_log import get_aidi_logger
 from app.market.scanner import top_usdt_symbols
-from app.models import BacktestStatus
+from app.engine.backtest_learning import load_learning_state
+from app.models import BacktestLearningStatus, BacktestStatus
 
 logger = get_aidi_logger()
 
@@ -58,6 +59,21 @@ def status_from_accumulator(
         f"손익절 {sl:.1f}%/{tp:.1f}% · 승률 {win_rate:.1f}% · "
         f"{long_hint} · {short_hint}"
     )
+    learn = load_learning_state()
+    learn_status = BacktestLearningStatus(
+        long_min_bt_score=learn.long_min_bt_score,
+        scalp_min_bt_score=learn.scalp_min_bt_score,
+        long_sl_pct=learn.long_sl_pct,
+        long_tp_pct=learn.long_tp_pct,
+        scalp_sl_pct=learn.scalp_sl_pct,
+        scalp_tp_pct=learn.scalp_tp_pct,
+        recent_batch_win_rate=learn.recent_batch_win_rate,
+        adjust_cycles=learn.adjust_cycles,
+        blocked_count=len(learn.blocked_symbols),
+        last_adjust_message=learn.last_adjust_message,
+    )
+    if learn.last_adjust_message:
+        msg = f"{msg} · {learn.last_adjust_message}"
     return BacktestStatus(
         running=True,
         last_run=time.time(),
@@ -71,6 +87,7 @@ def status_from_accumulator(
         best_tp_pct=tp,
         symbols_in_store=len(acc.symbols),
         last_batch_updated=batch_updated,
+        learning=learn_status,
     )
 
 

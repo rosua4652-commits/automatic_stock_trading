@@ -1472,6 +1472,50 @@ body {
   display: flex;
   gap: 0.5rem;
   align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.auto-invest-opts {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+  padding: 0.25rem 0.5rem;
+  border-radius: 10px;
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  background: rgba(56, 189, 248, 0.08);
+}
+
+.auto-check {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #e8edf4;
+  cursor: pointer;
+  user-select: none;
+}
+
+.auto-check input {
+  accent-color: var(--accent);
+}
+
+.btn-auto-start {
+  font-size: 0.78rem;
+  padding: 0.35rem 0.65rem;
+  white-space: nowrap;
+}
+
+.auto-invest-badge {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #7dd3fc;
+  padding: 0.35rem 0.55rem;
+  border-radius: 8px;
+  background: rgba(56, 189, 248, 0.12);
+  border: 1px solid rgba(56, 189, 248, 0.35);
 }
 
 .btn-ghost {

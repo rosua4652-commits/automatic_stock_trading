@@ -86,7 +86,7 @@ def log_action(
 
 # POST 경로 → 한글 라벨 (와일드카드는 prefix 매칭)
 _ACTION_ROUTES: list[tuple[str, str]] = [
-    ("/api/bot/start", "분석 시작"),
+    ("/api/bot/start", "분석/자동투자 시작"),
     ("/api/bot/stop", "분석 중지"),
     ("/api/config", "설정 저장"),
     ("/api/credentials/test", "API 연결 테스트"),

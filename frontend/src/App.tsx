@@ -56,6 +56,8 @@ export default function App() {
   const [botBusy, setBotBusy] = useState(false);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [autoLong, setAutoLong] = useState(true);
+  const [autoScalp, setAutoScalp] = useState(false);
   const [mainView, setMainView] = useState<MainView>("chart");
   const [tradeBusy, setTradeBusy] = useState(false);
 
@@ -170,6 +172,56 @@ export default function App() {
     [applyPayload]
   );
 
+  const startAutoInvest = async () => {
+    if (botBusy || !data || running || stopping) return;
+    if (!autoLong && !autoScalp) {
+      showToast("롱 또는 단타를 하나 이상 체크하세요");
+      return;
+    }
+    setBotBusy(true);
+    botLockVersionRef.current = (data.status_version ?? 0) + 1000;
+    try {
+      setData({
+        ...data,
+        bot: {
+          ...data.bot,
+          status: "running",
+          message: "자동투자 시작 중…",
+          auto_invest_active: true,
+          auto_invest_long: autoLong,
+          auto_invest_scalp: autoScalp,
+        },
+      });
+      const s = await startBot({
+        auto_invest: true,
+        auto_long: autoLong,
+        auto_scalp: autoScalp,
+      });
+      botLockVersionRef.current = s.status_version ?? botLockVersionRef.current;
+      setData(s);
+      if (s.ok === false) {
+        showToast(s.message || "자동투자를 시작할 수 없습니다");
+      } else {
+        const mix =
+          autoLong && autoScalp
+            ? "롱·단타 혼합"
+            : autoLong
+              ? "롱"
+              : "단타";
+        showToast(
+          s.message ||
+            `자동투자(${mix}) · BT 학습 반영 · 스캔마다 조건 충족 시 매수`
+        );
+      }
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "요청 실패");
+      const s = await fetchStatus();
+      applyPayload(s);
+    } finally {
+      setBotBusy(false);
+    }
+  };
+
   const toggleBot = async () => {
     if (botBusy || !data) return;
     setBotBusy(true);
@@ -190,7 +242,7 @@ export default function App() {
           ...data,
           bot: { ...data.bot, status: "running", message: "분석 중..." },
         });
-        const s = await startBot();
+        const s = await startBot({});
         botLockVersionRef.current = s.status_version ?? botLockVersionRef.current;
         setData(s);
         if (s.ok === false) {
@@ -452,6 +504,43 @@ export default function App() {
             variant="topbar"
           />
           <div className="top-actions">
+            {!running && !stopping ? (
+              <div className="auto-invest-opts" title="자동투자 전략 선택">
+                <label className="auto-check">
+                  <input
+                    type="checkbox"
+                    checked={autoLong}
+                    onChange={(e) => setAutoLong(e.target.checked)}
+                  />
+                  롱
+                </label>
+                <label className="auto-check">
+                  <input
+                    type="checkbox"
+                    checked={autoScalp}
+                    onChange={(e) => setAutoScalp(e.target.checked)}
+                  />
+                  단타
+                </label>
+                <button
+                  type="button"
+                  className="btn-secondary btn-auto-start"
+                  onClick={startAutoInvest}
+                  disabled={botBusy}
+                >
+                  자동 투자 시작
+                </button>
+              </div>
+            ) : data.bot.auto_invest_active ? (
+              <span className="auto-invest-badge">
+                자동
+                {data.bot.auto_invest_long && data.bot.auto_invest_scalp
+                  ? " 롱·단타"
+                  : data.bot.auto_invest_long
+                    ? " 롱"
+                    : " 단타"}
+              </span>
+            ) : null}
             <button
               type="button"
               className="btn-ghost btn-settings"
@@ -468,7 +557,7 @@ export default function App() {
               onClick={toggleBot}
               disabled={botBusy || stopping}
             >
-              {stopping ? "중지 중..." : running ? "분석 중지" : "분석 시작"}
+              {stopping ? "중지 중..." : running ? "중지" : "분석 시작"}
             </button>
           </div>
         </header>
@@ -515,6 +604,7 @@ export default function App() {
           directionMessage={data.bot.direction_scan_message}
           backtestMessage={data.bot.backtest?.message}
           backtest={data.bot.backtest}
+          autoInvestMessage={data.bot.auto_invest_message}
           botStatus={data.bot.status}
           cashKrw={data.portfolio.cash_krw}
           feePct={appConfig.trading_fee_pct}

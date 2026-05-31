@@ -18,7 +18,12 @@ from app.engine.portfolio import PortfolioManager
 from app.engine.portfolio_store import store
 from app.engine.backtest_optimizer import BacktestAccumulator
 from app.engine.backtest_runner import get_accumulator
-from app.engine.recommendations import build_recommendations, cap_apply_amounts
+from app.engine.backtest_learning import load_learning_state, strategy_sl_tp
+from app.engine.recommendations import (
+    build_recommendations,
+    cap_apply_amounts,
+    filter_recommendations_for_auto,
+)
 from app.market.upbit_data import market
 from app.market.coin_registry import coin_meta
 from app.market.direction_analyzer import analyze_direction
@@ -165,7 +170,16 @@ class TradingEngine:
         self._status_version += 1
         return self._status_version
 
-    async def start(self) -> tuple[bool, str]:
+    async def start(
+        self,
+        *,
+        auto_invest: bool = False,
+        auto_long: bool = False,
+        auto_scalp: bool = False,
+    ) -> tuple[bool, str]:
+        if auto_invest and not (auto_long or auto_scalp):
+            return False, "자동투자: 롱 또는 단타 중 하나 이상 체크하세요"
+
         if self._is_live():
             if not has_api_keys(self.config):
                 self.bot.message = "실거래: API 키를 설정에서 입력하세요"
@@ -183,15 +197,38 @@ class TradingEngine:
         self.bind_portfolio()
         self._bump_version()
         self.bot.status = BotStatus.RUNNING
-        self.bot.manual_mode = True
-        self.bot.message = "시장 스캔·차트 분석 중... (승인 후 매수)"
+        self.bot.manual_mode = not auto_invest
+        self.bot.auto_invest_active = auto_invest
+        self.bot.auto_invest_long = auto_long
+        self.bot.auto_invest_scalp = auto_scalp
         mode = "실거래" if self._is_live() else "모의"
-        logger.info(
-            "[분석 시작] %s · 스캔 간격 %ds · 최소진입점수 %.0f",
-            mode,
-            self.config.scan_interval_sec,
-            self.config.min_entry_score,
-        )
+        if auto_invest:
+            parts = []
+            if auto_long:
+                parts.append("롱")
+            if auto_scalp:
+                parts.append("단타")
+            mix = "·".join(parts)
+            if auto_long and auto_scalp:
+                mix += " 혼합"
+            learn = load_learning_state()
+            self.bot.auto_invest_message = (
+                f"자동투자 {mix} · BT학습 롱≥{learn.long_min_bt_score:.0f} "
+                f"단타≥{learn.scalp_min_bt_score:.0f}"
+            )
+            self.bot.message = (
+                f"[{mode}] {self.bot.auto_invest_message} · 스캔 후 자동 매수"
+            )
+            logger.info("[자동투자 시작] %s · %s", mode, self.bot.auto_invest_message)
+        else:
+            self.bot.auto_invest_message = ""
+            self.bot.message = "시장 스캔·차트 분석 중... (승인 후 매수)"
+            logger.info(
+                "[분석 시작] %s · 스캔 간격 %ds · 최소진입점수 %.0f",
+                mode,
+                self.config.scan_interval_sec,
+                self.config.min_entry_score,
+            )
         self._task = asyncio.create_task(self._loop())
         await self._tick()
         self._notify()
@@ -216,6 +253,10 @@ class TradingEngine:
 
         self.bot.status = BotStatus.STOPPED
         self.bot.manual_mode = True
+        self.bot.auto_invest_active = False
+        self.bot.auto_invest_long = False
+        self.bot.auto_invest_scalp = False
+        self.bot.auto_invest_message = ""
         self.bot.message = "분석 중지됨 · 제안 목록에서 승인 매수 또는 수동 매매"
         logger.info("[분석 중지] 루프 종료 · 제안·수동 매매만 가능")
         self._bump_version()
@@ -725,7 +766,168 @@ class TradingEngine:
         await self._monitor_positions(tickers)
         if not self._is_live():
             self._persist()
+        if self.bot.auto_invest_active:
+            await self._maybe_auto_invest_after_scan()
         self._notify()
+
+    async def _maybe_auto_invest_after_scan(self) -> None:
+        if not self.bot.auto_invest_active or not self.is_running():
+            return
+        acc = self._backtest_acc or get_accumulator()
+        max_n = int(getattr(self.config, "max_auto_buys_per_scan", 2) or 2)
+        picks = filter_recommendations_for_auto(
+            self.bot.recommendations,
+            auto_long=self.bot.auto_invest_long,
+            auto_scalp=self.bot.auto_invest_scalp,
+            acc=acc,
+            max_picks=max_n,
+        )
+        if not picks:
+            self.bot.auto_invest_message = (
+                "자동 매수 대기 — BT·차트 기준 통과 종목 없음 (다음 스캔)"
+            )
+            return
+
+        raw_amts = {r.symbol.upper(): float(r.amount_krw) for r in picks}
+        fee_pct = float(getattr(self.config, "trading_fee_pct", 0.05))
+        capped = cap_apply_amounts(raw_amts, self.portfolio.cash_krw, fee_pct)
+        if not capped:
+            self.bot.auto_invest_message = "자동 매수 스킵 — 가용 현금 부족"
+            return
+
+        learn = load_learning_state()
+        sl_tp_map: dict[str, tuple[float, float]] = {}
+        for r in picks:
+            sym = r.symbol.upper()
+            mode = "scalp" if (r.entry_tier or "").lower() == "scalp" else "long"
+            sl, tp = strategy_sl_tp(
+                learn,
+                acc,
+                sym,
+                mode=mode,
+                default_sl=self.config.stop_loss_pct,
+                default_tp=self.config.take_profit_pct,
+            )
+            sl_tp_map[sym] = (sl, tp)
+
+        syms = ", ".join(
+            f"{r.base}({'단타' if r.entry_tier == 'scalp' else '롱'})" for r in picks
+        )
+        logger.info("[자동투자] %d건 매수 시도 · %s", len(picks), syms)
+        ok_n, msg = await self._execute_recommendation_buys(
+            picks,
+            amount_overrides=capped,
+            sl_tp_pct=sl_tp_map,
+            buy_tag="AI 자동투자",
+        )
+        self.bot.auto_invest_message = msg if ok_n else f"자동 매수 실패 · {msg}"
+
+    async def _execute_recommendation_buys(
+        self,
+        to_apply: list,
+        *,
+        amount_overrides: dict[str, float] | None = None,
+        sl_tp_pct: dict[str, tuple[float, float]] | None = None,
+        buy_tag: str = "AI 승인",
+    ) -> tuple[int, str]:
+        """제안 목록 일괄 매수 (승인·자동 공통)."""
+        if not to_apply:
+            return 0, "매수 대상 없음"
+
+        self.bind_portfolio()
+        self.portfolio.usdt_krw = await market.usdt_krw_rate()
+        fee_pct = float(getattr(self.config, "trading_fee_pct", 0.05))
+        raw_amts: dict[str, float] = {}
+        for rec in to_apply:
+            sym = rec.symbol.upper()
+            raw_amts[sym] = float(
+                (amount_overrides or {}).get(sym, rec.amount_krw)
+            )
+        capped_amts = cap_apply_amounts(raw_amts, self.portfolio.cash_krw, fee_pct)
+        if not capped_amts:
+            return 0, "현금 부족"
+
+        tickers = await market.tickers_24h()
+        ok_n = 0
+        fail_msgs: list[str] = []
+        success_syms: set[str] = set()
+
+        for rec in to_apply:
+            sym = rec.symbol.upper()
+            t = tickers.get(sym)
+            if not t:
+                fail_msgs.append(f"{rec.base}: 시세 없음")
+                continue
+            if sym not in capped_amts:
+                fail_msgs.append(f"{rec.base}: 배분 제외")
+                continue
+            price = float(t["lastPrice"])
+            amt = round(capped_amts[sym], -3)
+            tier = (rec.entry_tier or "auto").lower()
+            outlook = "AI 롱 자동" if tier != "scalp" else "AI 단타 자동"
+            sl_p, tp_p = (self.config.stop_loss_pct, self.config.take_profit_pct)
+            if sl_tp_pct and sym in sl_tp_pct:
+                sl_p, tp_p = sl_tp_pct[sym]
+            sl_pct = sl_p / 100
+            tp_pct = tp_p / 100
+            tp_label = f"익절{_fmt_pct_setting(tp_p)}"
+            sl_label = f"손절{_fmt_pct_setting(sl_p)}"
+            entry_txt = rec.entry_detail or buy_tag
+            buy_reason = f"{buy_tag} · {int(amt):,}원 · {tp_label}/{sl_label}"
+
+            if self._is_live():
+                ok, msg = await live_market_buy(
+                    self.config,
+                    sym,
+                    amt,
+                    f"{buy_reason} · {entry_txt}",
+                    as_auto=True,
+                    score=rec.market_score,
+                    entry_score=rec.entry_score,
+                    entry_reason=f"{entry_txt} · {sl_label}/{tp_label}",
+                    entry_outlook=outlook,
+                )
+                if ok:
+                    ok_n += 1
+                    success_syms.add(sym)
+                    self.bind_portfolio()
+                else:
+                    fail_msgs.append(f"{rec.base}: {msg}")
+            else:
+                pos = self.portfolio.buy(
+                    sym,
+                    rec.base,
+                    price,
+                    amt,
+                    sl_pct,
+                    tp_pct,
+                    score=rec.market_score,
+                    reason=buy_reason,
+                    entry_reason=f"{entry_txt} · {sl_label}/{tp_label}",
+                    entry_score=rec.entry_score,
+                    entry_outlook=outlook,
+                    auto_managed=True,
+                )
+                if pos:
+                    ok_n += 1
+                    success_syms.add(sym)
+                else:
+                    fail_msgs.append(f"{rec.base}: 잔고 부족")
+
+        if ok_n:
+            await self._monitor_positions(tickers)
+            self._persist()
+            self.bot.recent_trades = self.portfolio.trades[-40:]
+            self.bot.recommendations = [
+                r
+                for r in self.bot.recommendations
+                if r.symbol.upper() not in success_syms
+            ]
+            self.ensure_auto_guard()
+        if ok_n == 0:
+            return 0, fail_msgs[0] if fail_msgs else "매수 실패"
+        tail = f" ({fail_msgs[0]})" if fail_msgs else ""
+        return ok_n, f"{ok_n}건 {buy_tag} · 익절/손절 감시{tail}"
 
     async def _price_for_symbol(self, sym: str, tickers: dict) -> float:
         t = tickers.get(sym)
@@ -883,92 +1085,16 @@ class TradingEngine:
         for rec in to_apply:
             sym = rec.symbol.upper()
             raw_amts[sym] = float(amount_map.get(sym, rec.amount_krw))
-        fee_pct = float(getattr(self.config, "trading_fee_pct", 0.05))
-        capped_amts = cap_apply_amounts(raw_amts, self.portfolio.cash_krw, fee_pct)
-        if not capped_amts:
-            return False, "현금이 부족해 승인 매수할 수 없습니다"
-
-        tickers = await market.tickers_24h()
-        sl_pct = self.config.stop_loss_pct / 100
-        tp_pct = self.config.take_profit_pct / 100
-        ok_n = 0
-        fail_msgs: list[str] = []
-        success_syms: set[str] = set()
-
-        for rec in to_apply:
-            sym = rec.symbol.upper()
-            t = tickers.get(sym)
-            if not t:
-                fail_msgs.append(f"{rec.base}: 시세 없음")
-                continue
-            price = float(t["lastPrice"])
-            entry_txt = rec.entry_detail or "승인 매수"
-            if sym not in capped_amts:
-                fail_msgs.append(f"{rec.base}: 배분 제외(현금 부족)")
-                continue
-            amt = round(capped_amts[sym], -3)
-            tp_label = f"익절{_fmt_pct_setting(self.config.take_profit_pct)}"
-            sl_label = f"손절{_fmt_pct_setting(self.config.stop_loss_pct)}"
-            buy_reason = (
-                f"AI 승인 · {int(amt):,}원 · {tp_label}/{sl_label} 자동"
-            )
-
-            if self._is_live():
-                ok, msg = await live_market_buy(
-                    self.config,
-                    sym,
-                    amt,
-                    f"{buy_reason} · {entry_txt}",
-                    as_auto=True,
-                    score=rec.market_score,
-                    entry_score=rec.entry_score,
-                    entry_reason=f"{entry_txt} · {tp_label}/{sl_label} 자동매도",
-                    entry_outlook="AI 자동투자",
-                )
-                if ok:
-                    ok_n += 1
-                    success_syms.add(sym)
-                    self.bind_portfolio()
-                else:
-                    fail_msgs.append(f"{rec.base}: {msg}")
-            else:
-                pos = self.portfolio.buy(
-                    sym,
-                    rec.base,
-                    price,
-                    amt,
-                    sl_pct,
-                    tp_pct,
-                    score=rec.market_score,
-                    reason=buy_reason,
-                    entry_reason=f"{entry_txt} · {tp_label}/{sl_label} 자동매도",
-                    entry_score=rec.entry_score,
-                    entry_outlook="AI 자동투자",
-                    auto_managed=True,
-                )
-                if pos:
-                    ok_n += 1
-                    success_syms.add(sym)
-                else:
-                    fail_msgs.append(f"{rec.base}: 잔고 부족")
-
-        if ok_n:
-            await self._monitor_positions(tickers)
-            self._persist()
-            self.bot.recent_trades = self.portfolio.trades[-40:]
-            self.bot.recommendations = [
-                r for r in self.bot.recommendations if r.symbol.upper() not in success_syms
-            ]
-            self.ensure_auto_guard()
+        ok_n, msg = await self._execute_recommendation_buys(
+            to_apply,
+            amount_overrides=raw_amts,
+            buy_tag="AI 승인",
+        )
         self._bump_version()
         self._notify()
-
         if ok_n == 0:
-            err = fail_msgs[0] if fail_msgs else "매수 실패"
-            logger.info("[투자 제안 승인] 실패 · %s", err)
-            return False, err
-        tail = f" ({fail_msgs[0]})" if fail_msgs else ""
-        msg = f"{ok_n}건 AI 자동투자 매수 · 익절/손절 감시 중{tail}"
+            logger.info("[투자 제안 승인] 실패 · %s", msg)
+            return False, msg
         logger.info("[투자 제안 승인] %s", msg)
         return True, msg
 
