@@ -21,6 +21,8 @@ RISK_FILE = Path(__file__).resolve().parent.parent.parent / "data" / "risk_state
 class RiskDayState:
     day_key: str = ""
     equity_start_krw: float = 0.0
+    paper_equity_start_krw: float = 0.0
+    live_equity_start_krw: float = 0.0
     realized_start_krw: float = 0.0
     kill_switch: bool = False
     kill_reason: str = ""
@@ -30,6 +32,8 @@ class RiskDayState:
         return {
             "day_key": self.day_key,
             "equity_start_krw": round(self.equity_start_krw, 0),
+            "paper_equity_start_krw": round(self.paper_equity_start_krw, 0),
+            "live_equity_start_krw": round(self.live_equity_start_krw, 0),
             "realized_start_krw": round(self.realized_start_krw, 0),
             "kill_switch": self.kill_switch,
             "kill_reason": self.kill_reason,
@@ -43,11 +47,22 @@ class RiskDayState:
         return cls(
             day_key=str(d.get("day_key") or ""),
             equity_start_krw=float(d.get("equity_start_krw") or 0),
+            paper_equity_start_krw=float(d.get("paper_equity_start_krw") or 0),
+            live_equity_start_krw=float(d.get("live_equity_start_krw") or 0),
             realized_start_krw=float(d.get("realized_start_krw") or 0),
             kill_switch=bool(d.get("kill_switch")),
             kill_reason=str(d.get("kill_reason") or ""),
             updated_at=float(d.get("updated_at") or 0),
         )
+
+
+def mode_equity_start(state: RiskDayState, mode: str) -> float:
+    """당일 KST 기준 모의/실거래 시작 자산."""
+    if state.day_key != _today_kst():
+        return 0.0
+    if mode == "live":
+        return float(state.live_equity_start_krw or 0)
+    return float(state.paper_equity_start_krw or 0)
 
 
 def _today_kst() -> str:
@@ -84,24 +99,49 @@ def _ensure_day(
     *,
     total_equity: float,
     realized_pnl_krw: float,
+    mode: str | None = None,
 ) -> RiskDayState:
     today = _today_kst()
     if state.day_key != today:
         state = RiskDayState(
             day_key=today,
-            equity_start_krw=max(total_equity, 1.0),
+            equity_start_krw=0.0,
+            paper_equity_start_krw=0.0,
+            live_equity_start_krw=0.0,
             realized_start_krw=realized_pnl_krw,
             kill_switch=False,
             kill_reason="",
             updated_at=time.time(),
         )
-        save_risk_state(state)
+    mode_key = None
+    if mode == "live":
+        mode_key = "live_equity_start_krw"
+    elif mode == "paper":
+        mode_key = "paper_equity_start_krw"
+    if mode_key and getattr(state, mode_key) <= 0:
+        setattr(state, mode_key, max(total_equity, 1.0))
+    if mode_key:
+        state.equity_start_krw = float(getattr(state, mode_key))
     elif state.equity_start_krw <= 0:
         state.equity_start_krw = max(total_equity, 1.0)
         state.realized_start_krw = realized_pnl_krw
-        state.updated_at = time.time()
-        save_risk_state(state)
+    state.updated_at = time.time()
+    save_risk_state(state)
     return state
+
+
+def ensure_mode_equity_start(
+    mode: str,
+    total_equity: float,
+    realized_pnl_krw: float,
+) -> RiskDayState:
+    """통계·비활성 모드용 — 당일 시작 자산 기록."""
+    return _ensure_day(
+        load_risk_state(),
+        total_equity=total_equity,
+        realized_pnl_krw=realized_pnl_krw,
+        mode=mode,
+    )
 
 
 def evaluate_daily_risk(
@@ -109,14 +149,16 @@ def evaluate_daily_risk(
     snap: PortfolioSnapshot,
     *,
     realized_pnl_krw: float,
+    mode: str = "paper",
 ) -> tuple[RiskDayState, float, float]:
     """(state, daily_pnl_krw, daily_pnl_pct) — 초과 시 kill_switch 설정."""
     state = _ensure_day(
         load_risk_state(),
         total_equity=snap.total_value_krw,
         realized_pnl_krw=realized_pnl_krw,
+        mode=mode,
     )
-    start_eq = max(state.equity_start_krw, 1.0)
+    start_eq = max(mode_equity_start(state, mode) or state.equity_start_krw, 1.0)
     daily_pnl = snap.total_value_krw - start_eq
     daily_pct = daily_pnl / start_eq * 100
 
@@ -173,8 +215,9 @@ def check_auto_invest_allowed(
     if not hours_ok:
         return False, hours_msg, load_risk_state()
 
+    mode = "paper" if is_paper else "live"
     state, daily_pnl, daily_pct = evaluate_daily_risk(
-        config, snap, realized_pnl_krw=realized_pnl_krw
+        config, snap, realized_pnl_krw=realized_pnl_krw, mode=mode
     )
     if state.kill_switch:
         return False, state.kill_reason or "일손실 킬 스위치 작동 중", state
@@ -189,16 +232,25 @@ def check_auto_invest_allowed(
     return True, f"리스크 OK · 당일 {daily_pct:+.2f}% ({daily_pnl:+,.0f}원)", state
 
 
-def reset_risk_day_baseline(total_equity_krw: float, realized_pnl_krw: float = 0.0) -> None:
+def reset_risk_day_baseline(
+    total_equity_krw: float,
+    realized_pnl_krw: float = 0.0,
+    *,
+    mode: str = "paper",
+) -> None:
     """모의 초기화 후 당일 기준 자산 재설정."""
-    state = RiskDayState(
-        day_key=_today_kst(),
-        equity_start_krw=max(float(total_equity_krw), 1.0),
-        realized_start_krw=float(realized_pnl_krw),
-        kill_switch=False,
-        kill_reason="",
-        updated_at=time.time(),
-    )
+    eq = max(float(total_equity_krw), 1.0)
+    state = load_risk_state()
+    state.day_key = _today_kst()
+    state.equity_start_krw = eq
+    state.realized_start_krw = float(realized_pnl_krw)
+    state.kill_switch = False
+    state.kill_reason = ""
+    state.updated_at = time.time()
+    if mode == "live":
+        state.live_equity_start_krw = eq
+    else:
+        state.paper_equity_start_krw = eq
     save_risk_state(state)
 
 

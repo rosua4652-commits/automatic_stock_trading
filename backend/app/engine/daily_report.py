@@ -34,14 +34,18 @@ def build_daily_report(
     config: AppConfig,
     *,
     realized_pnl_krw: float,
+    equity_start_krw: float | None = None,
 ) -> dict[str, Any]:
     t0, t1 = _day_bounds_kst()
     day_trades = [t for t in trades if t0 <= float(t.ts or 0) < t1]
     sells = [t for t in day_trades if (t.side or "").upper() == "SELL"]
     buys = [t for t in day_trades if (t.side or "").upper() == "BUY"]
 
-    risk = load_risk_state()
-    start_eq = max(float(risk.equity_start_krw or 0), 1.0)
+    if equity_start_krw is not None and equity_start_krw > 0:
+        start_eq = max(float(equity_start_krw), 1.0)
+    else:
+        risk = load_risk_state()
+        start_eq = max(float(risk.equity_start_krw or 0), 1.0)
     daily_pnl = snap.total_value_krw - start_eq
     daily_pct = daily_pnl / start_eq * 100.0
 

@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { dailyReportCsvUrl, fetchDailyReport } from "../api";
+import { dailyReportCsvUrl, fetchStatsOverview } from "../api";
 import type { BotState, Portfolio, TradeEvent } from "../types";
-import { fmtKrw, fmtPct } from "../utils";
 import {
   modeSellBars,
   portfolioAllocationSlices,
@@ -15,6 +14,7 @@ import HourlyActivityChart from "./charts/HourlyActivityChart";
 import KpiCard from "./charts/KpiCard";
 import SvgPieChart from "./charts/SvgPieChart";
 import AutoInvestDashboard from "./AutoInvestDashboard";
+import ModeStatsPanel, { type ModeStatsData } from "./ModeStatsPanel";
 
 type Props = {
   portfolio: Portfolio;
@@ -23,21 +23,54 @@ type Props = {
   configMode: string;
 };
 
+type Overview = {
+  active_mode: string;
+  day_kst?: string;
+  paper: ModeStatsData & { portfolio?: Portfolio; trades?: TradeEvent[] };
+  live: ModeStatsData & { portfolio?: Portfolio; trades?: TradeEvent[] };
+  live_linked?: boolean;
+};
+
+function portfolioFromBlock(
+  block: Overview["paper"] | undefined,
+  fallback: Portfolio
+): Portfolio {
+  if (block?.portfolio && typeof block.portfolio === "object") {
+    return block.portfolio as Portfolio;
+  }
+  return fallback;
+}
+
 export default function StatsTab({ portfolio, trades, bot, configMode }: Props) {
-  const [report, setReport] = useState<Record<string, unknown> | null>(null);
+  const [overview, setOverview] = useState<Overview | null>(null);
 
   useEffect(() => {
-    fetchDailyReport()
-      .then((r) => setReport(r.report))
-      .catch(() => setReport(null));
-  }, [portfolio.total_value_krw, trades.length, bot.last_scan]);
+    fetchStatsOverview()
+      .then((r) => setOverview(r as Overview))
+      .catch(() => setOverview(null));
+  }, [portfolio.total_value_krw, trades.length, bot.last_scan, configMode]);
 
-  const day = useMemo(() => todayTradeStats(trades), [trades]);
-  const alloc = useMemo(() => portfolioAllocationSlices(portfolio), [portfolio]);
+  const activeKey = overview?.active_mode ?? configMode;
+  const activeBlock =
+    activeKey === "live" ? overview?.live : overview?.paper;
+  const chartTrades = activeBlock?.trades ?? trades;
+  const chartPortfolio = portfolioFromBlock(activeBlock, portfolio);
 
-  const dailyPnl = Number(report?.daily_pnl_krw ?? 0);
-  const dailyPct = Number(report?.daily_pnl_pct ?? 0);
-  const pnlTone = dailyPnl >= 0 ? "up" : "down";
+  const day = useMemo(() => todayTradeStats(chartTrades), [chartTrades]);
+  const paperAlloc = useMemo(
+    () =>
+      portfolioAllocationSlices(
+        portfolioFromBlock(overview?.paper, portfolio)
+      ),
+    [overview?.paper, portfolio]
+  );
+  const liveAlloc = useMemo(
+    () =>
+      portfolioAllocationSlices(
+        portfolioFromBlock(overview?.live, { ...portfolio, positions: [], cash_krw: 0, total_value_krw: 0 })
+      ),
+    [overview?.live, portfolio]
+  );
 
   const tradeMixSlices = useMemo(
     () =>
@@ -51,31 +84,63 @@ export default function StatsTab({ portfolio, trades, bot, configMode }: Props) 
   );
 
   const btM = btMaturityPct(bot);
+  const dayLabel = overview?.day_kst ?? day.dayLabel;
+
+  const paperData: ModeStatsData = overview?.paper ?? {
+    mode: "paper",
+    total_value_krw: configMode === "paper" ? portfolio.total_value_krw : 0,
+    cash_krw: configMode === "paper" ? portfolio.cash_krw : 0,
+    coin_value_krw: 0,
+    daily_pnl_krw: 0,
+    daily_pnl_pct: 0,
+    positions_count: configMode === "paper" ? portfolio.positions.length : 0,
+  };
+
+  const liveData: ModeStatsData = overview?.live ?? {
+    mode: "live",
+    total_value_krw: configMode === "live" ? portfolio.total_value_krw : 0,
+    cash_krw: configMode === "live" ? portfolio.cash_krw : 0,
+    coin_value_krw: 0,
+    daily_pnl_krw: 0,
+    daily_pnl_pct: 0,
+    positions_count: configMode === "live" ? portfolio.positions.length : 0,
+  };
 
   return (
     <div className="stats-tab scroll-y">
       <header className="stats-tab-head">
         <h2>통계 · 대시보드</h2>
-        <p className="panel-hint">
-          {day.dayLabel} (KST) · {configMode === "live" ? "실거래" : "모의투자"}
-        </p>
+        <p className="panel-hint">{dayLabel} (KST) · 모의 / 실거래 분리</p>
         <a className="link-btn" href={dailyReportCsvUrl()} download>
-          당일 CSV
+          당일 CSV ({activeKey === "live" ? "실거래" : "모의"})
         </a>
       </header>
 
-      <div className="kpi-grid">
-        <KpiCard
-          label="당일 손익"
-          value={`${dailyPnl >= 0 ? "+" : ""}${fmtKrw(dailyPnl)}원`}
-          sub={fmtPct(dailyPct)}
-          tone={pnlTone}
+      <div className="stats-mode-split">
+        <ModeStatsPanel
+          title="모의투자"
+          data={paperData}
+          active={activeKey === "paper"}
         />
-        <KpiCard
-          label="총자산"
-          value={`${fmtKrw(portfolio.total_value_krw)}원`}
-          sub={`현금 ${fmtKrw(portfolio.cash_krw)}`}
+        <ModeStatsPanel
+          title="실거래"
+          data={liveData}
+          active={activeKey === "live"}
+          hint={
+            overview && !overview.live_linked
+              ? "API 미연결 — 키 저장 후 연결 테스트"
+              : undefined
+          }
         />
+      </div>
+
+      <p className="stats-tab-hint">
+        아래 차트 · 당일 체결 분석:{" "}
+        <strong>{activeKey === "live" ? "실거래" : "모의투자"}</strong> (상단
+        「선택 중」 모드)
+      </p>
+
+      <div className="kpi-grid kpi-grid-compact">
         <KpiCard
           label="당일 매매"
           value={`${day.buys} / ${day.sells}`}
@@ -96,16 +161,6 @@ export default function StatsTab({ portfolio, trades, bot, configMode }: Props) 
           value={`${btM.toFixed(0)}%`}
           sub={`롱≥${bot.backtest?.learning?.long_min_bt_score?.toFixed(0) ?? "—"} 단타≥${bot.backtest?.learning?.scalp_min_bt_score?.toFixed(0) ?? "—"}`}
         />
-        <KpiCard
-          label="보유 종목"
-          value={`${portfolio.positions.length}종`}
-          sub={`평가 ${fmtKrw(
-            portfolio.positions.reduce(
-              (s, p) => s + (p.current_value_krw || 0),
-              0
-            )
-          )}원`}
-        />
       </div>
 
       <div className="stats-chart-grid">
@@ -113,15 +168,23 @@ export default function StatsTab({ portfolio, trades, bot, configMode }: Props) 
           <HourlyActivityChart
             buys={day.hourlyBuys}
             sells={day.hourlySells}
-            title="시간대별 매매 (KST)"
+            title={`시간대별 매매 (KST) · ${activeKey === "live" ? "실거래" : "모의"}`}
           />
         </section>
 
         <section className="stats-chart-card">
           <SvgPieChart
-            slices={alloc}
-            title="자산 배분 (현재)"
-            emptyText="보유 없음 · 현금만"
+            slices={paperAlloc}
+            title="자산 배분 · 모의"
+            emptyText="모의 보유 없음"
+          />
+        </section>
+
+        <section className="stats-chart-card">
+          <SvgPieChart
+            slices={liveAlloc}
+            title="자산 배분 · 실거래"
+            emptyText="실거래 보유 없음"
           />
         </section>
 

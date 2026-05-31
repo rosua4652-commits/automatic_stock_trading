@@ -108,6 +108,10 @@ export async function fetchDailyReport(): Promise<{
   return request("/api/reports/daily");
 }
 
+export async function fetchStatsOverview(): Promise<Record<string, unknown>> {
+  return request("/api/reports/stats-overview");
+}
+
 export async function fetchBacktestReport(): Promise<{
   ok: boolean;
   report: Record<string, unknown>;

@@ -45,7 +45,7 @@ from app.aidi_middleware import AidiActionLogMiddleware
 STATIC_DIR = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
 
 # PC에서 run.bat 시작 시 표시 — GitHub 최신과 비교용
-AIDI_BUILD = "2026-06-02-settings-wide"
+AIDI_BUILD = "2026-06-02-stats-dual-mode"
 
 
 engine = TradingEngine()
@@ -508,6 +508,13 @@ async def positions_migrate_exits(force: bool = False):
     status["message"] = msg
     status["migrated_count"] = n
     return status
+
+
+@api.get("/reports/stats-overview")
+async def reports_stats_overview():
+    from app.engine.stats_overview import build_stats_overview
+
+    return await build_stats_overview(engine, store, engine.config)
 
 
 @api.get("/reports/daily")
