@@ -92,11 +92,15 @@ def dict_to_trade_event(
     if not d.get("side"):
         return None
     uid = str(d.get("order_uuid") or "")
+    side_row = str(d.get("side") or "")
     d["reason"] = normalize_trade_reason(
-        str(d.get("side") or ""),
+        side_row,
         str(d.get("reason") or ""),
         is_auto=bool(d.get("is_auto")),
         has_aidi_hint=bool(uid),
+        exit_kind=classify_exit_kind(str(d.get("reason") or ""), side_row)
+        if side_row.upper() == "SELL"
+        else "",
     )
     try:
         return TradeEvent(**d)
@@ -127,6 +131,21 @@ def _f(val: Any) -> float:
         return float(val or 0)
     except (TypeError, ValueError):
         return 0.0
+
+
+def _hint_applies_to_side(hint: dict[str, Any], side: str) -> bool:
+    """매도 전용 사유(익절/손절)가 매수 주문 UUID에 붙는 것 방지."""
+    if not hint:
+        return False
+    side_u = str(side or "").upper()
+    hs = str(hint.get("side") or "").upper()
+    if hs and hs != side_u:
+        return False
+    ek = str(hint.get("exit_kind") or "").lower()
+    text = str(hint.get("reason") or "")
+    if ek in ("tp", "sl") or "익절" in text or "손절" in text or "급락" in text:
+        return side_u == "SELL"
+    return True
 
 
 def classify_exit_kind(reason: str, side: str) -> str:
@@ -165,9 +184,14 @@ def normalize_trade_reason(
     is_buy = str(side).upper() == "BUY"
     kind = (exit_kind or "").lower()
 
-    if kind == "tp" or "익절" in text:
+    # 익절·손절은 매도(SELL)에만 — 매수에 잘못 붙은 힌트는 무시
+    if is_buy:
+        if kind in ("tp", "sl") or "익절" in text or "손절" in text or "급락" in text:
+            text = ""
+            kind = ""
+    elif kind == "tp" or "익절" in text:
         return "익절"
-    if kind == "sl" or "손절" in text or "급락" in text:
+    elif kind == "sl" or "손절" in text or "급락" in text:
         return "손절"
 
     if is_buy:
@@ -213,6 +237,7 @@ def collect_reason_hints(live_meta: dict[str, Any]) -> dict[str, dict[str, Any]]
                 hints[uid] = {
                     "reason": str(pe.get("reason") or "손절"),
                     "is_auto": True,
+                    "side": "SELL",
                     "exit_kind": str(pe.get("exit_kind") or ""),
                 }
 
@@ -223,6 +248,11 @@ def collect_reason_hints(live_meta: dict[str, Any]) -> dict[str, dict[str, Any]]
             hints[uid] = {
                 "reason": str(d.get("reason")),
                 "is_auto": bool(d.get("is_auto")),
+                "side": str(d.get("side") or "").upper(),
+                "exit_kind": classify_exit_kind(
+                    str(d.get("reason") or ""),
+                    str(d.get("side") or "SELL"),
+                ),
             }
     return hints
 
@@ -422,10 +452,11 @@ def order_to_trade_dict(
     side_raw = str(order.get("side") or "").lower()
     side = "BUY" if side_raw == "bid" else "SELL"
     ord_type = str(order.get("ord_type") or "").lower()
-    hint = reason_hints.get(uid) or {}
+    hint_raw = reason_hints.get(uid) or {}
+    hint = hint_raw if _hint_applies_to_side(hint_raw, side) else {}
     raw_reason = str(hint.get("reason") or "")
     is_auto = bool(hint.get("is_auto", False))
-    has_hint = bool(uid and uid in reason_hints)
+    has_hint = bool(uid and hint)
     reason = normalize_trade_reason(
         side,
         raw_reason,
@@ -598,12 +629,15 @@ async def load_trades_from_upbit(
     )
     for row in merged_rows:
         uid = str(row.get("order_uuid") or "")
+        side_row = str(row.get("side") or "")
         hint_row = hints.get(uid) or {}
+        if not _hint_applies_to_side(hint_row, side_row):
+            hint_row = {}
         row["reason"] = normalize_trade_reason(
-            str(row.get("side") or ""),
+            side_row,
             str(row.get("reason") or ""),
             is_auto=bool(row.get("is_auto")),
-            has_aidi_hint=bool(uid and uid in hints),
+            has_aidi_hint=bool(uid and hint_row),
             exit_kind=str(hint_row.get("exit_kind") or ""),
         )
     live_meta["trades"] = merged_rows
