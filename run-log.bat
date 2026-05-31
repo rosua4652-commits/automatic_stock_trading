@@ -22,7 +22,6 @@ echo  ==============
 echo  Main log : %CD%\%LOG_MAIN%
 echo  Today    : %CD%\%LOG_DAY%
 echo  Browser  : http://127.0.0.1:%PORT%
-echo  Min buy  : http://127.0.0.1:%PORT%/min-buy-setting
 echo  View log : logs-aidi.bat  (option 1)
 echo  Detail   : buttons, scan, backtest  (chart poll hidden)
 echo  Stop     : Ctrl+C in this window

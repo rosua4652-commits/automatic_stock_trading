@@ -7,7 +7,6 @@ if not "%PORT_OVERRIDE%"=="" set "PORT=%PORT_OVERRIDE%"
 echo.
 echo  AIDI - Windows
 echo  ===============
-echo  Min buy  : http://127.0.0.1:%PORT%/min-buy-setting
 echo.
 
 if not exist "backend\app\main.py" goto :no_root

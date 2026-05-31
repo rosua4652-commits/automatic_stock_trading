@@ -835,18 +835,6 @@ export default function App() {
 
       {mainView === "funds" && (
         <div className="funds-screen scroll-y">
-          <section className="min-buy-embed-wrap panel-block">
-            <h3 className="min-buy-embed-title">건당 최소 매수 금액</h3>
-            <p className="panel-hint dim">
-              화면에 박스가 안 보이면 상단 파란 배너 「설정 열기」 또는 아래 폼을
-              사용하세요.
-            </p>
-            <iframe
-              title="최소 매수 금액 설정"
-              className="min-buy-embed-frame"
-              src="/min-buy-embed"
-            />
-          </section>
           <PortfolioAllocationPanel portfolio={data.portfolio} />
           <RecommendationsPanel
             variant="full"

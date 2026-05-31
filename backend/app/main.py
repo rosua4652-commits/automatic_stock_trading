@@ -41,12 +41,7 @@ from app.market.ipv4_http import outbound_ipv4_via_same_stack, upbit_resolved_ip
 from app.market.network_info import get_outbound_public_ip
 from app.storage.credentials import load_credentials, mask_key
 from app.engine.buy_limits import effective_min_buy_krw
-from app.min_buy_setting_page import (
-    MIN_BUY_EMBED_PATH,
-    MIN_BUY_SETTING_HTML,
-    MIN_BUY_SETTING_PATH,
-    inject_min_buy_banner,
-)
+from app.min_buy_setting_page import MIN_BUY_SETTING_HTML, MIN_BUY_SETTING_PATH
 from app.storage.user_settings import merge_user_settings_into_config, save_user_settings
 from app.aidi_log import get_aidi_logger, setup_aidi_logging
 from app.aidi_middleware import AidiActionLogMiddleware
@@ -54,7 +49,7 @@ from app.aidi_middleware import AidiActionLogMiddleware
 STATIC_DIR = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
 
 # PC에서 run.bat 시작 시 표시 — GitHub 최신과 비교용
-AIDI_BUILD = "2026-06-04-min-buy-banner-inject"
+AIDI_BUILD = "2026-06-04-min-buy-krw-setting"
 
 
 engine = TradingEngine()
@@ -881,36 +876,13 @@ async def min_buy_setting_page():
     )
 
 
-def _spa_index_html() -> str:
-    path = STATIC_DIR / "index.html"
-    return inject_min_buy_banner(path.read_text(encoding="utf-8"))
-
-
-@app.get(MIN_BUY_EMBED_PATH)
-async def min_buy_embed_page():
-    """자금·보유 탭 iframe용 (컴팩트)."""
-    body = MIN_BUY_SETTING_HTML.replace(
-        "<body>",
-        '<body style="padding:0.75rem">',
-        1,
-    ).replace(
-        'href="/">← AIDI 메인</a>',
-        'href="/" target="_top">← 메인</a>',
-        1,
-    )
-    return HTMLResponse(
-        body,
-        headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
-    )
-
-
 if STATIC_DIR.exists():
     app.mount("/assets", StaticFiles(directory=STATIC_DIR / "assets"), name="assets")
 
     @app.get("/")
     async def index():
-        return HTMLResponse(
-            _spa_index_html(),
+        return FileResponse(
+            STATIC_DIR / "index.html",
             headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
         )
 
@@ -928,8 +900,8 @@ if STATIC_DIR.exists():
         file_path = STATIC_DIR / full_path
         if file_path.is_file():
             return FileResponse(file_path)
-        return HTMLResponse(
-            _spa_index_html(),
+        return FileResponse(
+            STATIC_DIR / "index.html",
             headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
         )
 

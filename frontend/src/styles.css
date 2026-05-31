@@ -2695,29 +2695,6 @@ main.layout.chart-layout {
   padding: 0.75rem 1rem;
 }
 
-.min-buy-embed-wrap {
-  margin-bottom: 1rem;
-  border: 2px solid rgba(56, 189, 248, 0.45);
-  border-radius: 12px;
-  padding: 0.75rem 1rem;
-  background: rgba(12, 74, 110, 0.25);
-}
-
-.min-buy-embed-title {
-  margin: 0 0 0.35rem;
-  font-size: 1.05rem;
-  color: #7dd3fc;
-}
-
-.min-buy-embed-frame {
-  display: block;
-  width: 100%;
-  min-height: 220px;
-  border: 0;
-  border-radius: 8px;
-  background: #0f172a;
-}
-
 .settings-section-highlight {
   background: rgba(56, 189, 248, 0.08);
   border: 1px solid rgba(56, 189, 248, 0.35);

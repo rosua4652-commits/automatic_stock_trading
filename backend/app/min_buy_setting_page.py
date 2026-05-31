@@ -3,54 +3,6 @@
 from __future__ import annotations
 
 MIN_BUY_SETTING_PATH = "/min-buy-setting"
-MIN_BUY_EMBED_PATH = "/min-buy-embed"
-
-MIN_BUY_BANNER_HTML = """
-<div id="aidi-min-buy-banner" role="region" aria-label="최소 매수 금액"
-  style="position:fixed;top:0;left:0;right:0;z-index:2147483646;
-  background:linear-gradient(90deg,#0c4a6e,#1e3a5f);border-bottom:2px solid #38bdf8;
-  padding:10px 14px;font-family:'Malgun Gothic',sans-serif;font-size:14px;color:#e0f2fe;
-  display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;box-shadow:0 4px 20px rgba(0,0,0,.45);">
-  <strong style="color:#7dd3fc">건당 최소 매수</strong>
-  <span id="aidi-min-buy-val" style="font-weight:700">불러오는 중…</span>
-  <a href="/min-buy-setting" target="_blank" rel="noopener"
-    style="color:#fff;background:#2563eb;padding:8px 14px;border-radius:8px;text-decoration:none;font-weight:700;">
-    설정 열기 →
-  </a>
-  <span style="font-size:12px;color:#94a3b8;flex:1 1 200px">자동·승인·수동 매수 공통 · 업비트 하한 5,000원</span>
-</div>
-<div id="aidi-min-buy-spacer" style="height:52px;flex-shrink:0" aria-hidden="true"></div>
-<script>
-(function(){
-  function floorKrw(n){ return Math.max(5000, Math.round(Number(n)/1000)*1000); }
-  fetch("/api/status").then(function(r){ return r.json(); }).then(function(st){
-    var v = st.config && st.config.min_buy_krw;
-    var el = document.getElementById("aidi-min-buy-val");
-    if (el) el.textContent = "현재 " + floorKrw(v>0?v:10000).toLocaleString("ko-KR") + "원";
-  }).catch(function(){
-    var el = document.getElementById("aidi-min-buy-val");
-    if (el) el.textContent = "서버 연결 확인";
-  });
-})();
-</script>
-"""
-
-
-def inject_min_buy_banner(html: str) -> str:
-    """구버전 React dist 에도 상단 배너 표시."""
-    if "aidi-min-buy-banner" in html:
-        return html
-    if "<body" in html:
-        import re
-
-        return re.sub(
-            r"(<body[^>]*>)",
-            r"\1" + MIN_BUY_BANNER_HTML,
-            html,
-            count=1,
-            flags=re.IGNORECASE,
-        )
-    return MIN_BUY_BANNER_HTML + html
 
 MIN_BUY_SETTING_HTML = """<!DOCTYPE html>
 <html lang="ko">
