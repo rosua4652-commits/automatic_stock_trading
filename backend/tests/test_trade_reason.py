@@ -37,6 +37,22 @@ def test_normalize_approval_buy():
     )
 
 
+def test_buy_never_labeled_tp_sl():
+    """매수에는 익절/손절 라벨 금지 (잘못된 UUID 힌트 보정)."""
+    assert (
+        normalize_trade_reason(
+            "BUY", "익절", has_aidi_hint=True, exit_kind="tp"
+        )
+        == "수동 매수"
+    )
+    assert (
+        normalize_trade_reason(
+            "BUY", "손절", has_aidi_hint=True, exit_kind="sl"
+        )
+        == "수동 매수"
+    )
+
+
 def test_normalize_sl_tp_with_exit_kind_not_auto():
     """전량 손익절 매도(is_auto=False)도 exit_kind·사유로 익절/손절 표기."""
     assert (
