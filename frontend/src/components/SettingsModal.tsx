@@ -76,7 +76,11 @@ export default function SettingsModal({
 
   return (
     <div className="modal-backdrop" onClick={onClose} role="presentation">
-      <div className="modal modal-wide" onClick={(e) => e.stopPropagation()} role="dialog">
+      <div
+        className="modal modal-wide settings-modal"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+      >
         <h2>설정</h2>
 
         <section className="settings-section">
