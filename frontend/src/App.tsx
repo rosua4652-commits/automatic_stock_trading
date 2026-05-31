@@ -514,6 +514,7 @@ export default function App() {
           shortSignals={data.bot.short_signals ?? []}
           directionMessage={data.bot.direction_scan_message}
           backtestMessage={data.bot.backtest?.message}
+          backtest={data.bot.backtest}
           botStatus={data.bot.status}
           cashKrw={data.portfolio.cash_krw}
           feePct={appConfig.trading_fee_pct}

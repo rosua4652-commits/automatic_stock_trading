@@ -321,6 +321,11 @@ class BacktestStatus(BaseModel):
     win_rate_pct: float = 0.0
     avg_return_pct: float = 0.0
     trades_simulated: int = 0
+    cycles: int = 0
+    best_sl_pct: float = 0.0
+    best_tp_pct: float = 0.0
+    symbols_in_store: int = 0
+    last_batch_updated: int = 0
 
 
 class BotState(BaseModel):

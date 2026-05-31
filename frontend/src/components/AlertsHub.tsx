@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react";
 import type { ApplyItem, EditableRecommendation } from "../hooks/useRecommendationAmounts";
-import type { DirectionSignalItem } from "../types";
+import type { BacktestStatus, DirectionSignalItem } from "../types";
 import { fmtUsd, isRunning } from "../utils";
 import EntryAlertsPanel from "./EntryAlertsPanel";
 
@@ -10,6 +10,7 @@ type Props = {
   shortSignals: DirectionSignalItem[];
   directionMessage?: string;
   backtestMessage?: string;
+  backtest?: BacktestStatus;
   botStatus: string;
   cashKrw: number;
   feePct?: number;
@@ -26,6 +27,7 @@ export default function AlertsHub({
   shortSignals,
   directionMessage,
   backtestMessage,
+  backtest,
   botStatus,
   cashKrw,
   feePct = 0.05,
@@ -138,6 +140,12 @@ export default function AlertsHub({
         <footer className="alerts-backtest-foot">
           <span className="alerts-backtest-label">백테스트</span>
           {backtestMessage}
+          {backtest?.best_sl_pct ? (
+            <span className="alerts-backtest-params">
+              {" "}
+              · 최적 손익절 {backtest.best_sl_pct}%/{backtest.best_tp_pct}%
+            </span>
+          ) : null}
           {running && " · 분석 실행 중"}
         </footer>
       )}

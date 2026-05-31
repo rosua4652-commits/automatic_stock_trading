@@ -6,6 +6,29 @@ from app.models import AppConfig, CoinCandidate, InvestmentRecommendation
 MIN_BUY = settings.min_buy_krw
 
 
+def _entry_detail_with_backtest(
+    c: CoinCandidate,
+    backtest,
+    default_sl: float,
+    default_tp: float,
+) -> str:
+    base = c.entry_detail or c.entry_outlook or ""
+    if backtest is None:
+        return base
+    rec = backtest.symbols.get(c.symbol.upper())
+    if not rec or rec.long.trades < 1 or rec.long.score < 40:
+        return base
+    st = rec.long
+    sl, tp = st.best_sl_pct, st.best_tp_pct
+    if sl <= 0:
+        sl, tp = default_sl, default_tp
+    bt = (
+        f"BT {st.score:.0f}점 · 승률 {st.win_rate_pct:.0f}% · "
+        f"손익절 {sl:.0f}/{tp:.0f}%"
+    )
+    return f"{base} · {bt}" if base else bt
+
+
 def _trade_plan(
     amount_krw: float,
     price_usdt: float,
@@ -138,6 +161,7 @@ def build_recommendations(
     *,
     tickers: dict | None = None,
     usdt_krw: float = 1350.0,
+    backtest=None,
 ) -> list[InvestmentRecommendation]:
     """진입 가능 후보에 보유 현금 범위 내에서 점수 비중 배분."""
     fee_pct = float(getattr(config, "trading_fee_pct", 0.05))
@@ -158,12 +182,25 @@ def build_recommendations(
         if c.entry_score >= entry_floor:
             pool.append(c)
 
-    pool.sort(key=lambda c: (c.entry_score + c.score), reverse=True)
+    def _rank(c: CoinCandidate) -> float:
+        base = c.entry_score + c.score
+        if backtest is not None:
+            base += backtest.boost(c.symbol, "long")
+        return base
+
+    pool.sort(key=_rank, reverse=True)
     pool = pool[:15]
     if not pool:
         return []
 
-    weights = [max(1.0, c.score + c.entry_score) for c in pool]
+    sl_use = config.stop_loss_pct
+    tp_use = config.take_profit_pct
+    if backtest is not None:
+        bsl, btp = backtest.best_global_params(sl_use, tp_use)
+        if bsl > 0:
+            sl_use, tp_use = bsl, btp
+
+    weights = [max(1.0, _rank(c)) for c in pool]
     amounts = allocate_amounts_by_weights(weights, cash_krw, fee_pct)
     total_allocated = sum(amounts)
 
@@ -184,8 +221,8 @@ def build_recommendations(
                     amount,
                     price_usdt,
                     usdt_krw,
-                    config.stop_loss_pct,
-                    config.take_profit_pct,
+                    sl_use,
+                    tp_use,
                 )
         tier = (
             "auto"
@@ -210,7 +247,9 @@ def build_recommendations(
                 stop_loss_krw=sl_krw,
                 take_profit_krw=tp_krw,
                 entry_tier=tier,
-                entry_detail=c.entry_detail or c.entry_outlook,
+                entry_detail=_entry_detail_with_backtest(
+                    c, backtest, config.stop_loss_pct, config.take_profit_pct
+                ),
                 change_24h=c.change_24h,
                 trend=c.trend,
                 selected=True,

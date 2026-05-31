@@ -43,7 +43,7 @@ STATIC_DIR = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
 # PC에서 run.bat 시작 시 표시 — GitHub 최신과 비교용
-AIDI_BUILD = "2026-03-30-chart-ui-volume"
+AIDI_BUILD = "2026-03-30-backtest-driven-signals"
 
 
 def _load_pc_path_hint() -> str:
@@ -236,6 +236,9 @@ async def lifespan(app: FastAPI):
     engine.ensure_auto_guard()
     from app.engine.backtest_runner import ensure_backtest_loop, stop_backtest_loop
 
+    from app.engine.backtest_runner import get_accumulator
+
+    engine._backtest_acc = get_accumulator()
     ensure_backtest_loop(engine)
     _broadcast_task = asyncio.create_task(_broadcast_loop())
     yield

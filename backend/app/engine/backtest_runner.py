@@ -1,4 +1,4 @@
-"""백테스트 — 상위 종목 전략 시뮬 (백그라운드 주기 실행)."""
+"""백테스트 루프 — 데이터 누적·최적 손익절 → 롱/숏·투자 제안 반영."""
 
 from __future__ import annotations
 
@@ -6,11 +6,9 @@ import asyncio
 import logging
 import time
 
-import numpy as np
-
 from app.config import settings
+from app.engine.backtest_optimizer import BacktestAccumulator, run_accumulator_cycle
 from app.market.scanner import top_usdt_symbols
-from app.market.upbit_data import market
 from app.models import BacktestStatus
 
 logger = logging.getLogger(__name__)
@@ -18,107 +16,123 @@ logger = logging.getLogger(__name__)
 _backtest_task: asyncio.Task | None = None
 
 
-def _ema(values: np.ndarray, period: int) -> np.ndarray:
-    if len(values) < period:
-        return values
-    alpha = 2 / (period + 1)
-    out = np.empty_like(values, dtype=float)
-    out[0] = values[0]
-    for i in range(1, len(values)):
-        out[i] = alpha * values[i] + (1 - alpha) * out[i - 1]
-    return out
-
-
-async def run_backtest_once(
+def status_from_accumulator(
+    acc: BacktestAccumulator,
     *,
-    symbol_limit: int = 25,
-    sl_pct: float | None = None,
-    tp_pct: float | None = None,
+    batch_tested: int = 0,
+    batch_updated: int = 0,
+    default_sl: float = 6.0,
+    default_tp: float = 12.0,
 ) -> BacktestStatus:
-    sl = (sl_pct if sl_pct is not None else settings.default_stop_loss_pct) / 100
-    tp = (tp_pct if tp_pct is not None else settings.default_take_profit_pct) / 100
+    sl, tp = acc.best_global_params(default_sl, default_tp)
+    long_top = acc.top_symbols("long", 5)
+    short_top = acc.top_symbols("short", 5)
 
-    try:
-        symbols = await top_usdt_symbols(min(symbol_limit, 40))
-    except Exception as e:
-        return BacktestStatus(
-            running=True,
-            last_run=time.time(),
-            message=f"종목 목록 실패: {e}",
-        )
+    total_trades = sum(
+        r.long.trades + r.short.trades for r in acc.symbols.values()
+    )
+    all_wins = sum(r.long.wins + r.short.wins for r in acc.symbols.values())
+    win_rate = (all_wins / total_trades * 100) if total_trades else 0.0
 
-    wins = 0
-    losses = 0
-    rets: list[float] = []
-    tested = 0
+    avgs = [
+        r.long.avg_return_pct
+        for r in acc.symbols.values()
+        if r.long.trades > 0
+    ]
+    avg_ret = sum(avgs) / len(avgs) if avgs else 0.0
 
-    for sym in symbols[:symbol_limit]:
-        try:
-            raw = await market.klines(sym, "1h", 100)
-        except Exception:
-            continue
-        if len(raw) < 60:
-            continue
-        closes = np.array([float(r[4]) for r in raw], dtype=float)
-        ema12 = _ema(closes, 12)
-        ema26 = _ema(closes, 26)
-        tested += 1
+    long_hint = (
+        f"롱 {long_top[0][0].replace('USDT', '')}({long_top[0][1].score:.0f}점)"
+        if long_top
+        else "롱 —"
+    )
+    short_hint = (
+        f"숏 {short_top[0][0].replace('USDT', '')}({short_top[0][1].score:.0f}점)"
+        if short_top
+        else "숏 —"
+    )
 
-        for i in range(40, len(closes) - 5):
-            if ema12[i] <= ema26[i] or closes[i] <= ema12[i]:
-                continue
-            entry = closes[i]
-            outcome = None
-            for j in range(i + 1, min(i + 30, len(closes))):
-                pnl = (closes[j] - entry) / entry
-                if pnl <= -sl:
-                    outcome = pnl
-                    break
-                if pnl >= tp:
-                    outcome = pnl
-                    break
-            if outcome is None:
-                continue
-            rets.append(outcome * 100)
-            if outcome >= 0:
-                wins += 1
-            else:
-                losses += 1
-            break
-
-    total = wins + losses
-    win_rate = (wins / total * 100) if total else 0.0
-    avg_ret = float(np.mean(rets)) if rets else 0.0
     msg = (
-        f"1h 추세·손익절 {sl*100:.1f}%/{tp*100:.1f}% · "
-        f"{tested}종목 · 시뮬 {total}건 · 승률 {win_rate:.1f}% · 평균 {avg_ret:+.2f}%"
+        f"누적 {acc.cycles}회 · {len(acc.symbols)}종 저장 · "
+        f"이번 {batch_tested}종 분석({batch_updated}건 갱신) · "
+        f"손익절 {sl:.1f}%/{tp:.1f}% · 승률 {win_rate:.1f}% · "
+        f"{long_hint} · {short_hint}"
     )
     return BacktestStatus(
         running=True,
         last_run=time.time(),
         message=msg,
-        symbols_tested=tested,
+        symbols_tested=len(acc.symbols),
         win_rate_pct=round(win_rate, 1),
         avg_return_pct=round(avg_ret, 2),
-        trades_simulated=total,
+        trades_simulated=total_trades,
+        cycles=acc.cycles,
+        best_sl_pct=sl,
+        best_tp_pct=tp,
+        symbols_in_store=len(acc.symbols),
+        last_batch_updated=batch_updated,
     )
+
+
+async def run_backtest_once(engine=None) -> BacktestStatus:
+    default_sl = settings.default_stop_loss_pct
+    default_tp = settings.default_take_profit_pct
+    if engine is not None:
+        default_sl = float(engine.config.stop_loss_pct or default_sl)
+        default_tp = float(engine.config.take_profit_pct or default_tp)
+
+    try:
+        symbols = await top_usdt_symbols(80)
+    except Exception as e:
+        acc = BacktestAccumulator()
+        return BacktestStatus(
+            running=True,
+            last_run=time.time(),
+            message=f"종목 목록 실패: {e}",
+            cycles=acc.cycles,
+            symbols_in_store=len(acc.symbols),
+        )
+
+    acc, tested, updated = await run_accumulator_cycle(
+        symbols,
+        default_sl=default_sl,
+        default_tp=default_tp,
+        batch_size=20,
+    )
+    status = status_from_accumulator(
+        acc,
+        batch_tested=tested,
+        batch_updated=updated,
+        default_sl=default_sl,
+        default_tp=default_tp,
+    )
+    if engine is not None:
+        try:
+            await engine.apply_backtest_insights(acc)
+        except Exception as e:
+            logger.warning("apply_backtest_insights: %s", e)
+    return status
 
 
 async def _backtest_loop(engine) -> None:
     while True:
         try:
-            engine.bot.backtest = await run_backtest_once()
+            engine.bot.backtest = await run_backtest_once(engine)
+            engine._bump_version()
             engine._notify()
         except asyncio.CancelledError:
             break
         except Exception as e:
             logger.warning("backtest loop: %s", e)
+            acc = BacktestAccumulator()
             engine.bot.backtest = BacktestStatus(
                 running=True,
                 last_run=time.time(),
                 message=f"백테스트 오류: {e}",
+                cycles=acc.cycles,
+                symbols_in_store=len(acc.symbols),
             )
-        await asyncio.sleep(300)
+        await asyncio.sleep(240)
 
 
 def ensure_backtest_loop(engine) -> None:
@@ -133,3 +147,7 @@ def stop_backtest_loop() -> None:
     if _backtest_task and not _backtest_task.done():
         _backtest_task.cancel()
     _backtest_task = None
+
+
+def get_accumulator() -> BacktestAccumulator:
+    return BacktestAccumulator()

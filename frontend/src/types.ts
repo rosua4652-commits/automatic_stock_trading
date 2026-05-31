@@ -234,6 +234,11 @@ export interface BacktestStatus {
   win_rate_pct: number;
   avg_return_pct: number;
   trades_simulated: number;
+  cycles?: number;
+  best_sl_pct?: number;
+  best_tp_pct?: number;
+  symbols_in_store?: number;
+  last_batch_updated?: number;
 }
 
 export interface BotState {

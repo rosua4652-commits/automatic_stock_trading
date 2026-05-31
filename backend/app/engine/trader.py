@@ -14,6 +14,8 @@ from app.engine.live_orders import (
 )
 from app.engine.portfolio import PortfolioManager
 from app.engine.portfolio_store import store
+from app.engine.backtest_optimizer import BacktestAccumulator
+from app.engine.backtest_runner import get_accumulator
 from app.engine.recommendations import build_recommendations, cap_apply_amounts
 from app.market.upbit_data import market
 from app.market.coin_registry import coin_meta
@@ -53,6 +55,7 @@ class TradingEngine:
         self._listeners: list[Callable[[], None]] = []
         self._status_version: int = 0
         self._link_message: str = ""
+        self._backtest_acc: BacktestAccumulator | None = None
 
     def bind_portfolio(self) -> None:
         """현재 모드에 맞는 포트폴리오만 참조 (시뮬·실거래 분리)."""
@@ -341,33 +344,144 @@ class TradingEngine:
         return True, f"{pos.display} 모의 {req.percent:.0f}% 매도"
 
     async def scan_direction_signals(self, side: str) -> tuple[bool, str]:
-        """롱/숏 버튼 분석 — 결과는 bot.long_signals / short_signals."""
+        """롱/숏 버튼 분석 — 백테스트 누적 점수 + 차트 분석."""
         side = side.lower()
         if side not in ("long", "short"):
             return False, "side는 long 또는 short"
 
         self.bind_portfolio()
+        acc = self._backtest_acc or get_accumulator()
+        items = await self._build_direction_signals(side, acc, scan_cap=60)
+        if side == "long":
+            self.bot.long_signals = items
+        else:
+            self.bot.short_signals = items
+
+        label = "롱" if side == "long" else "숏"
+        bt_n = len(acc.symbols)
+        if items:
+            self.bot.direction_scan_message = (
+                f"{label} 추천 {len(items)}건 · BT누적 {bt_n}종 · 일목·이평·BB·RSI"
+            )
+        else:
+            self.bot.direction_scan_message = (
+                f"{label} 추천 없음 — BT {bt_n}종 누적 중, 잠시 후 다시 분석"
+            )
+        self._bump_version()
+        self._notify()
+        return True, self.bot.direction_scan_message
+
+    async def apply_backtest_insights(
+        self, acc: BacktestAccumulator | None = None
+    ) -> None:
+        """백테스트 누적 결과 → 롱/숏 시그널·투자 제안 갱신."""
+        acc = acc or get_accumulator()
+        self._backtest_acc = acc
+        sl, tp = acc.best_global_params(
+            self.config.stop_loss_pct, self.config.take_profit_pct
+        )
+        self.bot.backtest.best_sl_pct = sl
+        self.bot.backtest.best_tp_pct = tp
+        self.bot.backtest.symbols_in_store = len(acc.symbols)
+
+        self.bot.long_signals = await self._build_direction_signals(
+            "long", acc, scan_cap=35, bt_first=True
+        )
+        self.bot.short_signals = await self._build_direction_signals(
+            "short", acc, scan_cap=35, bt_first=True
+        )
+
+        if self.bot.candidates:
+            held = {
+                s
+                for s, p in self.portfolio.positions.items()
+                if p.quantity > 1e-10
+            }
+            tickers = await market.tickers_24h()
+            snap = self.portfolio.snapshot(tickers, self.config)
+            self.bot.recommendations = build_recommendations(
+                self.bot.candidates,
+                snap.cash_krw,
+                self.config,
+                held,
+                tickers=tickers,
+                usdt_krw=self.portfolio.usdt_krw,
+                backtest=acc,
+            )
+
+        n_sig = len(self.bot.long_signals) + len(self.bot.short_signals)
+        self.bot.direction_scan_message = (
+            f"백테스트 반영 · 롱 {len(self.bot.long_signals)} · "
+            f"숏 {len(self.bot.short_signals)} · 제안 {len(self.bot.recommendations)}건"
+        )
+        if n_sig == 0 and not self.bot.recommendations:
+            self.bot.direction_scan_message = (
+                f"백테스트 {acc.cycles}회 · {len(acc.symbols)}종 누적 — "
+                "다음 주기에 시그널 생성"
+            )
+
+    async def _build_direction_signals(
+        self,
+        side: str,
+        acc: BacktestAccumulator,
+        *,
+        scan_cap: int = 40,
+        bt_first: bool = False,
+    ) -> list[DirectionSignalItem]:
+        side = side.lower()
+        bt_top = acc.top_symbols(side, 25)
+        bt_syms = [s for s, _ in bt_top]
+
         try:
-            symbols = self.bot.liquid_symbols or await top_usdt_symbols(
+            liquid = self.bot.liquid_symbols or await top_usdt_symbols(
                 settings.tab_symbol_limit
             )
-        except Exception as e:
-            return False, f"종목 목록 실패: {e}"
+        except Exception:
+            liquid = []
+
+        sym_order: list[str] = []
+        seen: set[str] = set()
+        for s in bt_syms + liquid:
+            u = s.upper()
+            if u not in seen:
+                seen.add(u)
+                sym_order.append(u)
+            if len(sym_order) >= scan_cap:
+                break
 
         sem = asyncio.Semaphore(10)
-        min_score = max(48.0, self.config.min_entry_score - 5)
+        min_score = max(45.0, self.config.min_entry_score - 8)
 
         async def one(sym: str):
             async with sem:
-                return sym, await analyze_direction(sym, side, min_score=min_score)
+                rec = acc.symbols.get(sym.upper())
+                st = None
+                if rec:
+                    st = rec.long if side == "long" else rec.short
+                bt_boost = acc.boost(sym, side)
+                eff_min = min_score - (8 if bt_boost >= 12 else 0)
+                sig = await analyze_direction(sym, side, min_score=eff_min)
+                combined = sig.score + bt_boost
+                if st and st.trades >= 1:
+                    combined = combined * 0.55 + st.score * 0.45
+                return sym, sig, combined, bt_boost, st
 
-        results = await asyncio.gather(*[one(s) for s in symbols[:60]])
+        results = await asyncio.gather(*[one(s) for s in sym_order[:scan_cap]])
         items: list[DirectionSignalItem] = []
         now = time.time()
-        for sym, sig in results:
-            if not sig.ok:
+        for sym, sig, combined, bt_boost, st in results:
+            ok = sig.ok or (st and st.score >= 48 and st.trades >= 1)
+            if not ok:
+                continue
+            if combined < min_score - 5:
                 continue
             m = coin_meta(sym)
+            detail = sig.detail
+            if bt_boost >= 8 and st and st.trades >= 1:
+                detail = (
+                    f"{detail} · BT {st.win_rate_pct:.0f}%승/{st.trades}건 "
+                    f"· 손익절 {st.best_sl_pct:.0f}/{st.best_tp_pct:.0f}%"
+                )
             items.append(
                 DirectionSignalItem(
                     signal_id=str(uuid.uuid4()),
@@ -376,34 +490,22 @@ class TradingEngine:
                     name_ko=m["name_ko"],
                     display=m["display"],
                     side=side,
-                    score=sig.score,
+                    score=round(combined, 1),
                     price_usdt=sig.price_usdt,
                     rsi=sig.rsi,
                     trend=sig.trend,
                     outlook=sig.outlook,
-                    detail=sig.detail,
+                    detail=detail,
                     reasons=sig.reasons[:8],
                     scanned_at=now,
                 )
             )
         items.sort(key=lambda x: x.score, reverse=True)
-        items = items[:30]
-
-        if side == "long":
-            self.bot.long_signals = items
-        else:
-            self.bot.short_signals = items
-
-        label = "롱" if side == "long" else "숏"
-        if items:
-            self.bot.direction_scan_message = (
-                f"{label} 추천 {len(items)}건 (일목·이평·BB·RSI)"
-            )
-        else:
-            self.bot.direction_scan_message = f"{label} 추천 없음 — 조건 맞는 종목 없음"
-        self._bump_version()
-        self._notify()
-        return True, self.bot.direction_scan_message
+        if bt_first and bt_top:
+            # 백테스트 상위가 리스트 앞쪽에 오도록 재정렬
+            rank = {s: i for i, (s, _) in enumerate(bt_top)}
+            items.sort(key=lambda x: (rank.get(x.symbol, 999), -x.score))
+        return items[:30]
 
     async def manual_sell_all(self, percent: float = 100.0) -> tuple[bool, str]:
         if not self.can_manual_trade():
@@ -547,6 +649,7 @@ class TradingEngine:
             if p.quantity > 1e-10
         }
         snap = self.portfolio.snapshot({}, self.config)
+        acc = self._backtest_acc or get_accumulator()
         self.bot.recommendations = build_recommendations(
             candidates,
             snap.cash_krw,
@@ -554,6 +657,7 @@ class TradingEngine:
             held,
             tickers=tickers,
             usdt_krw=self.portfolio.usdt_krw,
+            backtest=acc,
         )
         mode = "모의" if self.config.trade_mode == TradeMode.PAPER else "실거래"
         total_rec = sum(r.amount_krw for r in self.bot.recommendations)

@@ -7,6 +7,7 @@ from typing import Any
 DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data"
 PAPER_FILE = DATA_DIR / "paper_portfolio.json"
 LIVE_META_FILE = DATA_DIR / "live_aidi_meta.json"
+BACKTEST_FILE = DATA_DIR / "backtest_accumulator.json"
 
 
 def ensure_data_dir() -> None:
@@ -54,3 +55,38 @@ def save_live_meta(data: dict[str, Any]) -> None:
 
 def clear_live_meta() -> None:
     save_live_meta({"positions_meta": {}, "trades": [], "realized_pnl_krw": 0.0})
+
+
+def load_backtest_state() -> dict[str, Any]:
+    ensure_data_dir()
+    if not BACKTEST_FILE.exists():
+        return _default_backtest_state()
+    try:
+        data = json.loads(BACKTEST_FILE.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            return _default_backtest_state()
+        data.setdefault("symbols", {})
+        data.setdefault("cycles", 0)
+        data.setdefault("best_sl_pct", 0.0)
+        data.setdefault("best_tp_pct", 0.0)
+        return data
+    except Exception:
+        return _default_backtest_state()
+
+
+def save_backtest_state(data: dict[str, Any]) -> None:
+    ensure_data_dir()
+    BACKTEST_FILE.write_text(
+        json.dumps(data, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+
+def _default_backtest_state() -> dict[str, Any]:
+    return {
+        "symbols": {},
+        "cycles": 0,
+        "best_sl_pct": 0.0,
+        "best_tp_pct": 0.0,
+        "updated_at": 0.0,
+    }
