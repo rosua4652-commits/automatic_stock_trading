@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import type { CoinView, InvestmentRecommendation } from "../types";
 import BuyAmountControl, { maxBuyKrw } from "./BuyAmountControl";
 import SellPctControl from "./SellPctControl";
-import { fmtKrw } from "../utils";
+import { fmtKrw, getManualMinBuyKrw } from "../utils";
 
 type Props = {
   view: CoinView;
@@ -22,12 +22,12 @@ export default function CoinTradeBar({
   running,
   busy,
   cashKrw,
-  minBuyKrw = 10_000,
+  minBuyKrw,
   recommendation,
   onBuy,
   onSell,
 }: Props) {
-  const minBuy = Math.max(5_000, Math.round(minBuyKrw / 1000) * 1000);
+  const minBuy = minBuyKrw ?? getManualMinBuyKrw();
   const recAmt =
     recommendation && recommendation.amount_krw >= minBuy
       ? recommendation.amount_krw

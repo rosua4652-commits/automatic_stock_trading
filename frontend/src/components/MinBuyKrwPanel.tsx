@@ -41,8 +41,8 @@ export default function MinBuyKrwPanel({
         </span>
       </div>
       <p className="panel-hint">
-        자동투자·승인 매수·수동 매수 공통. 업비트 하한 {fmtKrw(UPBIT_MIN_ORDER_KRW)}
-        원 · 5,000원 매수 막으려면 <strong>10,000원 이상</strong> 권장.
+        자동투자·승인 매수에만 적용. 수동 지정 매수는 업비트 하한{" "}
+        {fmtKrw(UPBIT_MIN_ORDER_KRW)}원부터 가능.
       </p>
       <div className="min-buy-panel-row">
         <input

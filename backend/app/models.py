@@ -57,7 +57,7 @@ class AppConfig(BaseModel):
         default=10_000.0,
         ge=5_000.0,
         le=5_000_000.0,
-        description="건당 최소 매수 금액(원). 업비트 하한 5,000원 이상",
+        description="자동·승인 매수 건당 최소 금액(원). 업비트 하한 5,000원 이상",
     )
     min_entry_score: float = Field(default=38.0, ge=25.0, le=90.0)
     max_auto_buys_per_scan: int = Field(

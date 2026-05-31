@@ -17,7 +17,8 @@ import {
   gainPctFromAvg,
   isRunning,
   lossPctFromAvg,
-  getMinBuyKrw,
+  getAutoMinBuyKrw,
+  getManualMinBuyKrw,
   pctFromAvg,
   pricesFromExitPct,
   resolveEntryTier,
@@ -465,21 +466,22 @@ export default function FundsTab({
   savingMinBuy,
   busy,
 }: Props) {
-  const minBuy = getMinBuyKrw({ min_buy_krw: minBuyKrw });
+  const autoMinBuy = getAutoMinBuyKrw({ min_buy_krw: minBuyKrw });
+  const manualMinBuy = getManualMinBuyKrw();
   const [buySymbol, setBuySymbol] = useState("BTCUSDT");
   const [buyAmount, setBuyAmount] = useState(500_000);
   const running = isRunning(botStatus);
   const canTrade = botStatus !== "stopping";
-  const maxKrw = maxBuyKrw(portfolio.cash_krw, minBuy);
+  const maxKrw = maxBuyKrw(portfolio.cash_krw, manualMinBuy);
 
   useEffect(() => {
-    setBuyAmount((prev) => Math.max(minBuy, Math.min(prev, maxKrw)));
-  }, [maxKrw, minBuy]);
+    setBuyAmount((prev) => Math.max(manualMinBuy, Math.min(prev, maxKrw)));
+  }, [maxKrw, manualMinBuy]);
 
   return (
     <div className="funds-tab funds-tab-body">
       <MinBuyKrwPanel
-        value={minBuy}
+        value={autoMinBuy}
         saving={savingMinBuy}
         onSave={
           onSaveMinBuyKrw ??
@@ -547,14 +549,14 @@ export default function FundsTab({
               value={buyAmount}
               onChange={setBuyAmount}
               disabled={busy}
-              minBuyKrw={minBuy}
+              minBuyKrw={manualMinBuy}
             />
             <button
               type="button"
               className="btn-primary buy-submit-btn"
               disabled={
                 busy ||
-                buyAmount < minBuy ||
+                buyAmount < manualMinBuy ||
                 buyAmount > portfolio.cash_krw
               }
               onClick={() => onManualBuy(buySymbol, buyAmount)}

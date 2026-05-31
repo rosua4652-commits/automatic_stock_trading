@@ -52,7 +52,7 @@ import {
   fmtKrw,
   isRunning,
   mergeWsPayload,
-  getMinBuyKrw,
+  getManualMinBuyKrw,
   normalizeAppConfig,
   roundPct2,
 } from "./utils";
@@ -484,7 +484,7 @@ export default function App() {
 
   const handleQuickBuy = (symbol: string) => {
     const cash = data?.portfolio.cash_krw ?? 0;
-    const minBuy = getMinBuyKrw(appConfig);
+    const minBuy = getManualMinBuyKrw();
     const amount = Math.max(
       minBuy,
       Math.min(Math.floor(cash * 0.25), Math.floor(cash * 0.95))

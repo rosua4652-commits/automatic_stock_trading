@@ -32,7 +32,7 @@ MIN_BUY_SETTING_HTML = """<!DOCTYPE html>
 <body>
   <div class="box">
     <h1>건당 최소 매수 금액</h1>
-    <p class="hint">자동투자·승인 매수·수동 매수에 공통 적용. 업비트 하한 <strong>5,000원</strong>.</p>
+    <p class="hint">자동투자·승인 매수에 적용. 수동 매수는 업비트 하한 <strong>5,000원</strong>부터.</p>
     <p class="meta" id="build">불러오는 중…</p>
     <label for="amt">금액 (원, 1,000원 단위)</label>
     <input id="amt" type="number" min="5000" max="5000000" step="1000" />

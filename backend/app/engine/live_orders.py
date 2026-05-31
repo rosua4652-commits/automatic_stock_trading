@@ -36,7 +36,7 @@ from app.market.upbit_sell import (
 )
 from app.models import AppConfig, Position, TradeEvent
 from app.storage.credentials import get_active_keys
-from app.engine.buy_limits import effective_min_buy_krw
+from app.engine.buy_limits import effective_min_buy_krw, manual_min_buy_krw
 from app.storage.persistence import save_live_meta
 
 
@@ -76,11 +76,18 @@ async def live_market_buy(
         if exchange != "upbit":
             return False, "AIDI는 업비트(KRW) 실거래만 지원합니다."
 
-        min_buy = effective_min_buy_krw(config)
+        min_buy = (
+            effective_min_buy_krw(config) if as_auto else manual_min_buy_krw()
+        )
         if amount_krw < min_buy:
+            hint = (
+                "설정 → 최소 매수 금액"
+                if as_auto
+                else "업비트 주문 하한"
+            )
             return (
                 False,
-                f"최소 매수 금액은 {int(min_buy):,}원입니다 (설정 → 최소 매수 금액)",
+                f"최소 매수 금액은 {int(min_buy):,}원입니다 ({hint})",
             )
 
         before = PortfolioManager.position_snap(portfolio.positions.get(sym))

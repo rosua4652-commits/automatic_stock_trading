@@ -49,7 +49,7 @@ from app.aidi_middleware import AidiActionLogMiddleware
 STATIC_DIR = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
 
 # PC에서 run.bat 시작 시 표시 — GitHub 최신과 비교용
-AIDI_BUILD = "2026-06-04-min-buy-krw-setting"
+AIDI_BUILD = "2026-06-04-manual-min-buy-5k"
 
 
 engine = TradingEngine()
@@ -348,7 +348,7 @@ class MinBuyKrwPatch(BaseModel):
 
 @api.post("/config/min-buy-krw")
 async def set_min_buy_krw(body: MinBuyKrwPatch):
-    """최소 매수 금액만 저장 (구버전 UI·/min-buy-setting 페이지용)."""
+    """자동·승인용 최소 매수 금액 저장 (구버전 UI·/min-buy-setting 페이지)."""
     krw = float(body.min_buy_krw)
     merged = engine.config.model_copy(update={"min_buy_krw": krw})
     if krw < effective_min_buy_krw(merged):

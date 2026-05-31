@@ -244,10 +244,19 @@ export const UPBIT_MIN_ORDER_KRW = 5_000;
 /** @deprecated config.min_buy_krw 사용 */
 export const MIN_BUY_KRW = UPBIT_MIN_ORDER_KRW;
 
-export function getMinBuyKrw(config?: { min_buy_krw?: number } | null): number {
+/** 자동투자·승인·제안 배분에 쓰는 건당 최소 매수 금액 */
+export function getAutoMinBuyKrw(config?: { min_buy_krw?: number } | null): number {
   const raw = Number(config?.min_buy_krw);
   if (!Number.isFinite(raw) || raw <= 0) return 10_000;
   return Math.max(UPBIT_MIN_ORDER_KRW, Math.round(raw / 1000) * 1000);
+}
+
+/** @alias getAutoMinBuyKrw */
+export const getMinBuyKrw = getAutoMinBuyKrw;
+
+/** 수동 지정 매수 — 업비트 주문 하한(5,000원)만 */
+export function getManualMinBuyKrw(): number {
+  return UPBIT_MIN_ORDER_KRW;
 }
 
 /** API·저장 설정에 min_buy_krw 없을 때 기본값 보정 */
@@ -255,7 +264,7 @@ export function normalizeAppConfig(cfg: AppConfig): AppConfig {
   return {
     ...DEFAULT_CONFIG,
     ...cfg,
-    min_buy_krw: getMinBuyKrw(cfg),
+    min_buy_krw: getAutoMinBuyKrw(cfg),
   };
 }
 
@@ -282,7 +291,7 @@ export function balanceRecommendationAmounts(
   feePct = 0.05,
   minBuyKrw = 10_000
 ): Record<string, number> {
-  const floor = getMinBuyKrw({ min_buy_krw: minBuyKrw });
+  const floor = getAutoMinBuyKrw({ min_buy_krw: minBuyKrw });
   const budget = Math.round(deployableCashKrw(cashKrw, feePct) / 1000) * 1000;
   const active = recs.filter((r) => r.selected !== false);
   if (!active.length || budget < floor) return {};

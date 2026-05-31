@@ -40,7 +40,7 @@ from app.engine.flash_crash_guard import (
 )
 from app.engine.scalp_filters import apply_scalp_liquidity_to_candidate
 from app.util.numbers import as_float
-from app.engine.buy_limits import effective_min_buy_krw
+from app.engine.buy_limits import effective_min_buy_krw, manual_min_buy_krw
 from app.engine.recommendations import (
     build_recommendations,
     cap_apply_amounts,
@@ -548,11 +548,11 @@ class TradingEngine:
         self.bind_portfolio()
         self.portfolio.usdt_krw = await market.usdt_krw_rate()
         symbol = req.symbol.upper()
-        min_buy = effective_min_buy_krw(self.config)
+        min_buy = manual_min_buy_krw()
         if req.amount_krw < min_buy:
             return (
                 False,
-                f"최소 매수 금액은 {int(min_buy):,}원입니다 (설정 → 최소 매수 금액)",
+                f"최소 매수 금액은 {int(min_buy):,}원입니다 (업비트 주문 하한)",
             )
 
         if self._is_live():
