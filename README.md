@@ -95,11 +95,11 @@ run.bat
 
 `run.bat` 이 pull 을 대신 할 수도 있습니다 (로컬 빌드가 GitHub보다 낮을 때).
 
-### ZIP만 쓰는 경우
+### Git 없음 (ZIP)
 
-1. GitHub에서 **새 ZIP** 받기  
-2. **같은 폴더**에 압축 해제해 덮어쓰기 (`backend\data` 설정·모의 잔고는 보통 유지)  
-3. **`run.bat`** 실행 → 빌드가 바뀌었으면 프론트 자동 재빌드
+1. **`update-zip.bat`** 실행 (권장)  
+   또는 GitHub에서 ZIP 받아 수동 덮어쓰기  
+2. **`run.bat`** 실행 (`backend\data` 설정은 유지됨)
 
 ---
 
@@ -110,7 +110,8 @@ run.bat
 | Python 3.12 없음 | `py -3.12 --version` 확인, 3.12 재설치 |
 | `npm not found` | Node.js 설치 후 `run.bat` 다시 |
 | 포트 8000 사용 중 | `stop-aidi.bat` 후 재실행 |
-| GitHub와 빌드 다름 (git 없음) | ZIP으로 폴더 덮어쓰기 |
+| `'git'은 내부 또는 외부 명령...` | 정상 — **`update-zip.bat`** 사용 (Git 설치 불필요) |
+| GitHub와 빌드 다름 | **`update-zip.bat`** 후 `run.bat` |
 | UI가 예전 화면 | `run.bat` 한 번 (prep 이 `npm run build` 함) |
 | venv 꼬임 | `backend\.venv` 폴더 삭제 후 `run.bat` |
 

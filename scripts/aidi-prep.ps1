@@ -10,6 +10,10 @@ function Write-Info([string]$Msg) {
     if (-not $Quiet) { Write-Host $Msg }
 }
 
+function Test-GitInstalled {
+    return [bool](Get-Command git -ErrorAction SilentlyContinue)
+}
+
 function Read-BuildId([string]$Path, [string]$Pattern) {
     if (-not (Test-Path -LiteralPath $Path)) { return $null }
     $text = Get-Content -LiteralPath $Path -Raw -Encoding UTF8
@@ -20,7 +24,8 @@ function Read-BuildId([string]$Path, [string]$Pattern) {
 function Get-RemoteBuildId([string]$Root) {
     $repo = "rosua4652-commits/automatic_stock_trading"
     $branch = "main"
-    if (Test-Path (Join-Path $Root ".git")) {
+    $gitDir = Join-Path $Root ".git"
+    if ((Test-Path -LiteralPath $gitDir) -and (Test-GitInstalled)) {
         Push-Location $Root
         try {
             $origin = (git remote get-url origin 2>$null)
@@ -43,6 +48,21 @@ function Get-RemoteBuildId([string]$Root) {
         return $null
     }
     return $null
+}
+
+function Show-ZipUpdateHelp([string]$RemoteBuild, [string]$LocalBuild) {
+    Write-Host ""
+    Write-Host "  GitHub 최신 빌드와 PC 폴더가 다릅니다."
+    Write-Host "  Git 이 없으므로 자동 pull 은 할 수 없습니다."
+    Write-Host ""
+    Write-Host "  [방법 1] update-zip.bat 실행 (ZIP 자동 받기, 권장)"
+    Write-Host "  [방법 2] 브라우저에서 ZIP 받아 이 폴더에 덮어쓰기"
+    Write-Host "           https://github.com/rosua4652-commits/automatic_stock_trading"
+    Write-Host "           Code -> Download ZIP"
+    Write-Host ""
+    Write-Host "  GitHub: $RemoteBuild"
+    Write-Host "  PC    : $LocalBuild"
+    Write-Host ""
 }
 
 function Find-Python312 {
@@ -164,12 +184,16 @@ if ($remoteBuild) {
 } else {
     Write-Info "    GitHub        : (offline or unreachable)"
 }
+if (-not (Test-GitInstalled)) {
+    Write-Info "    Git           : (not installed — use update-zip.bat for updates)"
+}
 
-# Git pull when remote is newer
+# Git pull when remote is newer (only if git command exists)
 if ($remoteBuild -and $localBuild -ne $remoteBuild) {
     $gitDir = Join-Path $RepoRoot ".git"
-    if (Test-Path -LiteralPath $gitDir) {
-        Write-Info "  Updating code from GitHub..."
+    $canGitPull = (Test-Path -LiteralPath $gitDir) -and (Test-GitInstalled)
+    if ($canGitPull) {
+        Write-Info "  Updating code from GitHub (git pull)..."
         Push-Location $RepoRoot
         git fetch origin 2>&1 | Out-Host
         git pull --ff-only origin main 2>&1 | Out-Host
@@ -180,11 +204,12 @@ if ($remoteBuild -and $localBuild -ne $remoteBuild) {
         $localBuild = Read-BuildId $mainPy 'AIDI_BUILD\s*=\s*"([^"]+)"'
         $uiSrc = Read-BuildId (Join-Path $RepoRoot "frontend\src\uiBuild.ts") 'UI_BUILD\s*=\s*"([^"]+)"'
         Write-Info "    After pull    : $localBuild"
-    } elseif ($remoteBuild -ne $localBuild) {
-        Write-Host ""
-        Write-Host "  ERROR: Local build differs from GitHub but this folder is not a git clone."
-        Write-Host "         Download the latest ZIP from GitHub and replace this folder."
-        Write-Host "         GitHub: $remoteBuild  |  Yours: $localBuild"
+        if ($remoteBuild -ne $localBuild) {
+            Show-ZipUpdateHelp $remoteBuild $localBuild
+            exit 3
+        }
+    } else {
+        Show-ZipUpdateHelp $remoteBuild $localBuild
         exit 3
     }
 }

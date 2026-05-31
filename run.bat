@@ -17,7 +17,7 @@ set "PREP_EC=%ERRORLEVEL%"
 if not "%PREP_EC%"=="0" (
   if "%PREP_EC%"=="3" (
     echo.
-    echo  GitHub ZIP으로 폴더를 덮어쓴 뒤 run.bat 을 다시 실행하세요.
+    echo  Git 없음/구버전: update-zip.bat 실행 후 run.bat 다시 실행하세요.
   )
   pause
   exit /b %PREP_EC%
