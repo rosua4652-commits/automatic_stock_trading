@@ -49,7 +49,7 @@ from app.aidi_middleware import AidiActionLogMiddleware
 STATIC_DIR = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
 
 # PC에서 run.bat 시작 시 표시 — GitHub 최신과 비교용
-AIDI_BUILD = "2026-06-04-trade-reason-tpsl"
+AIDI_BUILD = "2026-06-04-backtest-report-csv"
 
 
 engine = TradingEngine()
@@ -614,6 +614,20 @@ async def reports_backtest():
     from app.engine.backtest_report import build_backtest_report
 
     return {"ok": True, "report": build_backtest_report()}
+
+
+@api.get("/reports/backtest.csv")
+async def reports_backtest_csv():
+    from app.engine.backtest_report import backtest_report_csv, build_backtest_report
+
+    csv_text = backtest_report_csv(build_backtest_report())
+    return Response(
+        content=csv_text.encode("utf-8-sig"),
+        media_type="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition": 'attachment; filename="aidi-backtest.csv"'
+        },
+    )
 
 
 @api.get("/backup/export")

@@ -124,6 +124,10 @@ export function dailyReportCsvUrl(mode?: string): string {
   return m ? `/api/reports/daily.csv?mode=${m}` : "/api/reports/daily.csv";
 }
 
+export function backtestReportCsvUrl(): string {
+  return "/api/reports/backtest.csv";
+}
+
 export function backupExportUrl(): string {
   return "/api/backup/export";
 }

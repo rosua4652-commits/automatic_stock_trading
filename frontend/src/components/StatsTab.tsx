@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { dailyReportCsvUrl, fetchStatsOverview } from "../api";
+import { backtestReportCsvUrl, dailyReportCsvUrl, fetchStatsOverview } from "../api";
 import type { BotState, Portfolio, TradeEvent } from "../types";
 import {
   modeSellBars,
@@ -111,13 +111,18 @@ export default function StatsTab({ portfolio, trades, bot, configMode }: Props) 
       <header className="stats-tab-head">
         <h2>통계 · 대시보드</h2>
         <p className="panel-hint">{dayLabel} (KST) · 모의 / 실거래 분리</p>
-        <a
-          className="link-btn"
-          href={dailyReportCsvUrl(activeKey)}
-          download
-        >
-          당일 CSV ({activeKey === "live" ? "실거래" : "모의"})
-        </a>
+        <div className="stats-tab-dl-links">
+          <a
+            className="link-btn"
+            href={dailyReportCsvUrl(activeKey)}
+            download
+          >
+            당일 CSV ({activeKey === "live" ? "실거래" : "모의"})
+          </a>
+          <a className="link-btn" href={backtestReportCsvUrl()} download>
+            백테스트 CSV
+          </a>
+        </div>
       </header>
 
       <div className="stats-mode-split">

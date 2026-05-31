@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { fetchBacktestReport } from "../api";
+import { backtestReportCsvUrl, fetchBacktestReport } from "../api";
 
 export default function BacktestReportPanel() {
   const [report, setReport] = useState<Record<string, unknown> | null>(null);
@@ -17,7 +17,12 @@ export default function BacktestReportPanel() {
 
   return (
     <section className="report-panel backtest-report">
-      <h3>백테스트 리포트</h3>
+      <div className="report-panel-head">
+        <h3>백테스트 리포트</h3>
+        <a className="link-btn" href={backtestReportCsvUrl()} download>
+          CSV 다운로드
+        </a>
+      </div>
       <p className="panel-hint warn">{disclaimer}</p>
       <p className="panel-hint">
         BT 성숙 {Number(report.data_maturity_pct).toFixed(0)}% · 롱≥
