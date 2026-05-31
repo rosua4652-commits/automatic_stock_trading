@@ -25,8 +25,24 @@ logger = logging.getLogger(__name__)
 UPBIT_TRADE_HISTORY_DAYS = 90
 UPBIT_TRADE_LIMIT = 500
 DONE_ORDER_MAX_PAGES = 50
+DONE_ORDER_MAX_PAGES_NORMAL = 4
+TRADES_SYNC_COOLDOWN_SEC = 120
 ORDER_REASONS_KEEP = 800
 EXIT_LOG_KEEP = 600
+
+
+def _is_upbit_rate_limit(err: BaseException | str) -> bool:
+    text = str(err).lower()
+    return "too_many_requests" in text or "429" in text
+
+
+async def _wait_rate_limit(attempt: int, *, context: str = "") -> None:
+    from app.engine.market_health import report_rate_limit
+
+    wait = min(12.0, 0.6 * (2**attempt))
+    detail = f"체결 조회 {context}".strip() if context else "체결 조회"
+    report_rate_limit(detail, retry_sec=wait + 30.0)
+    await asyncio.sleep(wait)
 
 
 def trade_fingerprint(t: dict[str, Any]) -> tuple:
@@ -451,16 +467,27 @@ async def fetch_done_orders_paginated(
     *,
     max_pages: int = DONE_ORDER_MAX_PAGES,
 ) -> list[dict]:
-    """GET /v1/orders?state=done — 페이지 끝까지 수집 (조기 중단 없음)."""
+    """GET /v1/orders?state=done — 페이지 수집 (429 시 재시도·부분 수집)."""
     by_uuid: dict[str, dict] = {}
     last_err: str | None = None
+    rate_hit = False
 
     for page in range(1, max_pages + 1):
-        try:
-            batch = await client.done_orders(limit=100, page=page)
-        except Exception as e:
-            last_err = str(e)
-            logger.warning("upbit done_orders page=%s: %s", page, e)
+        batch: list[dict] | None = None
+        for attempt in range(4):
+            try:
+                batch = await client.done_orders(limit=100, page=page)
+                break
+            except Exception as e:
+                last_err = str(e)
+                if _is_upbit_rate_limit(e) and attempt < 3:
+                    rate_hit = True
+                    await _wait_rate_limit(attempt, context=f"done_orders p{page}")
+                    continue
+                logger.warning("upbit done_orders page=%s: %s", page, e)
+                batch = None
+                break
+        if batch is None:
             break
         if not batch:
             break
@@ -472,6 +499,8 @@ async def fetch_done_orders_paginated(
             if uid:
                 by_uuid[uid] = row
         if len(batch) < 100:
+            break
+        if rate_hit:
             break
 
     if not by_uuid and last_err:
@@ -493,15 +522,24 @@ async def _fetch_closed_orders(
     while remaining > 0:
         window = min(7, remaining)
         start = end - timedelta(days=window)
-        try:
-            batch = await client.closed_orders(
-                start_time=start.strftime("%Y-%m-%dT%H:%M:%S+09:00"),
-                end_time=end.strftime("%Y-%m-%dT%H:%M:%S+09:00"),
-                limit=1000,
-                states=["done"],
-            )
-        except Exception as e:
-            logger.warning("upbit closed_orders: %s", e)
+        batch: list[dict] | None = None
+        for attempt in range(3):
+            try:
+                batch = await client.closed_orders(
+                    start_time=start.strftime("%Y-%m-%dT%H:%M:%S+09:00"),
+                    end_time=end.strftime("%Y-%m-%dT%H:%M:%S+09:00"),
+                    limit=1000,
+                    states=["done"],
+                )
+                break
+            except Exception as e:
+                if _is_upbit_rate_limit(e) and attempt < 2:
+                    await _wait_rate_limit(attempt, context="closed_orders")
+                    continue
+                logger.warning("upbit closed_orders: %s", e)
+                batch = None
+                break
+        if batch is None:
             break
         for row in batch:
             uid = str(row.get("uuid") or "")
@@ -538,17 +576,25 @@ async def _enrich_orders(
                 uid = str(row.get("uuid") or "")
                 if uid:
                     detail[uid] = row
-        except Exception:
-            sem = asyncio.Semaphore(10)
+        except Exception as e:
+            if _is_upbit_rate_limit(e):
+                logger.warning("orders_by_uuids rate limited — skip enrich chunk")
+                continue
+            sem = asyncio.Semaphore(4)
 
             async def _one(u: str) -> None:
                 async with sem:
-                    try:
-                        row = await client.get_order(u)
-                        if row:
-                            detail[u] = row
-                    except Exception:
-                        pass
+                    for attempt in range(2):
+                        try:
+                            row = await client.get_order(u)
+                            if row:
+                                detail[u] = row
+                            return
+                        except Exception as ex:
+                            if _is_upbit_rate_limit(ex) and attempt == 0:
+                                await _wait_rate_limit(attempt, context="get_order")
+                                continue
+                            return
 
             await asyncio.gather(*[_one(u) for u in chunk])
 
@@ -678,7 +724,7 @@ async def orders_to_trades(
             continue
         rows.append(d)
 
-    sem = asyncio.Semaphore(12)
+    sem = asyncio.Semaphore(5)
 
     async def _fill(row: dict, order: dict) -> dict:
         async with sem:
@@ -700,72 +746,12 @@ async def orders_to_trades(
     return out
 
 
-async def load_trades_from_upbit(
-    client: "UpbitClient",
+def _relabel_trade_rows(
     live_meta: dict[str, Any],
-    *,
-    usdt_krw: float,
-    force: bool = False,
-) -> list[TradeEvent]:
-    """업비트 체결 + 기존 저장본 병합 — 비어도 예전 기록 유지."""
-    cached = live_meta.get("trades") or []
-    prev = merge_trade_events(cached, usdt_krw=usdt_krw, limit=UPBIT_TRADE_LIMIT)
-
-    hints = collect_reason_hints(live_meta)
-
-    api_trades: list[TradeEvent] = []
-    err_msg: str | None = None
-    orders_fetched = 0
-
-    try:
-        orders = await fetch_done_orders_paginated(client)
-        closed = await _fetch_closed_orders(client)
-        by_uid = {str(o.get("uuid") or ""): o for o in orders}
-        for row in closed:
-            uid = str(row.get("uuid") or "")
-            if uid and uid not in by_uid:
-                if str(row.get("market") or "").startswith("KRW-"):
-                    by_uid[uid] = row
-        orders = list(by_uid.values())
-        orders_fetched = len(orders)
-        orders = await _enrich_orders(client, orders)
-        api_trades = await orders_to_trades(
-            client, orders, usdt_krw=usdt_krw, reason_hints=hints
-        )
-        live_meta["trades_orders_fetched"] = orders_fetched
-        for t in api_trades:
-            if t.order_uuid:
-                remember_order_uuid(live_meta, t.order_uuid)
-    except Exception as e:
-        logger.exception("upbit trades fetch failed")
-        err_msg = str(e)[:220]
-
-    combined = merge_trade_events(
-        cached,
-        [t.model_dump() for t in api_trades],
-        usdt_krw=usdt_krw,
-        limit=UPBIT_TRADE_LIMIT,
-    )
-
-    if not combined and prev:
-        combined = prev
-
-    if err_msg and not api_trades:
-        live_meta["trades_sync_error"] = err_msg
-    elif not combined:
-        live_meta["trades_sync_error"] = (
-            "업비트 체결 주문이 없습니다. 최근 KRW 마켓 매매가 있는지 확인하세요."
-        )
-    else:
-        live_meta.pop("trades_sync_error", None)
-
-    live_meta["trades_upbit_synced_at"] = time.time()
-    merged_rows = merge_trade_dicts(
-        [t.model_dump() for t in combined],
-        usdt_krw=usdt_krw,
-        limit=UPBIT_TRADE_LIMIT,
-    )
-    for row in merged_rows:
+    rows: list[dict[str, Any]],
+    hints: dict[str, dict[str, Any]],
+) -> list[dict[str, Any]]:
+    for row in rows:
         uid = str(row.get("order_uuid") or "")
         side_row = str(row.get("side") or "")
         hint_row = _order_reason_hint(live_meta, uid, side_row) or dict(
@@ -793,6 +779,125 @@ async def load_trades_from_upbit(
             has_aidi_hint=has_hint,
             exit_kind=exit_kind,
         )
+    return rows
+
+
+def _trades_from_cached_meta(
+    live_meta: dict[str, Any],
+    *,
+    usdt_krw: float,
+    hints: dict[str, dict[str, Any]] | None = None,
+) -> list[TradeEvent]:
+    hints = hints or collect_reason_hints(live_meta)
+    merged_rows = merge_trade_dicts(
+        live_meta.get("trades") or [],
+        usdt_krw=usdt_krw,
+        limit=UPBIT_TRADE_LIMIT,
+    )
+    merged_rows = _relabel_trade_rows(live_meta, merged_rows, hints)
+    live_meta["trades"] = merged_rows
+    live_meta["trades_display_count"] = len(merged_rows)
+    return merge_trade_events(merged_rows, usdt_krw=usdt_krw, limit=UPBIT_TRADE_LIMIT)
+
+
+async def load_trades_from_upbit(
+    client: "UpbitClient",
+    live_meta: dict[str, Any],
+    *,
+    usdt_krw: float,
+    force: bool = False,
+) -> list[TradeEvent]:
+    """업비트 체결 + 기존 저장본 병합 — 비어도 예전 기록 유지."""
+    cached = live_meta.get("trades") or []
+    prev = merge_trade_events(cached, usdt_krw=usdt_krw, limit=UPBIT_TRADE_LIMIT)
+
+    hints = collect_reason_hints(live_meta)
+
+    last_sync = float(live_meta.get("trades_upbit_synced_at") or 0)
+    if (
+        not force
+        and last_sync > 0
+        and time.time() - last_sync < TRADES_SYNC_COOLDOWN_SEC
+    ):
+        logger.debug(
+            "trades sync skipped (cooldown %.0fs / %ds)",
+            time.time() - last_sync,
+            TRADES_SYNC_COOLDOWN_SEC,
+        )
+        return _trades_from_cached_meta(live_meta, usdt_krw=usdt_krw, hints=hints)
+
+    api_trades: list[TradeEvent] = []
+    err_msg: str | None = None
+    orders_fetched = 0
+    max_pages = DONE_ORDER_MAX_PAGES if force else DONE_ORDER_MAX_PAGES_NORMAL
+
+    try:
+        orders = await fetch_done_orders_paginated(client, max_pages=max_pages)
+        closed: list[dict] = []
+        if force:
+            closed = await _fetch_closed_orders(client)
+        elif len(orders) < 80:
+            closed = await _fetch_closed_orders(client, days=7)
+        by_uid = {str(o.get("uuid") or ""): o for o in orders}
+        for row in closed:
+            uid = str(row.get("uuid") or "")
+            if uid and uid not in by_uid:
+                if str(row.get("market") or "").startswith("KRW-"):
+                    by_uid[uid] = row
+        orders = list(by_uid.values())
+        orders_fetched = len(orders)
+        orders = await _enrich_orders(client, orders)
+        api_trades = await orders_to_trades(
+            client, orders, usdt_krw=usdt_krw, reason_hints=hints
+        )
+        live_meta["trades_orders_fetched"] = orders_fetched
+        for t in api_trades:
+            if t.order_uuid:
+                remember_order_uuid(live_meta, t.order_uuid)
+    except Exception as e:
+        err_msg = str(e)[:220]
+        if _is_upbit_rate_limit(e):
+            logger.warning("upbit trades fetch rate limited: %s", err_msg)
+        elif prev:
+            logger.warning("upbit trades fetch failed (using cache): %s", err_msg)
+        else:
+            logger.exception("upbit trades fetch failed")
+
+    combined = merge_trade_events(
+        cached,
+        [t.model_dump() for t in api_trades],
+        usdt_krw=usdt_krw,
+        limit=UPBIT_TRADE_LIMIT,
+    )
+
+    if not combined and prev:
+        combined = prev
+
+    if not combined and err_msg:
+        live_meta["trades_sync_error"] = err_msg
+    elif err_msg and not api_trades and prev:
+        live_meta["trades_sync_error"] = (
+            "업비트 요청 제한(429) — 마지막 저장 체결 내역을 표시 중 · "
+            f"{TRADES_SYNC_COOLDOWN_SEC}초 후 자동 재조회"
+            if _is_upbit_rate_limit(err_msg)
+            else err_msg
+        )
+    elif not combined:
+        live_meta["trades_sync_error"] = (
+            "업비트 체결 주문이 없습니다. 최근 KRW 마켓 매매가 있는지 확인하세요."
+        )
+    else:
+        live_meta.pop("trades_sync_error", None)
+
+    if api_trades or not err_msg:
+        live_meta["trades_upbit_synced_at"] = time.time()
+
+    merged_rows = merge_trade_dicts(
+        [t.model_dump() for t in combined],
+        usdt_krw=usdt_krw,
+        limit=UPBIT_TRADE_LIMIT,
+    )
+    merged_rows = _relabel_trade_rows(live_meta, merged_rows, hints)
     live_meta["trades"] = merged_rows
     live_meta["trades_display_count"] = len(merged_rows)
     return merge_trade_events(merged_rows, usdt_krw=usdt_krw, limit=UPBIT_TRADE_LIMIT)

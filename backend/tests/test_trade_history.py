@@ -4,6 +4,7 @@ import asyncio
 import time
 
 from app.engine.trade_history import (
+    TRADES_SYNC_COOLDOWN_SEC,
     fetch_done_orders_paginated,
     load_trades_from_upbit,
     merge_trade_dicts,
@@ -86,6 +87,41 @@ def test_order_to_trade_market_buy():
     assert row is not None
     assert row["side"] == "BUY"
     assert row["amount_krw"] == 50000
+
+
+class _FailIfCalledClient(_FakeUpbitClient):
+    async def done_orders(self, market=None, *, limit=50, page=1):
+        raise RuntimeError('Upbit: {"name":"too_many_requests"}')
+
+
+def test_load_trades_cooldown_skips_upbit_api():
+    cached_evt = {
+        "ts": time.time(),
+        "symbol": "BTCUSDT",
+        "base": "BTC",
+        "display": "BTC/KRW",
+        "side": "BUY",
+        "price": 1.0,
+        "price_krw": 1000,
+        "quantity": 1.0,
+        "amount_krw": 1000,
+        "amount_usdt": 1.0,
+        "reason": "수동 매수",
+        "is_auto": False,
+        "order_uuid": "cool-1",
+    }
+    live_meta = {
+        "trades": [cached_evt],
+        "trades_upbit_synced_at": time.time(),
+        "order_reasons": {},
+    }
+    client = _FailIfCalledClient([[]])
+
+    trades = asyncio.run(
+        load_trades_from_upbit(client, live_meta, usdt_krw=1350.0, force=False)
+    )
+    assert len(trades) == 1
+    assert trades[0].order_uuid == "cool-1"
 
 
 def test_load_trades_keeps_cached_when_api_empty():
