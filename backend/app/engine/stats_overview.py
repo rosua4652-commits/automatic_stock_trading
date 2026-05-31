@@ -9,7 +9,7 @@ KST = timezone(timedelta(hours=9))
 
 from app.engine.daily_report import build_daily_report
 from app.engine.portfolio import PortfolioManager
-from app.engine.risk_manager import ensure_mode_equity_start, mode_equity_start
+from app.engine.risk_manager import peek_mode_equity_start
 from app.models import AppConfig, PortfolioSnapshot
 from app.storage.credentials import has_api_keys
 
@@ -24,19 +24,15 @@ def _mode_block(
     snap: PortfolioSnapshot,
     config: AppConfig,
 ) -> dict[str, Any]:
-    state = ensure_mode_equity_start(
-        mode, snap.total_value_krw, mgr.realized_pnl_krw
-    )
-    start = mode_equity_start(state, mode)
+    start = peek_mode_equity_start(mode)
     if start <= 0:
         start = max(snap.total_value_krw, 1.0)
-    daily_pnl = snap.total_value_krw - start
-    daily_pct = daily_pnl / start * 100.0
     report = build_daily_report(
         mgr.trades,
         snap,
         config,
         realized_pnl_krw=mgr.realized_pnl_krw,
+        account_mode=mode,
         equity_start_krw=start,
     )
     report["trade_mode"] = mode

@@ -1,4 +1,4 @@
-"""당일 매매·손익 요약."""
+"""당일 매매·손익 요약 (모의/실거래 포트폴리오별)."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ import time
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from app.engine.risk_manager import load_risk_state
+from app.engine.risk_manager import load_risk_state, peek_mode_equity_start
 from app.engine.trade_feedback import _mode_from_outlook
 from app.models import AppConfig, PortfolioSnapshot, TradeEvent
 
@@ -34,8 +34,11 @@ def build_daily_report(
     config: AppConfig,
     *,
     realized_pnl_krw: float,
+    account_mode: str,
     equity_start_krw: float | None = None,
 ) -> dict[str, Any]:
+    """account_mode: paper | live — 리스크·당일 손익은 해당 모드만."""
+    mode = "live" if str(account_mode).lower() == "live" else "paper"
     t0, t1 = _day_bounds_kst()
     day_trades = [t for t in trades if t0 <= float(t.ts or 0) < t1]
     sells = [t for t in day_trades if (t.side or "").upper() == "SELL"]
@@ -44,19 +47,22 @@ def build_daily_report(
     if equity_start_krw is not None and equity_start_krw > 0:
         start_eq = max(float(equity_start_krw), 1.0)
     else:
-        risk = load_risk_state()
-        start_eq = max(float(risk.equity_start_krw or 0), 1.0)
+        peek = peek_mode_equity_start(mode)
+        start_eq = max(peek, 1.0) if peek > 0 else max(snap.total_value_krw, 1.0)
+
     daily_pnl = snap.total_value_krw - start_eq
     daily_pct = daily_pnl / start_eq * 100.0
+
+    risk = load_risk_state(mode)
 
     wins = losses = 0
     long_sells = scalp_sells = manual_sells = 0
     for t in sells:
         reason = t.reason or ""
-        mode = _trade_mode_label(t)
-        if mode == "scalp":
+        sell_mode = _trade_mode_label(t)
+        if sell_mode == "scalp":
             scalp_sells += 1
-        elif mode == "long":
+        elif sell_mode == "long":
             long_sells += 1
         else:
             manual_sells += 1
@@ -73,7 +79,7 @@ def build_daily_report(
     return {
         "day_kst": datetime.now(KST).strftime("%Y-%m-%d"),
         "generated_at": time.time(),
-        "trade_mode": config.trade_mode.value,
+        "trade_mode": mode,
         "buys_count": len(buys),
         "sells_count": sell_n,
         "wins": wins,

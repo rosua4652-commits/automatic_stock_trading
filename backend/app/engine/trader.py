@@ -29,7 +29,7 @@ from app.engine.market_health import get_market_health, report_market_error, rep
 from app.engine.paper_validation import record_paper_auto_day
 from app.engine.position_exit_migrate import migrate_all_positions
 from app.engine.auto_invest_diag import build_auto_invest_rejects, diagnose_auto_invest
-from app.engine.trade_feedback import record_paper_execution
+from app.engine.trade_feedback import record_live_execution, record_paper_execution
 from app.engine.activity_log import push_activity, set_phase
 from app.engine.ai_settings import apply_ai_settings
 from app.engine.flash_crash_guard import (
@@ -213,7 +213,6 @@ class TradingEngine:
         return self._status_version
 
     def _refresh_auto_risk_status(self) -> str:
-        from app.engine.risk_manager import kill_switch_active_for, mode_equity_start
         from app.models import AutoInvestRiskStatus
 
         self.bind_portfolio()
@@ -225,14 +224,15 @@ class TradingEngine:
             realized_pnl_krw=self.portfolio.realized_pnl_krw,
             mode=mode,
         )
-        start = mode_equity_start(state, mode) or state.equity_start_krw
-        kill_on = kill_switch_active_for(state, mode)
+        start = state.equity_start_krw
+        kill_on = state.kill_switch
         self.bot.auto_risk = AutoInvestRiskStatus(
             kill_switch=kill_on,
             kill_reason=state.kill_reason if kill_on else "",
             daily_pnl_krw=round(daily_pnl, 0),
             daily_pnl_pct=round(daily_pct, 2),
             day_equity_start_krw=round(start, 0),
+            risk_mode=mode,
             message=(
                 state.kill_reason
                 if kill_on
@@ -473,6 +473,11 @@ class TradingEngine:
 
         snap = self.portfolio.snapshot({}, cfg)
         on_trade_mode_switch(cfg.trade_mode.value, snap.total_value_krw)
+        self._flash_block_until.clear()
+        from app.models import AutoInvestRiskStatus
+
+        self.bot.auto_risk = AutoInvestRiskStatus()
+        self.bot.recent_trades = self.portfolio.trades[-40:]
         if cfg.trade_mode == TradeMode.PAPER:
             self.portfolio.apply_config(cfg)
             self._persist()
@@ -1042,6 +1047,7 @@ class TradingEngine:
 
         acc = self._backtest_acc or get_accumulator()
         paper_relax = self._paper_relax_bt()
+        account_mode = "live" if self._is_live() else "paper"
         if self.bot.paper_auto_full:
             max_n = int(
                 getattr(self.config, "paper_max_auto_buys_per_scan", 4) or 4
@@ -1056,6 +1062,7 @@ class TradingEngine:
             max_picks=max_n,
             flash_block_until=self._flash_block_until,
             paper_relax_bt=paper_relax,
+            account_mode=account_mode,
         )
         self.bot.auto_invest_rejects = build_auto_invest_rejects(
             self.bot.recommendations,
@@ -1064,6 +1071,7 @@ class TradingEngine:
             acc=acc,
             flash_block_until=self._flash_block_until,
             paper_relax_bt=paper_relax,
+            account_mode=account_mode,
         )
         weight_ok: list = []
         for r in picks:
@@ -1083,6 +1091,7 @@ class TradingEngine:
             acc=acc,
             flash_block_until=self._flash_block_until,
             paper_relax_bt=paper_relax,
+            account_mode=account_mode,
         )
         if not picks:
             blocked = [
@@ -1627,13 +1636,22 @@ class TradingEngine:
             if evt:
                 pnl_delta = self.portfolio.realized_pnl_krw - realized_before
                 if cost_basis > 0 or abs(pnl_delta) > 0:
-                    fb = record_paper_execution(
-                        sym,
-                        entry_outlook=outlook,
-                        pnl_krw=pnl_delta,
-                        cost_basis_krw=max(cost_basis, 1.0),
-                        reason=reason,
-                    )
+                    if self._is_live():
+                        fb = record_live_execution(
+                            sym,
+                            entry_outlook=outlook,
+                            pnl_krw=pnl_delta,
+                            cost_basis_krw=max(cost_basis, 1.0),
+                            reason=reason,
+                        )
+                    else:
+                        fb = record_paper_execution(
+                            sym,
+                            entry_outlook=outlook,
+                            pnl_krw=pnl_delta,
+                            cost_basis_krw=max(cost_basis, 1.0),
+                            reason=reason,
+                        )
                     logger.info("[체결 피드백] %s", fb)
                 self._persist()
                 self.bot.recent_trades = self.portfolio.trades[-30:]

@@ -435,6 +435,7 @@ class AutoInvestRiskStatus(BaseModel):
     daily_pnl_krw: float = 0.0
     daily_pnl_pct: float = 0.0
     day_equity_start_krw: float = 0.0
+    risk_mode: str = ""
     message: str = ""
 
 

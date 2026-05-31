@@ -20,6 +20,7 @@ def build_auto_invest_rejects(
     acc: BacktestAccumulator,
     flash_block_until: dict[str, float] | None,
     paper_relax_bt: bool = False,
+    account_mode: str = "paper",
     max_lines: int = 12,
 ) -> list[str]:
     """UI 고정 표시용 — 종목별 탈락 사유."""
@@ -51,7 +52,12 @@ def build_auto_invest_rejects(
                 out.append(f"{base} 단타: {why_liq}")
                 continue
             ok, why = symbol_passes_learning(
-                acc, learning, sym, mode="scalp", paper_relax=paper_relax_bt
+                acc,
+                learning,
+                sym,
+                mode="scalp",
+                paper_relax=paper_relax_bt,
+                account_mode=account_mode,
             )
             if not ok:
                 out.append(f"{base} 단타: {why}")
@@ -59,7 +65,12 @@ def build_auto_invest_rejects(
             if not auto_long:
                 continue
             ok, why = symbol_passes_learning(
-                acc, learning, sym, mode="long", paper_relax=paper_relax_bt
+                acc,
+                learning,
+                sym,
+                mode="long",
+                paper_relax=paper_relax_bt,
+                account_mode=account_mode,
             )
             if not ok:
                 out.append(f"{base} 롱: {why}")
@@ -75,6 +86,7 @@ def diagnose_auto_invest(
     acc: BacktestAccumulator,
     flash_block_until: dict[str, float] | None,
     paper_relax_bt: bool = False,
+    account_mode: str = "paper",
 ) -> tuple[str, list[str]]:
     learning = load_learning_state()
     maturity = learning.data_maturity_pct
@@ -94,7 +106,12 @@ def diagnose_auto_invest(
             long_n += 1
             if auto_long:
                 ok, why = symbol_passes_learning(
-                    acc, learning, sym, mode="long", paper_relax=paper_relax_bt
+                    acc,
+                    learning,
+                    sym,
+                    mode="long",
+                    paper_relax=paper_relax_bt,
+                    account_mode=account_mode,
                 )
                 if not ok and len(fail_samples) < 4:
                     fail_samples.append(f"{r.base} 롱: {why}")
@@ -102,7 +119,12 @@ def diagnose_auto_invest(
             scalp_n += 1
             if auto_scalp:
                 ok, why = symbol_passes_learning(
-                    acc, learning, sym, mode="scalp", paper_relax=paper_relax_bt
+                    acc,
+                    learning,
+                    sym,
+                    mode="scalp",
+                    paper_relax=paper_relax_bt,
+                    account_mode=account_mode,
                 )
                 if not ok and len(fail_samples) < 4:
                     fail_samples.append(f"{r.base} 단타: {why}")

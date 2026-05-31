@@ -1,9 +1,9 @@
-"""모의·실거래 체결 결과 → 학습 파라미터 피드백 (BT와 별도)."""
+"""모의·실거래 체결 결과 → 학습 파라미터 피드백 (BT와 별도, 계정별 차단)."""
 
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 from app.storage.persistence import load_backtest_state, save_backtest_state
@@ -13,6 +13,7 @@ from app.storage.persistence import load_backtest_state, save_backtest_state
 class ExecutionRecord:
     symbol: str
     mode: str  # long | scalp | unknown
+    account: str  # paper | live
     pnl_pct: float
     pnl_krw: float
     won: bool
@@ -23,6 +24,7 @@ class ExecutionRecord:
         return {
             "symbol": self.symbol,
             "mode": self.mode,
+            "account": self.account,
             "pnl_pct": round(self.pnl_pct, 3),
             "pnl_krw": round(self.pnl_krw, 0),
             "won": self.won,
@@ -32,9 +34,11 @@ class ExecutionRecord:
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> ExecutionRecord:
+        acct = str(d.get("account") or "paper").lower()
         return cls(
             symbol=str(d.get("symbol") or "").upper(),
             mode=str(d.get("mode") or "unknown"),
+            account="live" if acct == "live" else "paper",
             pnl_pct=float(d.get("pnl_pct") or 0),
             pnl_krw=float(d.get("pnl_krw") or 0),
             won=bool(d.get("won")),
@@ -52,35 +56,49 @@ def _mode_from_outlook(outlook: str) -> str:
     return "long"
 
 
-def _load_feedback_rows() -> list[ExecutionRecord]:
+def _feedback_key(account: str) -> str:
+    return (
+        "execution_feedback_live"
+        if str(account).lower() == "live"
+        else "execution_feedback_paper"
+    )
+
+
+def _load_feedback_rows(account: str) -> list[ExecutionRecord]:
     raw = load_backtest_state()
-    rows = raw.get("execution_feedback") or []
+    key = _feedback_key(account)
+    rows = raw.get(key) or raw.get("execution_feedback") or []
     if not isinstance(rows, list):
         return []
     out: list[ExecutionRecord] = []
     for r in rows[-200:]:
         if isinstance(r, dict):
-            out.append(ExecutionRecord.from_dict(r))
+            rec = ExecutionRecord.from_dict(r)
+            if rec.account == ("live" if account == "live" else "paper"):
+                out.append(rec)
     return out
 
 
-def _save_feedback_rows(rows: list[ExecutionRecord]) -> None:
+def _save_feedback_rows(account: str, rows: list[ExecutionRecord]) -> None:
     raw = load_backtest_state()
-    raw["execution_feedback"] = [r.to_dict() for r in rows[-200:]]
+    key = _feedback_key(account)
+    raw[key] = [r.to_dict() for r in rows[-200:]]
     save_backtest_state(raw)
 
 
-def record_paper_execution(
+def record_execution(
     symbol: str,
     *,
+    account: str,
     entry_outlook: str,
     pnl_krw: float,
     cost_basis_krw: float,
     reason: str,
 ) -> str:
-    """매도 체결 후 호출 — 학습·차단 목록 갱신."""
+    """매도 체결 후 호출 — 해당 계정(모의/실거래) 체결 학습만 갱신."""
     from app.engine.backtest_learning import load_learning_state, save_learning_state
 
+    acct = "live" if str(account).lower() == "live" else "paper"
     sym = symbol.upper()
     cost = max(cost_basis_krw, 1.0)
     pnl_pct = pnl_krw / cost * 100
@@ -89,33 +107,42 @@ def record_paper_execution(
     rec = ExecutionRecord(
         symbol=sym,
         mode=mode,
+        account=acct,
         pnl_pct=pnl_pct,
         pnl_krw=pnl_krw,
         won=won,
         reason=reason,
         ts=time.time(),
     )
-    rows = _load_feedback_rows()
+    rows = _load_feedback_rows(acct)
     rows.append(rec)
-    _save_feedback_rows(rows)
+    _save_feedback_rows(acct, rows)
 
     learning = load_learning_state()
-    recent = rows[-30:]
+    acct_rows = _load_feedback_rows(acct)
+    recent = acct_rows[-30:]
     if recent:
         wins = sum(1 for r in recent if r.won)
-        learning.execution_win_rate = wins / len(recent) * 100
-    learning.execution_feedback_count = len(rows)
+        if acct == "paper":
+            learning.execution_win_rate = wins / len(recent) * 100
+        learning.execution_feedback_count = len(acct_rows)
 
-    # 연속 손실·저성과 종목
+    blocked = set(
+        learning.execution_blocked_live
+        if acct == "live"
+        else learning.execution_blocked_paper
+    )
     sym_recent = [r for r in rows if r.symbol == sym][-5:]
     losses = sum(1 for r in sym_recent if not r.won)
-    blocked = set(learning.blocked_symbols)
     if len(sym_recent) >= 3 and losses >= 3:
         blocked.add(sym)
-    learning.blocked_symbols = sorted(blocked)[-80:]
+    if acct == "live":
+        learning.execution_blocked_live = sorted(blocked)[-80:]
+    else:
+        learning.execution_blocked_paper = sorted(blocked)[-80:]
 
     msg_parts: list[str] = []
-    if len(recent) >= 5:
+    if len(recent) >= 5 and acct == "paper":
         wr = learning.execution_win_rate
         if wr < 40:
             learning.long_min_bt_score = min(58.0, learning.long_min_bt_score + 1.0)
@@ -126,8 +153,9 @@ def record_paper_execution(
             learning.scalp_min_bt_score = max(34.0, learning.scalp_min_bt_score - 0.5)
             msg_parts.append(f"체결 승률 {wr:.0f}% → 기준 소폭 완화")
 
+    tag = "실거래" if acct == "live" else "모의"
     learning.last_adjust_message = (
-        f"체결 {'익' if won else '손'} {sym} {pnl_pct:+.1f}%"
+        f"[{tag}] 체결 {'익' if won else '손'} {sym} {pnl_pct:+.1f}%"
         + (f" · {' · '.join(msg_parts)}" if msg_parts else "")
     )
     learning.updated_at = time.time()
@@ -135,14 +163,51 @@ def record_paper_execution(
     return learning.last_adjust_message
 
 
-def symbol_blocked_by_execution(symbol: str) -> bool:
-    from app.engine.backtest_learning import load_learning_state
+def record_paper_execution(
+    symbol: str,
+    *,
+    entry_outlook: str,
+    pnl_krw: float,
+    cost_basis_krw: float,
+    reason: str,
+) -> str:
+    return record_execution(
+        symbol,
+        account="paper",
+        entry_outlook=entry_outlook,
+        pnl_krw=pnl_krw,
+        cost_basis_krw=cost_basis_krw,
+        reason=reason,
+    )
 
-    return symbol.upper() in load_learning_state().blocked_symbols
+
+def record_live_execution(
+    symbol: str,
+    *,
+    entry_outlook: str,
+    pnl_krw: float,
+    cost_basis_krw: float,
+    reason: str,
+) -> str:
+    return record_execution(
+        symbol,
+        account="live",
+        entry_outlook=entry_outlook,
+        pnl_krw=pnl_krw,
+        cost_basis_krw=cost_basis_krw,
+        reason=reason,
+    )
 
 
-def execution_stats() -> dict[str, Any]:
-    rows = _load_feedback_rows()
+def symbol_blocked_by_execution(symbol: str, account_mode: str = "paper") -> bool:
+    from app.engine.backtest_learning import load_learning_state, _execution_blocked
+
+    learning = load_learning_state()
+    return symbol.upper() in _execution_blocked(learning, account_mode)
+
+
+def execution_stats(account_mode: str = "paper") -> dict[str, Any]:
+    rows = _load_feedback_rows(account_mode)
     if not rows:
         return {"count": 0, "win_rate": 0.0}
     wins = sum(1 for r in rows if r.won)

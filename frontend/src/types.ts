@@ -270,6 +270,8 @@ export interface AutoInvestRiskStatus {
   daily_pnl_krw?: number;
   daily_pnl_pct?: number;
   day_equity_start_krw?: number;
+  /** paper | live — 킬 스위치가 걸린 계정 */
+  risk_mode?: string;
   message?: string;
 }
 

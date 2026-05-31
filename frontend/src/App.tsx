@@ -525,10 +525,15 @@ export default function App() {
             : data.account_link?.linked
               ? `실거래 · 총자산 ${fmtKrw(data.account_link.total_assets_krw ?? data.portfolio.total_value_krw)}원`
               : `실거래 — ${data.account_link?.message || "API 연동 필요"}`}
-          {data.bot.auto_risk?.kill_switch ? (
+          {data.bot.auto_risk?.kill_switch &&
+          (!data.bot.auto_risk.risk_mode ||
+            data.bot.auto_risk.risk_mode === data.config.trade_mode) ? (
             <div className="kill-switch-banner">
-              <strong>일손실 킬 스위치</strong> —{" "}
-              {data.bot.auto_risk.kill_reason || "자동 매수 중지"}
+              <strong>
+                일손실 킬 스위치 (
+                {data.config.trade_mode === "live" ? "실거래" : "모의"})
+              </strong>{" "}
+              — {data.bot.auto_risk.kill_reason || "자동 매수 중지"}
               <button
                 type="button"
                 className="btn-ghost btn-xs"

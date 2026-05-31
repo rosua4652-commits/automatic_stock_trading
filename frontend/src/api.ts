@@ -119,8 +119,9 @@ export async function fetchBacktestReport(): Promise<{
   return request("/api/reports/backtest");
 }
 
-export function dailyReportCsvUrl(): string {
-  return "/api/reports/daily.csv";
+export function dailyReportCsvUrl(mode?: string): string {
+  const m = mode === "live" || mode === "paper" ? mode : "";
+  return m ? `/api/reports/daily.csv?mode=${m}` : "/api/reports/daily.csv";
 }
 
 export function backupExportUrl(): string {

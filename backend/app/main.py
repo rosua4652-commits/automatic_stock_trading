@@ -45,7 +45,7 @@ from app.aidi_middleware import AidiActionLogMiddleware
 STATIC_DIR = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
 
 # PC에서 run.bat 시작 시 표시 — GitHub 최신과 비교용
-AIDI_BUILD = "2026-06-02-risk-kill-fix"
+AIDI_BUILD = "2026-06-03-asset-isolation"
 
 
 engine = TradingEngine()
@@ -71,6 +71,27 @@ async def _get_tickers() -> dict:
         if _ticker_cache:
             return _ticker_cache[1]
         return {}
+
+
+async def _snap_for_account_mode(account_mode: str):
+    """모의/실거래 포트폴리오 스냅샷 (활성 모드와 무관)."""
+    mode = "live" if str(account_mode).lower() == "live" else "paper"
+    mgr = store.live if mode == "live" else store.paper
+    prices = await engine.prices_map()
+    upbit_truth = False
+    upbit_synced_at = None
+    if mode == "live":
+        raw = store._live_meta.get("upbit_snapshot")
+        if raw and isinstance(raw, dict):
+            upbit_truth = True
+            upbit_synced_at = raw.get("synced_at")
+    snap = mgr.snapshot(
+        prices,
+        engine.config,
+        upbit_truth=upbit_truth,
+        upbit_synced_at=upbit_synced_at,
+    )
+    return mode, mgr, snap
 
 
 async def _build_status() -> dict:
@@ -132,8 +153,7 @@ async def _build_status() -> dict:
             pass
     view = engine.build_coin_view(engine.bot.view_symbol, prices, tickers)
     engine.bot.manual_mode = not engine.bot.auto_invest_active
-    if engine.bot.auto_invest_active or engine.config.trade_mode == TradeMode.PAPER:
-        engine._refresh_auto_risk_status()
+    engine._refresh_auto_risk_status()
     engine.bot.recent_trades = portfolio.trades[-40:]
     tab_quotes = await engine.tab_quotes_map()
 
@@ -473,26 +493,12 @@ async def risk_reset_kill():
     """일손실 킬 스위치 수동 해제 (당일)."""
     from app.engine.risk_manager import reset_kill_switch
 
-    engine.bind_portfolio()
-    prices = await engine.prices_map()
-    upbit_synced_at = None
-    upbit_truth = False
-    if engine.config.trade_mode == TradeMode.LIVE:
-        raw = store._live_meta.get("upbit_snapshot")
-        if raw:
-            upbit_truth = True
-            upbit_synced_at = raw.get("synced_at") if isinstance(raw, dict) else None
-    snap = engine.portfolio.snapshot(
-        prices,
-        engine.config,
-        upbit_truth=upbit_truth,
-        upbit_synced_at=upbit_synced_at,
-    )
     mode = engine.config.trade_mode.value
+    _, mgr, snap = await _snap_for_account_mode(mode)
     msg = reset_kill_switch(
         mode,
         snap.total_value_krw,
-        engine.portfolio.realized_pnl_krw,
+        mgr.realized_pnl_krw,
     )
     engine._refresh_auto_risk_status()
     status = await _build_status()
@@ -538,35 +544,35 @@ async def reports_stats_overview():
 
 
 @api.get("/reports/daily")
-async def reports_daily():
+async def reports_daily(mode: str | None = None):
     from app.engine.daily_report import build_daily_report
 
-    engine.bind_portfolio()
-    portfolio = engine.portfolio
-    snap = portfolio.snapshot({}, engine.config)
+    account = (mode or engine.config.trade_mode.value).lower()
+    _, mgr, snap = await _snap_for_account_mode(account)
     report = build_daily_report(
-        portfolio.trades,
+        mgr.trades,
         snap,
         engine.config,
-        realized_pnl_krw=portfolio.realized_pnl_krw,
+        realized_pnl_krw=mgr.realized_pnl_krw,
+        account_mode=account,
     )
     return {"ok": True, "report": report}
 
 
 @api.get("/reports/daily.csv")
-async def reports_daily_csv():
+async def reports_daily_csv(mode: str | None = None):
     from app.engine.daily_report import build_daily_report, daily_report_csv
 
-    engine.bind_portfolio()
-    portfolio = engine.portfolio
-    snap = portfolio.snapshot({}, engine.config)
+    account = (mode or engine.config.trade_mode.value).lower()
+    _, mgr, snap = await _snap_for_account_mode(account)
     report = build_daily_report(
-        portfolio.trades,
+        mgr.trades,
         snap,
         engine.config,
-        realized_pnl_krw=portfolio.realized_pnl_krw,
+        realized_pnl_krw=mgr.realized_pnl_krw,
+        account_mode=account,
     )
-    csv_text = daily_report_csv(report, portfolio.trades)
+    csv_text = daily_report_csv(report, mgr.trades)
     return Response(
         content=csv_text.encode("utf-8-sig"),
         media_type="text/csv; charset=utf-8",
@@ -604,7 +610,23 @@ async def backup_import(file: UploadFile = File(...)):
             status_code=400,
         )
     n, notes = import_backup_zip(raw, merge=True)
+    from app.engine.portfolio import PortfolioManager
+    from app.engine.risk_manager import _migrate_legacy_risk_files
+    from app.storage.persistence import load_live_meta
+
+    store._load_paper()
+    store._live_meta = load_live_meta()
+    store.live = PortfolioManager()
+    store.live.positions = {}
+    store.live.trades = []
+    _migrate_legacy_risk_files()
     engine.bind_portfolio()
+    if engine.config.trade_mode == TradeMode.LIVE and has_api_keys(engine.config):
+        try:
+            await store.sync_live(engine.config)
+        except Exception:
+            pass
+    engine._refresh_auto_risk_status()
     status = await _build_status()
     status["ok"] = True
     status["message"] = f"복원 {n}개 파일 · 서버 재시작 권장"

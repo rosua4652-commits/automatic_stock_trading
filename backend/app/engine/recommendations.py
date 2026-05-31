@@ -361,6 +361,7 @@ def filter_recommendations_for_auto(
     max_picks: int,
     flash_block_until: dict[str, float] | None = None,
     paper_relax_bt: bool = False,
+    account_mode: str = "paper",
 ) -> list[InvestmentRecommendation]:
     """롱·단타·혼합 — 학습 임계값 통과한 제안만."""
     if not recs or max_picks <= 0:
@@ -380,7 +381,12 @@ def filter_recommendations_for_auto(
         tier = (r.entry_tier or "").lower()
         if auto_long and tier == "auto":
             ok, _ = symbol_passes_learning(
-                acc, learning, r.symbol, mode="long", paper_relax=paper_relax_bt
+                acc,
+                learning,
+                r.symbol,
+                mode="long",
+                paper_relax=paper_relax_bt,
+                account_mode=account_mode,
             )
             if ok:
                 long_pool.append(r)
@@ -392,7 +398,12 @@ def filter_recommendations_for_auto(
             if not liq_ok:
                 continue
             ok, _ = symbol_passes_learning(
-                acc, learning, r.symbol, mode="scalp", paper_relax=paper_relax_bt
+                acc,
+                learning,
+                r.symbol,
+                mode="scalp",
+                paper_relax=paper_relax_bt,
+                account_mode=account_mode,
             )
             if ok:
                 scalp_pool.append(r)

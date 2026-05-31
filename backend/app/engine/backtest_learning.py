@@ -25,6 +25,8 @@ class BacktestLearningState:
     recent_batch_trades: int = 0
     adjust_cycles: int = 0
     blocked_symbols: list[str] = field(default_factory=list)
+    execution_blocked_paper: list[str] = field(default_factory=list)
+    execution_blocked_live: list[str] = field(default_factory=list)
     last_adjust_message: str = ""
     updated_at: float = 0.0
     execution_win_rate: float = 0.0
@@ -43,6 +45,8 @@ class BacktestLearningState:
             "recent_batch_trades": self.recent_batch_trades,
             "adjust_cycles": self.adjust_cycles,
             "blocked_symbols": list(self.blocked_symbols)[-80:],
+            "execution_blocked_paper": list(self.execution_blocked_paper)[-80:],
+            "execution_blocked_live": list(self.execution_blocked_live)[-80:],
             "last_adjust_message": self.last_adjust_message,
             "updated_at": self.updated_at,
             "execution_win_rate": round(self.execution_win_rate, 2),
@@ -57,6 +61,14 @@ class BacktestLearningState:
         blocked = d.get("blocked_symbols") or []
         if not isinstance(blocked, list):
             blocked = []
+        ebp = d.get("execution_blocked_paper") or []
+        ebl = d.get("execution_blocked_live") or []
+        if not isinstance(ebp, list):
+            ebp = []
+        if not isinstance(ebl, list):
+            ebl = []
+        if not ebp and not ebl and blocked:
+            ebp = list(blocked)
         return cls(
             long_min_bt_score=as_float(d.get("long_min_bt_score"), 42.0),
             scalp_min_bt_score=as_float(d.get("scalp_min_bt_score"), 38.0),
@@ -68,6 +80,8 @@ class BacktestLearningState:
             recent_batch_trades=int(d.get("recent_batch_trades") or 0),
             adjust_cycles=int(d.get("adjust_cycles") or 0),
             blocked_symbols=[str(s).upper() for s in blocked],
+            execution_blocked_paper=[str(s).upper() for s in ebp],
+            execution_blocked_live=[str(s).upper() for s in ebl],
             last_adjust_message=str(d.get("last_adjust_message") or ""),
             updated_at=float(d.get("updated_at") or 0.0),
             execution_win_rate=float(d.get("execution_win_rate") or 0.0),
@@ -100,6 +114,14 @@ def compute_data_maturity(acc: BacktestAccumulator) -> float:
     return min(100.0, depth / 10.0)
 
 
+def _execution_blocked(
+    learning: BacktestLearningState, account_mode: str
+) -> list[str]:
+    if str(account_mode).lower() == "live":
+        return learning.execution_blocked_live
+    return learning.execution_blocked_paper
+
+
 def symbol_passes_learning(
     acc: BacktestAccumulator,
     learning: BacktestLearningState,
@@ -107,11 +129,15 @@ def symbol_passes_learning(
     *,
     mode: str,
     paper_relax: bool = False,
+    account_mode: str = "paper",
 ) -> tuple[bool, str]:
-    """mode: long | scalp"""
+    """mode: long | scalp · account_mode: paper | live (체결 차단만 분리)."""
     sym = symbol.upper()
     if sym in learning.blocked_symbols:
-        return False, "학습 차단 종목(BT·체결)"
+        return False, "학습 차단 종목(BT)"
+    if sym in _execution_blocked(learning, account_mode):
+        tag = "모의" if str(account_mode).lower() != "live" else "실거래"
+        return False, f"체결 학습 차단({tag})"
     maturity = learning.data_maturity_pct or compute_data_maturity(acc)
     rec = acc.symbols.get(sym)
     if not rec and maturity < 15:

@@ -111,7 +111,11 @@ export default function StatsTab({ portfolio, trades, bot, configMode }: Props) 
       <header className="stats-tab-head">
         <h2>통계 · 대시보드</h2>
         <p className="panel-hint">{dayLabel} (KST) · 모의 / 실거래 분리</p>
-        <a className="link-btn" href={dailyReportCsvUrl()} download>
+        <a
+          className="link-btn"
+          href={dailyReportCsvUrl(activeKey)}
+          download
+        >
           당일 CSV ({activeKey === "live" ? "실거래" : "모의"})
         </a>
       </header>
