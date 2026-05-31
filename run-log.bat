@@ -27,19 +27,16 @@ echo  Detail   : buttons, scan, backtest  (chart poll hidden)
 echo  Stop     : Ctrl+C in this window
 echo.
 
-if not exist "backend\.venv\Scripts\python.exe" (
-  echo venv not found. Run run.bat once first to install.
+call "%~dp0scripts\aidi-prep.bat"
+set "PREP_EC=%ERRORLEVEL%"
+if not "%PREP_EC%"=="0" (
+  if "%PREP_EC%"=="3" (
+    echo.
+    echo  GitHub ZIP으로 폴더를 덮어쓴 뒤 run-log.bat 을 다시 실행하세요.
+  )
   pause
-  exit /b 1
+  exit /b %PREP_EC%
 )
-
-if not exist "frontend\dist\index.html" (
-  echo frontend\dist missing. Run run.bat once first.
-  pause
-  exit /b 1
-)
-
-if not exist "backend\data" mkdir "backend\data"
 
 call "%~dp0scripts\aidi-port-check.bat" %PORT%
 if errorlevel 1 (
