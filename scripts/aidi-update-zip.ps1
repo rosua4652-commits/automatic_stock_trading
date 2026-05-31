@@ -35,7 +35,7 @@ try {
         "frontend\dist"
     )
 
-    Write-Host "  Copying files (settings/data kept)..."
+    Write-Host "  Copying files (backend\data = settings, API keys, portfolios — not touched)..."
     $allFiles = Get-ChildItem -LiteralPath $src.FullName -Recurse -File
     foreach ($f in $allFiles) {
         $rel = $f.FullName.Substring($src.FullName.Length).TrimStart("\", "/")

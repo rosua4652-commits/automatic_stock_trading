@@ -47,6 +47,8 @@ git branch --set-upstream-to=origin/main main
 if errorlevel 1 goto fail
 
 echo.
+echo  Note: backend\data\ (user_settings.json, credentials, portfolios) is NOT in git — kept on PC.
+echo.
 echo  OK. Branch main tracks origin/main
 for /f "tokens=2 delims==" %%a in ('findstr /B /C:"AIDI_BUILD =" backend\app\main.py') do echo  Build %%a
 echo.

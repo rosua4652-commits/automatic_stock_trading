@@ -18,6 +18,7 @@ BACKUP_FILES = (
     "risk_state.json",
     "risk_state_paper.json",
     "risk_state_live.json",
+    "user_settings.json",
     "paper_auto_days.json",
     "config_snapshot.json",
 )

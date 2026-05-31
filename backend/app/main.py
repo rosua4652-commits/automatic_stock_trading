@@ -39,13 +39,14 @@ from app.market.live_exchange import close_all, test_exchange_connection
 from app.market.ipv4_http import outbound_ipv4_via_same_stack, upbit_resolved_ipv4
 from app.market.network_info import get_outbound_public_ip
 from app.storage.credentials import load_credentials, mask_key
+from app.storage.user_settings import merge_user_settings_into_config, save_user_settings
 from app.aidi_log import get_aidi_logger, setup_aidi_logging
 from app.aidi_middleware import AidiActionLogMiddleware
 
 STATIC_DIR = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
 
 # PC에서 run.bat 시작 시 표시 — GitHub 최신과 비교용
-AIDI_BUILD = "2026-06-03-asset-isolation-2"
+AIDI_BUILD = "2026-06-03-user-settings-file"
 
 
 engine = TradingEngine()
@@ -254,7 +255,7 @@ setup_aidi_logging()
 async def lifespan(app: FastAPI):
     global _broadcast_task
     get_aidi_logger().info("AIDI 서버 시작 - 빌드 %s", AIDI_BUILD)
-    engine.config = apply_credentials_to_config(engine.config)
+    engine.config = apply_credentials_to_config(merge_user_settings_into_config())
     engine.bind_portfolio()
     try:
         from app.engine.position_exit_migrate import migrate_all_positions
@@ -331,6 +332,7 @@ async def set_config(cfg: AppConfig):
     merged = apply_credentials_to_config(cfg)
     msg = await engine.update_config(merged)
     engine.config = apply_credentials_to_config(engine.config)
+    save_user_settings(engine.config)
     status = await _build_status()
     status["switch_message"] = msg
     return status
