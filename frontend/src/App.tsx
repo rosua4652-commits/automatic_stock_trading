@@ -14,6 +14,7 @@ import {
   setViewSymbol,
   resetRiskKill,
   migratePositionExits,
+  relabelTrades,
   setAutoBuyPaused,
   startBot,
   stopBot,
@@ -885,6 +886,15 @@ export default function App() {
                 showToast(e instanceof Error ? e.message : "손익절 저장 실패");
               } finally {
                 setTradeBusy(false);
+              }
+            }}
+            onRelabelTrades={async () => {
+              try {
+                const s = await relabelTrades();
+                applyPayload(s);
+                showToast(s.message || "체결 사유를 다시 맞췄습니다");
+              } catch (e) {
+                showToast(e instanceof Error ? e.message : "사유 맞추기 실패");
               }
             }}
             onMigrateExits={async () => {

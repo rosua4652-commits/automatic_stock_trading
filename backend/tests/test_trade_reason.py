@@ -1,6 +1,6 @@
 """매매 사유 라벨."""
 
-from app.engine.trade_history import normalize_trade_reason
+from app.engine.trade_history import classify_exit_kind, normalize_trade_reason
 
 
 def test_normalize_upbit_only_sell():
@@ -35,6 +35,23 @@ def test_normalize_approval_buy():
         )
         == "승인 매수"
     )
+
+
+def test_normalize_auto_invest_buy_not_approval():
+    assert (
+        normalize_trade_reason(
+            "BUY",
+            "AI 자동투자 · 6000원 · 손절3%/익절5%",
+            is_auto=True,
+            has_aidi_hint=True,
+        )
+        == "자동 매수"
+    )
+
+
+def test_classify_buy_sl_tp_target_not_exit_kind():
+    assert classify_exit_kind("AI 승인 · 손절3%/익절5%", "BUY") == "approval"
+    assert classify_exit_kind("손절", "SELL") == "sl"
 
 
 def test_buy_never_labeled_tp_sl():

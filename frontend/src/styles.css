@@ -4056,6 +4056,26 @@ main.layout.chart-layout {
   margin: 0;
 }
 
+.stats-tab-dl-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.75rem;
+  margin-left: auto;
+}
+
+.report-panel-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.35rem;
+}
+
+.report-panel-head h3 {
+  margin: 0;
+}
+
 .stats-tab-hint {
   margin: 0 0 0.5rem;
   font-size: 0.78rem;

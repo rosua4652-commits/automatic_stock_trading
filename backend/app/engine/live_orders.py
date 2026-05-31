@@ -137,6 +137,8 @@ async def live_market_buy(
                     reason=reason,
                     is_auto=as_auto,
                     side="BUY",
+                    symbol=sym,
+                    persist=True,
                 )
         except Exception as e:
             return False, str(e)
@@ -301,6 +303,8 @@ async def live_market_sell(
                         reason=reason,
                         is_auto=True,
                         side="SELL",
+                        symbol=sym,
+                        persist=True,
                     )
                 save_live_meta(meta)
                 need_tick = format_upbit_price(need_bid)
@@ -338,6 +342,8 @@ async def live_market_sell(
                     reason=reason,
                     is_auto=record_auto,
                     side="SELL",
+                    symbol=sym,
+                    persist=True,
                 )
             price = price_krw / max(portfolio.usdt_krw, 1.0) if price_krw > 0 else 0.0
             if price <= 0 and pos.current_price > 0:

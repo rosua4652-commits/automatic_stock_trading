@@ -478,6 +478,7 @@ def export_live_meta(portfolio, preserve: dict[str, Any] | None = None) -> dict[
     if preserve:
         for key in (
             "order_reasons",
+            "exit_log",
             "recorded_order_uuids",
             "account_principal_krw",
             "upbit_snapshot",

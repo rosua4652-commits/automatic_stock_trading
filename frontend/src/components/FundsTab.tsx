@@ -59,6 +59,7 @@ type Props = {
   onSaveMinBuyKrw?: (minBuyKrw: number) => Promise<void>;
   savingMinBuy?: boolean;
   busy: boolean;
+  onRelabelTrades?: () => Promise<void>;
 };
 
 function ExitDistanceGauges({
@@ -465,7 +466,9 @@ export default function FundsTab({
   onSaveMinBuyKrw,
   savingMinBuy,
   busy,
+  onRelabelTrades,
 }: Props) {
+  const [relabelBusy, setRelabelBusy] = useState(false);
   const autoMinBuy = getAutoMinBuyKrw({ min_buy_krw: minBuyKrw });
   const manualMinBuy = getManualMinBuyKrw();
   const [buySymbol, setBuySymbol] = useState("BTCUSDT");
@@ -612,18 +615,34 @@ export default function FundsTab({
       </section>
 
       <section className="funds-trades">
-        <h3>
-          매매 내역
-          {tradeMode === "live" && (tradesDisplayCount ?? trades.length) > 0 && (
-            <span className="funds-trades-meta">
-              {" "}
-              · 표시 {tradesDisplayCount ?? trades.length}건
-              {tradesOrdersFetched && tradesOrdersFetched > (tradesDisplayCount ?? 0)
-                ? ` (업비트 체결 ${tradesOrdersFetched}건 중)`
-                : ""}
-            </span>
+        <div className="funds-trades-head">
+          <h3>
+            매매 내역
+            {tradeMode === "live" && (tradesDisplayCount ?? trades.length) > 0 && (
+              <span className="funds-trades-meta">
+                {" "}
+                · 표시 {tradesDisplayCount ?? trades.length}건
+                {tradesOrdersFetched && tradesOrdersFetched > (tradesDisplayCount ?? 0)
+                  ? ` (업비트 체결 ${tradesOrdersFetched}건 중)`
+                  : ""}
+              </span>
+            )}
+          </h3>
+          {onRelabelTrades && tradeMode === "live" && trades.length > 0 && (
+            <button
+              type="button"
+              className="btn-ghost btn-sm"
+              disabled={busy || relabelBusy}
+              title="저장된 익절·손절·자동투자 메타로 사유 열 다시 표기"
+              onClick={() => {
+                setRelabelBusy(true);
+                void onRelabelTrades().finally(() => setRelabelBusy(false));
+              }}
+            >
+              {relabelBusy ? "맞추는 중…" : "사유 다시 맞추기"}
+            </button>
           )}
-        </h3>
+        </div>
         <div className="trades-table-wrap">
           <table className="trades-table">
             <thead>

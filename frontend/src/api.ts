@@ -144,6 +144,11 @@ export async function resetBacktestData(): Promise<StatusPayload> {
   return request("/api/data/reset-backtest", { method: "POST" });
 }
 
+/** 체결 내역 사유 재표기 (익절·손절·자동 매수) */
+export async function relabelTrades(): Promise<StatusPayload> {
+  return request("/api/trades/relabel", { method: "POST" });
+}
+
 export type RecommendationApplyItem = {
   symbol: string;
   amount_krw: number;

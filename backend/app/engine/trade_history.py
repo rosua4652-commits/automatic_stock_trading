@@ -26,6 +26,7 @@ UPBIT_TRADE_HISTORY_DAYS = 90
 UPBIT_TRADE_LIMIT = 500
 DONE_ORDER_MAX_PAGES = 50
 ORDER_REASONS_KEEP = 800
+EXIT_LOG_KEEP = 600
 
 
 def trade_fingerprint(t: dict[str, Any]) -> tuple:
@@ -194,19 +195,22 @@ def _hint_applies_to_side(hint: dict[str, Any], side: str) -> bool:
 
 
 def classify_exit_kind(reason: str, side: str) -> str:
-    """tp | sl | manual | approval | ''"""
+    """tp | sl | manual | approval | auto | ''"""
     text = (reason or "").strip()
     is_buy = str(side).upper() == "BUY"
-    if "익절" in text:
-        return "tp"
-    if "손절" in text or "급락" in text:
-        return "sl"
     if is_buy:
-        if "승인" in text or "ai" in text.lower():
+        # 매수 사유에 붙는 「손절 3% / 익절 5%」 목표 문구는 청산 유형이 아님
+        if "자동투자" in text or "자동 매수" in text:
+            return "auto"
+        if "승인" in text:
             return "approval"
         if "수동" in text:
             return "manual"
         return ""
+    if "익절" in text:
+        return "tp"
+    if "손절" in text or "급락" in text:
+        return "sl"
     if "수동" in text:
         return "manual"
     return ""
@@ -242,11 +246,13 @@ def normalize_trade_reason(
     if is_buy:
         if not has_aidi_hint:
             return "수동 매수"
-        if kind == "approval" or "승인" in text or "ai" in text.lower():
+        if kind == "auto" or "자동투자" in text or "자동 매수" in text:
+            return "자동 매수"
+        if kind == "approval" or "승인" in text:
             return "승인 매수"
         if kind == "manual" or "수동" in text:
             return "수동 매수"
-        return "승인 매수" if is_auto else "수동 매수"
+        return "자동 매수" if is_auto else "수동 매수"
 
     if not has_aidi_hint:
         return "수동 매도"
@@ -263,14 +269,48 @@ def normalize_trade_reason(
     return "수동 매도"
 
 
+def _order_reason_hint(
+    live_meta: dict[str, Any], uid: str, side: str
+) -> dict[str, Any]:
+    """주문 UUID에 저장된 사유 — 매수 목표 손익절 문구와 매도 청산을 구분."""
+    if not uid:
+        return {}
+    raw = live_meta.get("order_reasons") or {}
+    row = raw.get(uid) if isinstance(raw, dict) else None
+    if not isinstance(row, dict):
+        return {}
+    side_u = str(side or "").upper()
+    hs = str(row.get("side") or "").upper()
+    if hs and hs != side_u:
+        return {}
+    hint = dict(row)
+    if side_u == "BUY" and str(hint.get("exit_kind") or "").lower() in ("tp", "sl"):
+        hint["exit_kind"] = classify_exit_kind(str(hint.get("reason") or ""), "BUY")
+    if not _hint_applies_to_side(hint, side_u):
+        return {}
+    return hint
+
+
 def collect_reason_hints(live_meta: dict[str, Any]) -> dict[str, dict[str, Any]]:
-    """order_reasons + pending 지정가 + 저장된 체결 메타."""
+    """order_reasons + exit_log + pending 지정가 + 저장된 체결 메타."""
     hints: dict[str, dict[str, Any]] = {}
     raw = live_meta.get("order_reasons") or {}
     if isinstance(raw, dict):
         for k, v in raw.items():
             if isinstance(v, dict):
                 hints[str(k)] = dict(v)
+
+    for row in live_meta.get("exit_log") or []:
+        if not isinstance(row, dict):
+            continue
+        uid = str(row.get("order_uuid") or "")
+        if uid and uid not in hints:
+            hints[uid] = {
+                "reason": str(row.get("reason") or ""),
+                "is_auto": bool(row.get("is_auto")),
+                "side": str(row.get("side") or "SELL").upper(),
+                "exit_kind": str(row.get("exit_kind") or ""),
+            }
 
     for pm in (live_meta.get("positions_meta") or {}).values():
         if not isinstance(pm, dict):
@@ -318,6 +358,8 @@ def remember_order_reason(
     reason: str,
     is_auto: bool,
     side: str = "",
+    symbol: str = "",
+    persist: bool = False,
 ) -> None:
     uid = str(uuid or "").strip()
     if not uid:
@@ -327,21 +369,43 @@ def remember_order_reason(
         side_u = str(side).upper()
     elif "매도" in reason:
         side_u = "SELL"
-    elif "매수" in reason or "승인" in reason:
+    elif "매수" in reason or "승인" in reason or "자동투자" in reason:
         side_u = "BUY"
     elif "익절" in reason or "손절" in reason or "급락" in reason:
         side_u = "SELL"
     else:
         side_u = "BUY"
+    exit_kind = classify_exit_kind(reason, side_u)
     bag[uid] = {
         "reason": reason,
         "is_auto": bool(is_auto),
         "side": side_u,
-        "exit_kind": classify_exit_kind(reason, side_u),
+        "exit_kind": exit_kind,
     }
     if len(bag) > ORDER_REASONS_KEEP:
         for key in list(bag.keys())[: len(bag) - ORDER_REASONS_KEEP]:
             del bag[key]
+    if side_u == "SELL" and exit_kind in ("tp", "sl"):
+        log = live_meta.setdefault("exit_log", [])
+        log.append(
+            {
+                "order_uuid": uid,
+                "symbol": str(symbol or "").upper(),
+                "reason": reason,
+                "is_auto": bool(is_auto),
+                "side": side_u,
+                "exit_kind": exit_kind,
+                "ts": time.time(),
+            }
+        )
+        live_meta["exit_log"] = log[-EXIT_LOG_KEEP:]
+    if persist:
+        try:
+            from app.storage.persistence import save_live_meta
+
+            save_live_meta(live_meta)
+        except Exception:
+            logger.debug("save_live_meta after order reason failed", exc_info=True)
 
 
 def remember_order_uuid(live_meta: dict[str, Any], uuid: str) -> None:
@@ -515,8 +579,11 @@ def order_to_trade_dict(
     side_raw = str(order.get("side") or "").lower()
     side = "BUY" if side_raw == "bid" else "SELL"
     ord_type = str(order.get("ord_type") or "").lower()
-    hint_raw = reason_hints.get(uid) or {}
-    hint = hint_raw if _hint_applies_to_side(hint_raw, side) else {}
+    hint = dict(reason_hints.get(uid) or {})
+    if side == "BUY" and str(hint.get("exit_kind") or "").lower() in ("tp", "sl"):
+        hint["exit_kind"] = classify_exit_kind(str(hint.get("reason") or ""), "BUY")
+    if not _hint_applies_to_side(hint, side):
+        hint = {}
     raw_reason = str(hint.get("reason") or "")
     is_auto = bool(hint.get("is_auto", False))
     has_hint = bool(uid and hint)
@@ -701,7 +768,9 @@ async def load_trades_from_upbit(
     for row in merged_rows:
         uid = str(row.get("order_uuid") or "")
         side_row = str(row.get("side") or "")
-        hint_row = hints.get(uid) or {}
+        hint_row = _order_reason_hint(live_meta, uid, side_row) or dict(
+            hints.get(uid) or {}
+        )
         if not _hint_applies_to_side(hint_row, side_row):
             hint_row = {}
         exit_kind = str(
@@ -715,12 +784,13 @@ async def load_trades_from_upbit(
         raw_reason = str(hint_row.get("reason") or row.get("reason") or "")
         if hint_row:
             row["is_auto"] = bool(hint_row.get("is_auto", row.get("is_auto")))
+        has_hint = bool(uid and hint_row)
         row["exit_kind"] = exit_kind
         row["reason"] = normalize_trade_reason(
             side_row,
             raw_reason,
             is_auto=bool(row.get("is_auto")),
-            has_aidi_hint=bool(uid and hint_row),
+            has_aidi_hint=has_hint,
             exit_kind=exit_kind,
         )
     live_meta["trades"] = merged_rows

@@ -49,7 +49,7 @@ from app.aidi_middleware import AidiActionLogMiddleware
 STATIC_DIR = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
 
 # PC에서 run.bat 시작 시 표시 — GitHub 최신과 비교용
-AIDI_BUILD = "2026-06-04-backtest-report-csv"
+AIDI_BUILD = "2026-06-04-trade-labels-tpsl"
 
 
 engine = TradingEngine()
@@ -614,6 +614,51 @@ async def reports_backtest():
     from app.engine.backtest_report import build_backtest_report
 
     return {"ok": True, "report": build_backtest_report()}
+
+
+@api.post("/trades/relabel")
+async def trades_relabel():
+    """저장된 order_reasons·exit_log로 체결 내역 사유(익절/손절 등) 재표기."""
+    from app.engine.trade_history import load_trades_from_upbit
+    from app.market.upbit_client import upbit_client
+    from app.storage.credentials import get_active_keys
+
+    if engine.config.trade_mode.value == "live":
+        ak, sk = get_active_keys(engine.config)
+        if not ak or not sk:
+            return JSONResponse(
+                {"error": "no_keys", "message": "API 키가 없습니다"},
+                status_code=400,
+            )
+        async with store._lock:
+            upbit_client.configure(ak, sk)
+            meta = store._live_meta
+            meta["trades_force_sync"] = True
+            store.live.usdt_krw = store.live.usdt_krw or await market.usdt_krw_rate()
+            store.live.trades = await load_trades_from_upbit(
+                upbit_client,
+                meta,
+                usdt_krw=max(store.live.usdt_krw, 1.0),
+                force=True,
+            )
+            store.save_live_meta()
+    else:
+        from app.engine.trade_history import dict_to_trade_event, merge_trade_dicts
+
+        rows = merge_trade_dicts(
+            [t.model_dump() for t in store.paper.trades],
+            usdt_krw=max(store.paper.usdt_krw, 1.0),
+        )
+        out = []
+        for d in rows:
+            evt = dict_to_trade_event(d, usdt_krw=max(store.paper.usdt_krw, 1.0))
+            if evt:
+                out.append(evt)
+        store.paper.trades = out
+        store.save_paper()
+    status = await _build_status()
+    status["message"] = "체결 내역 사유를 다시 맞췄습니다 (익절·손절·자동 매수)"
+    return status
 
 
 @api.get("/reports/backtest.csv")
