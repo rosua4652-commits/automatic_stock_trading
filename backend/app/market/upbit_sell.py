@@ -231,6 +231,7 @@ def set_pending_exit(
     reason: str,
     min_bid_krw: float,
     limit_price_krw: float,
+    order_uuid: str = "",
 ) -> None:
     sym = symbol.upper()
     live_meta.setdefault("positions_meta", {}).setdefault(sym, {})[
@@ -239,6 +240,7 @@ def set_pending_exit(
         "reason": reason,
         "min_bid_krw": round(min_bid_krw, 4),
         "limit_price_krw": round(limit_price_krw, 4),
+        "order_uuid": str(order_uuid or ""),
     }
 
 

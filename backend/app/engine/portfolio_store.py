@@ -1,5 +1,7 @@
 """모의·실거래 포트폴리오 완전 분리."""
 
+import asyncio
+
 from app.engine.portfolio import PortfolioManager
 from app.engine.live_sync import export_live_meta, sync_live_portfolio
 from app.models import AppConfig, TradeMode
@@ -17,6 +19,7 @@ class PortfolioStore:
         self.paper = PortfolioManager()
         self.live = PortfolioManager()
         self._live_meta: dict = load_live_meta()
+        self._lock = asyncio.Lock()
         self._load_paper()
 
     def _load_paper(self) -> None:
@@ -66,11 +69,12 @@ class PortfolioStore:
         return self.paper if mode == TradeMode.PAPER else self.live
 
     async def sync_live(self, config: AppConfig) -> str:
-        prev = self._live_meta
-        msg = await sync_live_portfolio(self.live, config, prev)
-        self._live_meta = export_live_meta(self.live, preserve=prev)
-        save_live_meta(self._live_meta)
-        return msg
+        async with self._lock:
+            prev = self._live_meta
+            msg = await sync_live_portfolio(self.live, config, prev)
+            self._live_meta = export_live_meta(self.live, preserve=prev)
+            save_live_meta(self._live_meta)
+            return msg
 
     async def on_mode_change(
         self, old: TradeMode, new: TradeMode, config: AppConfig

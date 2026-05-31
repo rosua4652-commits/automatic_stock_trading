@@ -7,6 +7,11 @@ from app.market.upbit_data import market as upbit_feed
 from app.market.binance_live import binance_live
 from app.market.coin_registry import coin_meta
 from app.market.upbit_client import symbol_to_upbit, upbit_client, upbit_to_symbol
+from app.engine.trade_history import (
+    backfill_recent_sells,
+    merge_trade_dicts,
+    merge_trade_events,
+)
 from app.market.upbit_order_fill import repair_trade_dict
 from app.models import (
     AppConfig,
@@ -134,6 +139,24 @@ async def _sync_upbit(
     portfolio.usdt_krw = await upbit_feed.usdt_krw_rate()
     meta_map: dict = live_meta.get("positions_meta", {})
 
+    prev_qty: dict[str, float] = {}
+    for sym, pos in portfolio.positions.items():
+        prev_qty[sym.upper()] = float(
+            getattr(pos, "exchange_quantity", pos.quantity) or pos.quantity
+        )
+    for sym, qty in (live_meta.get("last_holdings_qty") or {}).items():
+        sym_u = str(sym).upper()
+        if sym_u not in prev_qty and float(qty or 0) > 1e-12:
+            prev_qty[sym_u] = float(qty)
+    pending_reasons: dict[str, str] = {}
+    for sym, pm in meta_map.items():
+        if not isinstance(pm, dict):
+            continue
+        pe = pm.get("pending_exit")
+        if isinstance(pe, dict):
+            pending_reasons[str(sym).upper()] = str(pe.get("reason") or "대기 매도")
+    markets_by_symbol: dict[str, str] = {}
+
     krw_cash = 0.0
     holdings: dict[str, float] = {}
     balances_by_currency: dict[str, dict] = {}
@@ -169,6 +192,7 @@ async def _sync_upbit(
         price_usdt = price_krw / portfolio.usdt_krw
         symbol = upbit_to_symbol(krw_market)
         base = krw_market.replace("KRW-", "")
+        markets_by_symbol[symbol.upper()] = krw_market
         pm = meta_map.get(symbol, {})
 
         auto_q = min(float(pm.get("auto_quantity", 0)), total_qty)
@@ -267,11 +291,32 @@ async def _sync_upbit(
     portfolio.cash_krw = krw_cash
     portfolio.realized_pnl_krw = float(live_meta.get("realized_pnl_krw", 0))
 
-    local_trades = [
-        TradeEvent(**repair_trade_dict(t, usdt_krw=portfolio.usdt_krw))
-        for t in live_meta.get("trades", [])[-100:]
-    ]
-    portfolio.trades = local_trades
+    portfolio.trades = merge_trade_events(
+        portfolio.trades,
+        live_meta.get("trades", [])[-100:],
+        usdt_krw=portfolio.usdt_krw,
+        limit=100,
+    )
+
+    new_qty = {
+        sym: float(pos.exchange_quantity or pos.quantity)
+        for sym, pos in new_positions.items()
+    }
+    await backfill_recent_sells(
+        portfolio,
+        live_meta,
+        upbit_client,
+        prev_qty=prev_qty,
+        new_qty=new_qty,
+        markets_by_symbol=markets_by_symbol,
+        pending_reasons=pending_reasons,
+    )
+    live_meta["trades"] = merge_trade_dicts(
+        live_meta.get("trades", [])[-100:],
+        [t.model_dump() for t in portfolio.trades],
+        usdt_krw=portfolio.usdt_krw,
+        limit=100,
+    )
 
     n = len(new_positions)
     coin_value = sum(p.valuation_krw for p in new_positions.values())
@@ -396,11 +441,12 @@ async def _sync_binance(
     portfolio.cash_krw = portfolio.usdt_to_krw(usdt_free)
     portfolio.realized_pnl_krw = float(live_meta.get("realized_pnl_krw", 0))
 
-    local_trades = [
-        TradeEvent(**repair_trade_dict(t, usdt_krw=portfolio.usdt_krw))
-        for t in live_meta.get("trades", [])[-100:]
-    ]
-    portfolio.trades = local_trades
+    portfolio.trades = merge_trade_events(
+        portfolio.trades,
+        live_meta.get("trades", [])[-100:],
+        usdt_krw=portfolio.usdt_krw,
+        limit=100,
+    )
 
     n = len(new_positions)
     total_krw = portfolio.cash_krw + sum(
@@ -442,9 +488,16 @@ def export_live_meta(portfolio, preserve: dict[str, Any] | None = None) -> dict[
         if prev.get("pending_exit"):
             row["pending_exit"] = prev["pending_exit"]
         positions_meta[sym] = row
+    prev_trades = (preserve or {}).get("trades") or []
+    merged_trades = merge_trade_dicts(
+        prev_trades,
+        [t.model_dump() for t in portfolio.trades],
+        usdt_krw=max(getattr(portfolio, "usdt_krw", 0), 1.0),
+        limit=100,
+    )
     out: dict[str, Any] = {
         "positions_meta": positions_meta,
-        "trades": [t.model_dump() for t in portfolio.trades[-100:]],
+        "trades": merged_trades,
         "realized_pnl_krw": portfolio.realized_pnl_krw,
     }
     if preserve:
