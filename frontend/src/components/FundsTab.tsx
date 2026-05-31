@@ -163,15 +163,19 @@ function PositionCard({
         <div>
           <h4>{pos.name_ko}</h4>
           <span className="fund-pair">{pos.pair_label}</span>
-          {tier.kind === "scalp" && (
-            <span className="badge tier-scalp">단타</span>
-          )}
-          {tier.kind === "long" && (
-            <span className="badge tier-long">롱</span>
-          )}
           {pos.auto_quantity > 0 && (
-            <span className="badge auto">
-              {tier.kind === "ai" ? "AI " : ""}
+            <span
+              className={`badge auto${
+                tier.kind === "scalp"
+                  ? " tier-scalp"
+                  : tier.kind === "long"
+                    ? " tier-long"
+                    : ""
+              }`}
+            >
+              {tier.kind === "scalp" || tier.kind === "long"
+                ? `${tier.label} AI `
+                : "AI "}
               {fmtQty(pos.auto_quantity)}
             </span>
           )}
