@@ -39,7 +39,13 @@ export function serverHasModernFeatures(
   if (NEW_MARKERS.some((m) => id.includes(m))) {
     return true;
   }
-  return /2026-03-3\d/.test(id);
+  return /20\d{2}-\d{2}-\d{2}/.test(id);
+}
+
+/** 빌드 ID 앞날짜 (2026-06-03) — 같은 날 패치끼리는 구버전 배너 생략 */
+export function buildDatePrefix(buildId: string): string | null {
+  const m = buildId.trim().match(/^(20\d{2}-\d{2}-\d{2})/);
+  return m ? m[1] : null;
 }
 
 export function isServerBuildNewEnough(
@@ -59,6 +65,11 @@ export function isBuildGenerationCompatible(
     return true;
   }
   if (serverBuild === uiBuild) {
+    return true;
+  }
+  const sp = buildDatePrefix(serverBuild);
+  const up = buildDatePrefix(uiBuild);
+  if (sp && up && sp === up) {
     return true;
   }
   return (

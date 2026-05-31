@@ -151,7 +151,7 @@ function Install-Pip([string]$VenvPy, [string]$Root) {
     if ($LASTEXITCODE -ne 0) { throw "pip install failed" }
 }
 
-function Build-Frontend([string]$Root, [string]$BuildId) {
+function Build-Frontend([string]$Root, [string]$BuildId, [string]$UiBuildId) {
     if (-not (Get-Command npm -ErrorAction SilentlyContinue)) {
         throw "npm not found — install Node.js for frontend build"
     }
@@ -163,13 +163,14 @@ function Build-Frontend([string]$Root, [string]$BuildId) {
         if ($LASTEXITCODE -ne 0) { Pop-Location; throw "npm install failed" }
         Pop-Location
     }
-    Write-Info "  Building frontend ($BuildId)..."
+    $stampId = if ($UiBuildId) { $UiBuildId } else { $BuildId }
+    Write-Info "  Building frontend (UI $stampId)..."
     Push-Location $fe
     & npm run build
     if ($LASTEXITCODE -ne 0) { Pop-Location; throw "npm run build failed" }
     Pop-Location
     $stamp = Join-Path $fe "dist\.aidi-ui-build"
-    Set-Content -LiteralPath $stamp -Value $BuildId -Encoding ascii -NoNewline
+    Set-Content -LiteralPath $stamp -Value $stampId -Encoding ascii -NoNewline
 }
 
 function Test-FastReady(
@@ -180,8 +181,9 @@ function Test-FastReady(
     [bool]$DistOk
 ) {
     if (-not $LocalBuild -or -not $VenvOk -or -not $DistOk) { return $false }
-    if ($UiSrc -and $UiSrc -ne $LocalBuild) { return $false }
-    if ($DistStamp -ne $LocalBuild -and $DistStamp -ne $UiSrc) { return $false }
+    if (-not $UiSrc) { return $false }
+    if ($UiSrc -ne $LocalBuild) { return $false }
+    if ($DistStamp -ne $UiSrc) { return $false }
     return $true
 }
 
@@ -308,7 +310,7 @@ if ($uiSrc -and $distStamp -ne $uiSrc) { $needFe = $true }
 
 if ($needFe) {
     try {
-        Build-Frontend $RepoRoot $localBuild
+        Build-Frontend $RepoRoot $localBuild $uiSrc
     } catch {
         Write-Host "ERROR: $($_.Exception.Message)"
         exit 6
