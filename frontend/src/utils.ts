@@ -455,6 +455,7 @@ export const DEFAULT_CONFIG = {
   paper_auto_deploy_pct: 40,
   daily_loss_limit_pct: 5,
   allow_live_auto_invest: false,
+  ai_auto_settings: true,
   flash_guard_enabled: true,
   flash_drop_from_peak_pct: 2.8,
   flash_tick_drop_pct: 1.2,

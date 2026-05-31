@@ -332,6 +332,7 @@ def filter_recommendations_for_auto(
     acc: BacktestAccumulator | None,
     max_picks: int,
     flash_block_until: dict[str, float] | None = None,
+    paper_relax_bt: bool = False,
 ) -> list[InvestmentRecommendation]:
     """롱·단타·혼합 — 학습 임계값 통과한 제안만."""
     if not recs or max_picks <= 0:
@@ -350,11 +351,15 @@ def filter_recommendations_for_auto(
             continue
         tier = (r.entry_tier or "").lower()
         if auto_long and tier == "auto":
-            ok, _ = symbol_passes_learning(acc, learning, r.symbol, mode="long")
+            ok, _ = symbol_passes_learning(
+                acc, learning, r.symbol, mode="long", paper_relax=paper_relax_bt
+            )
             if ok:
                 long_pool.append(r)
         elif auto_scalp and tier == "scalp":
-            ok, _ = symbol_passes_learning(acc, learning, r.symbol, mode="scalp")
+            ok, _ = symbol_passes_learning(
+                acc, learning, r.symbol, mode="scalp", paper_relax=paper_relax_bt
+            )
             if ok:
                 scalp_pool.append(r)
 

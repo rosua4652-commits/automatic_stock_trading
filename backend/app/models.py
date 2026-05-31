@@ -104,6 +104,10 @@ class AppConfig(BaseModel):
         le=30.0,
         description="0이면 손절%×1.5 자동, 평단 대비 긴급 손절 %",
     )
+    ai_auto_settings: bool = Field(
+        default=True,
+        description="True면 BT·학습이 손익절·스캔점수·자동배분을 조정",
+    )
     exchange: str = Field(default="upbit", description="upbit | binance")
     api_access_key: str = ""
     api_secret_key: str = ""
@@ -425,6 +429,13 @@ class BacktestStatus(BaseModel):
     learning: BacktestLearningStatus = Field(default_factory=BacktestLearningStatus)
 
 
+class ActivityEntry(BaseModel):
+    ts: float = 0.0
+    phase: str = ""
+    level: str = "info"
+    message: str = ""
+
+
 class BotStartRequest(BaseModel):
     """분석만 vs 자동투자(롱·단타·혼합)."""
 
@@ -456,6 +467,11 @@ class BotState(BaseModel):
     backtest: BacktestStatus = Field(default_factory=BacktestStatus)
     recent_trades: list[TradeEvent] = Field(default_factory=list)
     manual_mode: bool = True
+    activity_log: list[ActivityEntry] = Field(default_factory=list)
+    phase: str = "idle"
+    phase_detail: str = ""
+    seconds_until_scan: int = 0
+    ai_settings_summary: str = ""
 
 
 class ManualBuyRequest(BaseModel):

@@ -211,7 +211,30 @@ export default function SettingsModal({
         </section>
 
         <section className="settings-section">
+          <h3>AI 자동 설정</h3>
+          <label className="field checkbox-field">
+            <input
+              type="checkbox"
+              checked={draft.ai_auto_settings !== false}
+              onChange={(e) => set("ai_auto_settings", e.target.checked)}
+            />
+            <span>
+              백테스트·학습으로 손익절·스캔 점수·자동 배분 조정 (권장)
+            </span>
+          </label>
+          <p className="warn subtle">
+            켜면 아래 숫자는 BT가 바꿉니다. 끄면 직접 입력값을 사용합니다. 수수료
+            0.05%·일손실 킬만 고정 권장.
+          </p>
+        </section>
+
+        <section className="settings-section">
           <h3>매매 전략</h3>
+          {draft.ai_auto_settings !== false && (
+            <p className="warn subtle">
+              AI 자동 ON — 손절/익절·스캔 점수는 실행 중 BT가 조정합니다.
+            </p>
+          )}
           <div className="field-grid">
             <label className="field">
               <span>손절 (%) · 소수 둘째 자리</span>

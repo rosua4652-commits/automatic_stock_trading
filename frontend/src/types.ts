@@ -26,6 +26,7 @@ export interface AppConfig {
   paper_auto_deploy_pct?: number;
   daily_loss_limit_pct?: number;
   allow_live_auto_invest?: boolean;
+  ai_auto_settings?: boolean;
   flash_guard_enabled?: boolean;
   flash_drop_from_peak_pct?: number;
   flash_tick_drop_pct?: number;
@@ -282,10 +283,23 @@ export interface BacktestStatus {
   learning?: BacktestLearningStatus;
 }
 
+export interface ActivityEntry {
+  ts: number;
+  phase: string;
+  level: string;
+  message: string;
+}
+
 export interface BotState {
   status: BotStatus;
   view_symbol: string;
   message: string;
+  last_scan?: number;
+  phase?: string;
+  phase_detail?: string;
+  seconds_until_scan?: number;
+  ai_settings_summary?: string;
+  activity_log?: ActivityEntry[];
   candidates: CoinCandidate[];
   recommendations?: InvestmentRecommendation[];
   long_signals?: DirectionSignalItem[];

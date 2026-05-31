@@ -1792,6 +1792,114 @@ main.layout.chart-layout {
   color: var(--red);
 }
 
+.activity-strip-wrap {
+  padding: 0 1rem 0.5rem;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.activity-panel {
+  margin: 0 0 1rem;
+  padding: 0.85rem 1rem;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.activity-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.activity-title {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.activity-countdown {
+  font-size: 0.8rem;
+  color: var(--accent);
+}
+
+.activity-phase {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.activity-ai-summary,
+.activity-auto-msg,
+.activity-bt-msg {
+  margin: 0.35rem 0;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.activity-auto-msg {
+  color: var(--accent);
+}
+
+.activity-list {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.activity-item {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.5rem;
+  padding: 0.35rem 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+
+.activity-item:last-child {
+  border-bottom: none;
+}
+
+.activity-item.warn .activity-text {
+  color: var(--red);
+}
+
+.activity-item.ok .activity-text {
+  color: var(--green);
+}
+
+.activity-item.muted {
+  color: var(--muted);
+}
+
+.activity-ts {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.activity-phase-tag {
+  color: var(--accent);
+}
+
+.activity-hint {
+  margin: 0.5rem 0 0;
+  font-size: 0.7rem;
+  color: var(--muted);
+}
+
+.auto-invest-banner {
+  margin: 0 0 0.75rem;
+  padding: 0.5rem 0.75rem;
+  background: rgba(56, 139, 253, 0.12);
+  border-radius: 8px;
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
 .progress-wrap {
   margin-top: 0.85rem;
 }

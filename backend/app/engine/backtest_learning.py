@@ -105,6 +105,7 @@ def symbol_passes_learning(
     symbol: str,
     *,
     mode: str,
+    paper_relax: bool = False,
 ) -> tuple[bool, str]:
     """mode: long | scalp"""
     sym = symbol.upper()
@@ -113,7 +114,9 @@ def symbol_passes_learning(
     maturity = learning.data_maturity_pct or compute_data_maturity(acc)
     rec = acc.symbols.get(sym)
     if not rec and maturity < 15:
-        return False, "BT 데이터 부족(초기 구간)"
+        if paper_relax:
+            return True, "모의·BT초기(차트·제안 기준)"
+        return False, "BT 데이터 부족(15% 전)"
     if not rec:
         if maturity >= 25:
             return True, "BT 신규(성숙도 충분)"

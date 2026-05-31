@@ -21,6 +21,9 @@ from app.engine.backtest_runner import get_accumulator
 from app.engine.backtest_learning import load_learning_state, strategy_sl_tp
 from app.engine.risk_manager import check_auto_invest_allowed, evaluate_daily_risk
 from app.engine.trade_feedback import record_paper_execution
+from app.engine.activity_log import push_activity, set_phase
+from app.engine.ai_settings import apply_ai_settings
+from app.engine.auto_invest_diag import diagnose_auto_invest
 from app.engine.flash_crash_guard import (
     FlashGuardState,
     block_symbol_after_flash,
@@ -77,6 +80,22 @@ class TradingEngine:
         self._backtest_acc: BacktestAccumulator | None = None
         self._flash_guard: dict[str, FlashGuardState] = {}
         self._flash_block_until: dict[str, float] = {}
+        self._scan_wait_left: int = 0
+
+    def _paper_relax_bt(self) -> bool:
+        return bool(
+            self.bot.paper_auto_full
+            and getattr(self.config, "ai_auto_settings", True)
+        )
+
+    def _log(self, phase: str, message: str, level: str = "info") -> None:
+        push_activity(self.bot, phase, message, level=level)
+        if level == "warn":
+            logger.warning("[%s] %s", phase, message)
+        elif level == "ok":
+            logger.info("[%s] %s", phase, message)
+        else:
+            logger.info("[%s] %s", phase, message)
 
     def bind_portfolio(self) -> None:
         """현재 모드에 맞는 포트폴리오만 참조 (시뮬·실거래 분리)."""
@@ -252,15 +271,33 @@ class TradingEngine:
             mix = "·".join(parts)
             if auto_long and auto_scalp:
                 mix += " 혼합"
-            learn = load_learning_state()
             self.bot.paper_auto_full = not self._is_live()
+            self.bot.activity_log = []
+            acc = self._backtest_acc or get_accumulator()
+            if getattr(self.config, "ai_auto_settings", True):
+                eff = apply_ai_settings(
+                    self.config, acc, is_paper=not self._is_live()
+                )
+                self.bot.ai_settings_summary = (
+                    f"AI설정 손절{eff.get('stop_loss_pct')}% "
+                    f"익절{eff.get('take_profit_pct')}% "
+                    f"진입≥{eff.get('min_entry_score')} "
+                    f"스캔≥{eff.get('min_buy_score')}"
+                )
+                self._log("설정", self.bot.ai_settings_summary, "ok")
+            learn = load_learning_state()
             risk_msg = self._refresh_auto_risk_status()
             limit = float(getattr(self.config, "daily_loss_limit_pct", 5.0) or 5.0)
+            relax = (
+                " · BT초기 모의완화"
+                if self._paper_relax_bt() and learn.data_maturity_pct < 15
+                else ""
+            )
             self.bot.auto_invest_message = (
                 f"{'[모의 완전자동] ' if self.bot.paper_auto_full else ''}"
                 f"자동투자 {mix} · BT성숙 {learn.data_maturity_pct:.0f}% · "
                 f"롱≥{learn.long_min_bt_score:.0f} 단타≥{learn.scalp_min_bt_score:.0f} · "
-                f"일손실한도 {limit:.1f}%"
+                f"일손실한도 {limit:.1f}%{relax}"
             )
             if risk_msg:
                 self.bot.auto_invest_message += f" · {risk_msg}"
@@ -694,6 +731,9 @@ class TradingEngine:
                 for tick in range(interval):
                     if not self.is_running():
                         return
+                    self.bot.seconds_until_scan = max(0, interval - tick)
+                    if tick == 0:
+                        set_phase(self.bot, "wait", f"다음 스캔 {interval}초")
                     if tick > 0 and tick % 5 == 0:
                         try:
                             self.bind_portfolio()
@@ -721,8 +761,12 @@ class TradingEngine:
         if not self.is_running():
             return
 
-        logger.info("[시장 스캔] 시작 — 종목·진입점수·투자 제안 갱신")
+        set_phase(self.bot, "scan", "시장 스캔")
+        self._log("스캔", "시장·차트·투자 제안 분석 시작")
         self.bind_portfolio()
+        acc_pre = self._backtest_acc or get_accumulator()
+        if getattr(self.config, "ai_auto_settings", True):
+            apply_ai_settings(self.config, acc_pre, is_paper=not self._is_live())
         if self._is_live():
             try:
                 self._link_message = await store.sync_live(self.config)
@@ -820,12 +864,14 @@ class TradingEngine:
             f"제안 {len(self.bot.recommendations)}건 · 합계 {total_rec:,.0f}원"
             f"{bt_sl_tp} (종목별 BT 최적 적용)"
         )
-        logger.info("[시장 스캔] 완료 · %s", self.bot.message)
+        self._log("스캔", self.bot.message.replace(f"[{mode}] ", ""), "ok")
         await self._monitor_positions(tickers)
         if not self._is_live():
             self._persist()
         if self.bot.auto_invest_active:
+            set_phase(self.bot, "auto", "자동 매수 판단")
             await self._maybe_auto_invest_after_scan()
+        set_phase(self.bot, "wait", "다음 스캔 대기")
         self._notify()
 
     async def _maybe_auto_invest_after_scan(self) -> None:
@@ -843,10 +889,11 @@ class TradingEngine:
         self._refresh_auto_risk_status()
         if not allowed:
             self.bot.auto_invest_message = risk_msg
-            logger.info("[자동투자] 스킵 · %s", risk_msg)
+            self._log("자동", risk_msg, "warn")
             return
 
         acc = self._backtest_acc or get_accumulator()
+        paper_relax = self._paper_relax_bt()
         if self.bot.paper_auto_full:
             max_n = int(
                 getattr(self.config, "paper_max_auto_buys_per_scan", 4) or 4
@@ -860,6 +907,15 @@ class TradingEngine:
             acc=acc,
             max_picks=max_n,
             flash_block_until=self._flash_block_until,
+            paper_relax_bt=paper_relax,
+        )
+        diag, _fails = diagnose_auto_invest(
+            self.bot.recommendations,
+            auto_long=self.bot.auto_invest_long,
+            auto_scalp=self.bot.auto_invest_scalp,
+            acc=acc,
+            flash_block_until=self._flash_block_until,
+            paper_relax_bt=paper_relax,
         )
         if not picks:
             blocked = [
@@ -869,12 +925,11 @@ class TradingEngine:
             ]
             if blocked:
                 self.bot.auto_invest_message = (
-                    f"급락 차단 중 — {', '.join(blocked[:4])} 신규 매수 보류"
+                    f"급락 차단 — {', '.join(blocked[:4])} 매수 보류"
                 )
             else:
-                self.bot.auto_invest_message = (
-                    "자동 매수 대기 — BT·차트 기준 통과 종목 없음 (다음 스캔)"
-                )
+                self.bot.auto_invest_message = "자동 매수 없음 — " + diag
+            self._log("자동", self.bot.auto_invest_message, "warn")
             return
 
         raw_amts = {r.symbol.upper(): float(r.amount_krw) for r in picks}
@@ -916,7 +971,7 @@ class TradingEngine:
         syms = ", ".join(
             f"{r.base}({'단타' if r.entry_tier == 'scalp' else '롱'})" for r in picks
         )
-        logger.info("[자동투자] %d건 매수 시도 · %s", len(picks), syms)
+        self._log("자동", f"매수 {len(picks)}건 시도 · {syms}", "ok")
         ok_n, msg = await self._execute_recommendation_buys(
             picks,
             amount_overrides=capped,
@@ -924,6 +979,7 @@ class TradingEngine:
             buy_tag="AI 자동투자",
         )
         self.bot.auto_invest_message = msg if ok_n else f"자동 매수 실패 · {msg}"
+        self._log("자동", self.bot.auto_invest_message, "ok" if ok_n else "warn")
 
     async def _execute_recommendation_buys(
         self,

@@ -16,6 +16,7 @@ import {
   startBot,
   stopBot,
 } from "./api";
+import ActivityPanel from "./components/ActivityPanel";
 import AlertsHub from "./components/AlertsHub";
 import RecommendationsPanel from "./components/RecommendationsPanel";
 import ChartPanel from "./components/ChartPanel";
@@ -633,6 +634,7 @@ export default function App() {
           backtestMessage={data.bot.backtest?.message}
           backtest={data.bot.backtest}
           autoInvestMessage={data.bot.auto_invest_message}
+          bot={data.bot}
           botStatus={data.bot.status}
           cashKrw={data.portfolio.cash_krw}
           feePct={appConfig.trading_fee_pct}
