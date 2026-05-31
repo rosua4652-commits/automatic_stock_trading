@@ -141,3 +141,71 @@ def test_load_trades_from_upbit_includes_sells():
     assert len(trades) == 1
     assert trades[0].side == "SELL"
     assert trades[0].amount_krw == 12500
+    assert trades[0].reason == "익절"
+
+
+def test_export_live_meta_preserves_order_reasons():
+    from app.engine.live_sync import export_live_meta
+    from app.engine.portfolio import PortfolioManager
+
+    prev = {
+        "order_reasons": {
+            "u1": {
+                "reason": "손절",
+                "is_auto": True,
+                "side": "SELL",
+                "exit_kind": "sl",
+            }
+        }
+    }
+    out = export_live_meta(PortfolioManager(), preserve=prev)
+    assert out["order_reasons"]["u1"]["reason"] == "손절"
+
+
+def test_stale_cached_manual_sell_relabeled_from_order_reasons():
+    live_meta: dict = {
+        "order_reasons": {
+            "sell-uuid-1": {
+                "reason": "익절",
+                "is_auto": True,
+                "side": "SELL",
+                "exit_kind": "tp",
+            }
+        },
+        "trades": [
+            {
+                "ts": time.time(),
+                "symbol": "ARBUSDT",
+                "base": "ARB",
+                "display": "ARB/KRW",
+                "side": "SELL",
+                "price": 1.0,
+                "price_krw": 1000,
+                "quantity": 12.5,
+                "amount_krw": 12500,
+                "amount_usdt": 9.2,
+                "reason": "수동 매도",
+                "is_auto": True,
+                "order_uuid": "sell-uuid-1",
+            }
+        ],
+    }
+    now_iso = time.strftime("%Y-%m-%dT%H:%M:%S+09:00", time.localtime())
+    list_order = {
+        "uuid": "sell-uuid-1",
+        "market": "KRW-ARB",
+        "side": "ask",
+        "ord_type": "market",
+        "executed_volume": "12.5",
+        "created_at": now_iso,
+    }
+    detail = {
+        **list_order,
+        "trades": [{"volume": "12.5", "funds": "12500"}],
+    }
+    client = _FakeUpbitClient([[list_order]], {"sell-uuid-1": detail})
+
+    trades = asyncio.run(
+        load_trades_from_upbit(client, live_meta, usdt_krw=1350.0, force=True)
+    )
+    assert trades[0].reason == "익절"

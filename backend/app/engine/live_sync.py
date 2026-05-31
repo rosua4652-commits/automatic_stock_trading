@@ -476,8 +476,17 @@ def export_live_meta(portfolio, preserve: dict[str, Any] | None = None) -> dict[
         "realized_pnl_krw": portfolio.realized_pnl_krw,
     }
     if preserve:
-        if preserve.get("account_principal_krw"):
-            out["account_principal_krw"] = preserve["account_principal_krw"]
-        if preserve.get("upbit_snapshot"):
-            out["upbit_snapshot"] = preserve["upbit_snapshot"]
+        for key in (
+            "order_reasons",
+            "recorded_order_uuids",
+            "account_principal_krw",
+            "upbit_snapshot",
+            "trades_upbit_synced_at",
+            "trades_sync_error",
+            "trades_orders_fetched",
+            "trades_display_count",
+            "trades_force_sync",
+        ):
+            if key in preserve:
+                out[key] = preserve[key]
     return out

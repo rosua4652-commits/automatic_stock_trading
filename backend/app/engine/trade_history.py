@@ -50,6 +50,38 @@ def _as_dict(item: Any) -> dict[str, Any]:
     return {}
 
 
+def _trade_reason_score(d: dict[str, Any]) -> int:
+    """병합 시 익절/손절·승인 라벨이 수동 라벨보다 우선."""
+    side = str(d.get("side") or "").upper()
+    reason = str(d.get("reason") or "")
+    ek = str(d.get("exit_kind") or "").lower()
+    if not ek and side == "SELL":
+        ek = classify_exit_kind(reason, side)
+    if side == "SELL":
+        if ek in ("tp", "sl") or reason in ("익절", "손절"):
+            return 4
+        if reason == "수동 매도":
+            return 1
+        return 2
+    if side == "BUY":
+        if ek == "approval" or "승인" in reason:
+            return 4
+        if reason == "수동 매수":
+            return 1
+        return 2
+    return 0
+
+
+def _prefer_trade_row(
+    incoming: dict[str, Any], existing: dict[str, Any]
+) -> dict[str, Any]:
+    if _trade_reason_score(incoming) > _trade_reason_score(existing):
+        return incoming
+    if _trade_reason_score(incoming) < _trade_reason_score(existing):
+        return existing
+    return incoming
+
+
 def merge_trade_dicts(
     *sources: list[Any],
     usdt_krw: float = 1350.0,
@@ -59,7 +91,11 @@ def merge_trade_dicts(
     for src in sources:
         for raw in src or []:
             d = repair_trade_dict(_as_dict(raw), usdt_krw=usdt_krw)
-            merged[trade_fingerprint(d)] = d
+            fp = trade_fingerprint(d)
+            if fp in merged:
+                merged[fp] = _prefer_trade_row(d, merged[fp])
+            else:
+                merged[fp] = d
     rows = sorted(merged.values(), key=lambda x: float(x.get("ts") or 0))
     return rows[-limit:]
 
@@ -93,15 +129,24 @@ def dict_to_trade_event(
         return None
     uid = str(d.get("order_uuid") or "")
     side_row = str(d.get("side") or "")
+    exit_kind = str(d.get("exit_kind") or "").lower()
+    if not exit_kind and side_row.upper() == "SELL":
+        exit_kind = classify_exit_kind(str(d.get("reason") or ""), side_row)
+    raw_reason = str(d.get("reason") or "")
+    has_hint = bool(uid) and (
+        exit_kind in ("tp", "sl", "approval", "manual")
+        or raw_reason not in ("", "수동 매도", "수동 매수")
+        or bool(d.get("is_auto"))
+    )
     d["reason"] = normalize_trade_reason(
         side_row,
-        str(d.get("reason") or ""),
+        raw_reason,
         is_auto=bool(d.get("is_auto")),
-        has_aidi_hint=bool(uid),
-        exit_kind=classify_exit_kind(str(d.get("reason") or ""), side_row)
-        if side_row.upper() == "SELL"
-        else "",
+        has_aidi_hint=has_hint,
+        exit_kind=exit_kind,
     )
+    if exit_kind:
+        d["exit_kind"] = exit_kind
     try:
         return TradeEvent(**d)
     except Exception as e:
@@ -245,14 +290,23 @@ def collect_reason_hints(live_meta: dict[str, Any]) -> dict[str, dict[str, Any]]
         d = _as_dict(row)
         uid = str(d.get("order_uuid") or "")
         if uid and uid not in hints and d.get("reason"):
+            reason = str(d.get("reason"))
+            side = str(d.get("side") or "").upper()
+            ek = str(d.get("exit_kind") or "").lower() or classify_exit_kind(
+                reason, side
+            )
+            if (
+                side == "SELL"
+                and reason == "수동 매도"
+                and bool(d.get("is_auto"))
+                and ek == "manual"
+            ):
+                continue
             hints[uid] = {
-                "reason": str(d.get("reason")),
+                "reason": reason,
                 "is_auto": bool(d.get("is_auto")),
-                "side": str(d.get("side") or "").upper(),
-                "exit_kind": classify_exit_kind(
-                    str(d.get("reason") or ""),
-                    str(d.get("side") or "SELL"),
-                ),
+                "side": side,
+                "exit_kind": ek,
             }
     return hints
 
@@ -269,7 +323,16 @@ def remember_order_reason(
     if not uid:
         return
     bag: dict = live_meta.setdefault("order_reasons", {})
-    side_u = str(side or ("BUY" if "매도" not in reason else "SELL")).upper()
+    if side:
+        side_u = str(side).upper()
+    elif "매도" in reason:
+        side_u = "SELL"
+    elif "매수" in reason or "승인" in reason:
+        side_u = "BUY"
+    elif "익절" in reason or "손절" in reason or "급락" in reason:
+        side_u = "SELL"
+    else:
+        side_u = "BUY"
     bag[uid] = {
         "reason": reason,
         "is_auto": bool(is_auto),
@@ -611,8 +674,8 @@ async def load_trades_from_upbit(
         err_msg = str(e)[:220]
 
     combined = merge_trade_events(
-        [t.model_dump() for t in api_trades],
         cached,
+        [t.model_dump() for t in api_trades],
         usdt_krw=usdt_krw,
         limit=UPBIT_TRADE_LIMIT,
     )
@@ -641,12 +704,24 @@ async def load_trades_from_upbit(
         hint_row = hints.get(uid) or {}
         if not _hint_applies_to_side(hint_row, side_row):
             hint_row = {}
+        exit_kind = str(
+            hint_row.get("exit_kind")
+            or row.get("exit_kind")
+            or classify_exit_kind(
+                str(hint_row.get("reason") or row.get("reason") or ""),
+                side_row,
+            )
+        )
+        raw_reason = str(hint_row.get("reason") or row.get("reason") or "")
+        if hint_row:
+            row["is_auto"] = bool(hint_row.get("is_auto", row.get("is_auto")))
+        row["exit_kind"] = exit_kind
         row["reason"] = normalize_trade_reason(
             side_row,
-            str(row.get("reason") or ""),
+            raw_reason,
             is_auto=bool(row.get("is_auto")),
             has_aidi_hint=bool(uid and hint_row),
-            exit_kind=str(hint_row.get("exit_kind") or ""),
+            exit_kind=exit_kind,
         )
     live_meta["trades"] = merged_rows
     live_meta["trades_display_count"] = len(merged_rows)

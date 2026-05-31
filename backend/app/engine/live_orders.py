@@ -379,7 +379,7 @@ async def live_market_sell(
                         amount_krw=round(quote_krw, 0),
                         amount_usdt=round(quote, 4),
                         reason=reason_label,
-                        is_auto=auto_only,
+                        is_auto=record_auto,
                         order_uuid=order_uuid,
                     )
                 ],

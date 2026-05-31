@@ -340,6 +340,7 @@ class TradeEvent(BaseModel):
     is_auto: bool = True
     order_uuid: str = ""
     entry_mode: str = ""  # 롱 | 단타 | AI — 매매 내역 표시용
+    exit_kind: str = ""  # tp | sl | manual | approval — 사유 재분류용
 
 
 class ChartMarker(BaseModel):
