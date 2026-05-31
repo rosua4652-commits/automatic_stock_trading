@@ -706,8 +706,21 @@ body {
 
 .coin-detail-prices {
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
-  gap: 0.5rem;
+  gap: 0.35rem 0.55rem;
+}
+
+.coin-vol {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #94a3b8;
+  width: 100%;
+}
+
+.coin-tab-card .ctc-vol {
+  font-size: 0.58rem;
+  color: #8b9cb5;
 }
 
 .coin-price {
@@ -1473,6 +1486,37 @@ body {
   transition: border-color 0.15s, color 0.15s;
 }
 
+/* 텍스트 버튼 — 40px 고정(아이콘용) 때문에 글자가 세로로 깨지는 문제 방지 */
+.btn-ghost.btn-sm,
+.btn-ghost.btn-xs,
+.btn-ghost.wide {
+  width: auto;
+  height: auto;
+  min-height: 2rem;
+  padding: 0.4rem 0.75rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #e8edf4;
+  background: rgba(255, 255, 255, 0.06);
+  white-space: nowrap;
+  line-height: 1.25;
+  font-family: inherit;
+}
+
+.btn-ghost.btn-xs {
+  min-height: 1.6rem;
+  padding: 0.2rem 0.45rem;
+  font-size: 0.65rem;
+}
+
+.btn-ghost.btn-sm:hover,
+.btn-ghost.btn-xs:hover,
+.btn-ghost.wide:hover {
+  border-color: var(--accent);
+  color: #fff;
+  background: rgba(59, 158, 255, 0.15);
+}
+
 .btn-ghost:hover {
   border-color: var(--accent);
   color: var(--text);
@@ -2200,7 +2244,7 @@ main.layout.chart-layout {
 .chart-canvas-wrap {
   position: relative;
   flex: 1;
-  min-height: 0;
+  min-height: 200px;
   height: auto;
   overflow: hidden;
   border-radius: 8px;
@@ -2359,6 +2403,27 @@ main.layout.chart-layout {
 .alerts-screen-head h2 {
   font-size: 1rem;
   margin: 0 0 0.35rem;
+  color: #f1f5f9;
+}
+
+.alerts-screen-head .panel-hint {
+  color: #b8c5d9;
+}
+
+.alerts-screen-actions {
+  width: 100%;
+}
+
+.alerts-quick-name {
+  color: #f1f5f9;
+}
+
+.alerts-foot-meta {
+  color: #c5d0e0;
+}
+
+.alerts-foot-meta .warn {
+  color: #fca5a5;
 }
 
 .alerts-count {
@@ -2445,17 +2510,40 @@ main.layout.chart-layout {
   display: flex;
   flex-direction: column;
   gap: 1.25rem;
+  color: #e8edf4;
+  font-family: inherit;
 }
 
 .alerts-hub-section {
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  background: var(--surface);
+  background: #1a2330;
   padding: 0.75rem 0.85rem;
 }
 
+.alerts-hub-title {
+  color: #f8fafc;
+}
+
 .alerts-hub-section-head {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.4rem;
+  width: 100%;
+  min-width: 0;
   margin-bottom: 0.65rem;
+}
+
+.alerts-hub-section-head .panel-hint {
+  color: #b8c5d9;
+  line-height: 1.4;
+}
+
+.alerts-hub-recs .alerts-screen {
+  padding: 0;
+  max-width: none;
+  margin: 0;
 }
 
 .alerts-hub-title {

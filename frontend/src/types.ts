@@ -6,6 +6,8 @@ export interface TabQuote {
   price_usdt: number;
   price_krw: number;
   change_24h: number;
+  /** 업비트 24h 누적 거래대금 (KRW) */
+  volume_24h_krw?: number;
 }
 
 export interface AppConfig {

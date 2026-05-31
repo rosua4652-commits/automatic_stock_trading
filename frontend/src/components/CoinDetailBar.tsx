@@ -1,9 +1,10 @@
-import type { AppConfig, CoinView, InvestmentRecommendation } from "../types";
+import type { AppConfig, CoinView, InvestmentRecommendation, TabQuote } from "../types";
 import {
   entryBadge,
   fmtKrw,
   fmtPct,
   fmtUsd,
+  fmtVolumeKrw,
   isRunning,
   MIN_BUY_KRW,
   fmtPctSetting,
@@ -21,6 +22,7 @@ type Props = {
   cashKrw: number;
   config: AppConfig;
   recommendation?: InvestmentRecommendation | null;
+  tabQuote?: TabQuote;
   onBuy: (symbol: string, amountKrw: number) => Promise<void>;
   onSell: (symbol: string, percent: number) => Promise<void>;
 };
@@ -34,6 +36,7 @@ export default function CoinDetailBar({
   cashKrw,
   config,
   recommendation,
+  tabQuote,
   onBuy,
   onSell,
 }: Props) {
@@ -75,6 +78,11 @@ export default function CoinDetailBar({
             <span className={`coin-chg ${change_24h >= 0 ? "up" : "down"}`}>
               {fmtPct(change_24h)}
             </span>
+            {tabQuote && (tabQuote.volume_24h_krw ?? 0) > 0 && (
+              <span className="coin-vol" title="24시간 거래대금 (업비트)">
+                거래량 {fmtVolumeKrw(tabQuote.volume_24h_krw!)}
+              </span>
+            )}
           </div>
           <span className={`bot-status-pill ${running ? "on" : ""}`}>
             {running ? "분석 중" : "수동"}

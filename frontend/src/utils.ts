@@ -71,6 +71,18 @@ export function fmtPct(n: number) {
   return `${sign}${n.toFixed(2)}%`;
 }
 
+/** 업비트 스타일 24h 거래대금 (KRW) */
+export function fmtVolumeKrw(n: number) {
+  if (!Number.isFinite(n) || n <= 0) return "—";
+  const jo = n / 1e12;
+  if (jo >= 1) return `${jo.toLocaleString("ko-KR", { maximumFractionDigits: 1 })}조`;
+  const eok = n / 1e8;
+  if (eok >= 1) return `${eok.toLocaleString("ko-KR", { maximumFractionDigits: 0 })}억`;
+  const man = n / 1e4;
+  if (man >= 1) return `${man.toLocaleString("ko-KR", { maximumFractionDigits: 0 })}만`;
+  return `${fmtKrw(n)}원`;
+}
+
 /** 설정 익절·손절 % (소수 둘째 자리) */
 export function roundPct2(n: number) {
   return Math.round(n * 100) / 100;
@@ -134,6 +146,7 @@ export function coinTabDisplay(
       currentKrw: Math.round(pos.current_value_krw / pos.quantity),
       pnlPct: pos.pnl_pct,
       change24h: undefined as number | undefined,
+      volume24hKrw: quote?.volume_24h_krw,
     };
   }
   const px = quote?.price_krw ?? 0;
@@ -143,6 +156,7 @@ export function coinTabDisplay(
     currentKrw: px > 0 ? px : undefined,
     pnlPct: undefined as number | undefined,
     change24h: quote?.change_24h,
+    volume24hKrw: quote?.volume_24h_krw,
   };
 }
 

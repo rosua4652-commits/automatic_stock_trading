@@ -1,5 +1,5 @@
 import type { CoinCandidate, Portfolio, TabQuote } from "../types";
-import { coinTabDisplay, fmtKrw, fmtPct, resolveCoinMeta } from "../utils";
+import { coinTabDisplay, fmtKrw, fmtPct, fmtVolumeKrw, resolveCoinMeta } from "../utils";
 
 type Props = {
   symbol: string;
@@ -38,6 +38,9 @@ export default function CoinTabCard({
         <span className={`ctc-pnl ${info.change24h >= 0 ? "up" : "down"}`}>
           {fmtPct(info.change24h)}
         </span>
+      )}
+      {info.volume24hKrw != null && info.volume24hKrw > 0 && (
+        <span className="ctc-row ctc-vol">거래량 {fmtVolumeKrw(info.volume24hKrw)}</span>
       )}
     </div>
   );
