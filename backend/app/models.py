@@ -304,6 +304,9 @@ class InvestmentRecommendation(BaseModel):
     take_profit_price_usdt: float = 0.0
     stop_loss_krw: float = 0.0
     take_profit_krw: float = 0.0
+    stop_loss_pct: float = 0.0
+    take_profit_pct: float = 0.0
+    sl_tp_source: str = ""
     entry_tier: str = "watch"
     entry_detail: str = ""
     change_24h: float = 0.0

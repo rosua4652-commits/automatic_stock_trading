@@ -133,6 +133,70 @@ def symbol_passes_learning(
     return True, "OK"
 
 
+def resolve_sl_tp_from_backtest(
+    acc: BacktestAccumulator | None,
+    learning: BacktestLearningState | None,
+    symbol: str,
+    *,
+    mode: str,
+    default_sl: float,
+    default_tp: float,
+) -> tuple[float, float, str]:
+    """
+    백테스트 그리드 탐색 결과로 손익절 % 선정.
+    우선순위: 종목 BT(롱/숏) → 학습 누적(롱/단타) → BT 전역 → 설정.
+    """
+    sym = symbol.upper()
+    mode = mode.lower()
+    if mode not in ("long", "scalp", "short"):
+        mode = "long"
+    if mode == "short":
+        mode = "scalp"
+
+    acc = acc or BacktestAccumulator()
+    learning = learning or load_learning_state()
+    rec = acc.symbols.get(sym)
+    st = None
+    if rec:
+        st = rec.long if mode == "long" else rec.short
+
+    if st and st.trades >= 1 and st.best_sl_pct > 0 and st.score >= 32:
+        return (
+            round(st.best_sl_pct, 2),
+            round(max(st.best_tp_pct, st.best_sl_pct * 1.2), 2),
+            "BT종목",
+        )
+
+    g_sl, g_tp = acc.best_global_params(default_sl, default_tp)
+
+    if mode == "long" and learning.long_sl_pct > 0:
+        return (
+            learning.long_sl_pct,
+            learning.long_tp_pct or g_tp or default_tp,
+            "BT학습·롱",
+        )
+    if mode == "scalp" and learning.scalp_sl_pct > 0:
+        return (
+            learning.scalp_sl_pct,
+            learning.scalp_tp_pct or max(learning.scalp_sl_pct * 1.8, g_tp * 0.55),
+            "BT학습·단타",
+        )
+
+    if g_sl > 0:
+        if mode == "scalp":
+            tight_sl = max(2.5, round(g_sl * 0.55, 2))
+            tight_tp = max(tight_sl * 1.5, round(g_tp * 0.55, 2))
+            return tight_sl, tight_tp, "BT전역·단타"
+        return g_sl, g_tp, "BT전역"
+
+    if mode == "scalp":
+        tight_sl = max(2.5, round(default_sl * 0.55, 2))
+        tight_tp = max(tight_sl * 1.5, round(default_tp * 0.55, 2))
+        return tight_sl, tight_tp, "설정·단타"
+
+    return default_sl, default_tp, "설정"
+
+
 def strategy_sl_tp(
     learning: BacktestLearningState,
     acc: BacktestAccumulator,
@@ -142,20 +206,14 @@ def strategy_sl_tp(
     default_sl: float,
     default_tp: float,
 ) -> tuple[float, float]:
-    g_sl, g_tp = acc.best_global_params(default_sl, default_tp)
-    if mode == "long":
-        if learning.long_sl_pct > 0:
-            return learning.long_sl_pct, learning.long_tp_pct or g_tp
-        rec = acc.symbols.get(symbol.upper())
-        if rec and rec.long.trades >= 2 and rec.long.best_sl_pct > 0:
-            return rec.long.best_sl_pct, rec.long.best_tp_pct
-        return g_sl, g_tp
-    # scalp — 더 타이트
-    if learning.scalp_sl_pct > 0:
-        return learning.scalp_sl_pct, learning.scalp_tp_pct or max(g_tp * 0.65, g_sl * 2)
-    tight_sl = max(2.5, min(g_sl * 0.55, g_sl))
-    tight_tp = max(tight_sl * 1.5, min(g_tp * 0.55, g_tp))
-    return round(tight_sl, 2), round(tight_tp, 2)
+    sl, tp, _ = resolve_sl_tp_from_backtest(
+        acc, learning, symbol, mode=mode, default_sl=default_sl, default_tp=default_tp
+    )
+    return sl, tp
+
+
+def format_sl_tp_label(sl_pct: float, tp_pct: float, source: str) -> str:
+    return f"손절 {sl_pct:.1f}% · 익절 {tp_pct:.1f}% ({source})"
 
 
 def update_learning_from_batch(

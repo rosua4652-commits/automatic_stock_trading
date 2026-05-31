@@ -7,7 +7,9 @@ from app.engine.trading_fees import (
     fee_krw_round_trip,
 )
 from app.engine.backtest_learning import (
+    format_sl_tp_label,
     load_learning_state,
+    resolve_sl_tp_from_backtest,
     symbol_passes_learning,
 )
 from app.engine.backtest_optimizer import BacktestAccumulator
@@ -16,27 +18,37 @@ from app.models import AppConfig, CoinCandidate, InvestmentRecommendation
 MIN_BUY = settings.min_buy_krw
 
 
+def _tier_to_mode(tier: str) -> str:
+    return "scalp" if (tier or "").lower() == "scalp" else "long"
+
+
 def _entry_detail_with_backtest(
     c: CoinCandidate,
     backtest,
+    *,
+    tier: str,
+    sl_pct: float,
+    tp_pct: float,
+    sl_source: str,
     default_sl: float,
     default_tp: float,
 ) -> str:
     base = c.entry_detail or c.entry_outlook or ""
+    sl_line = format_sl_tp_label(sl_pct, tp_pct, sl_source)
     if backtest is None:
-        return base
+        return f"{base} · {sl_line}" if base else sl_line
     rec = backtest.symbols.get(c.symbol.upper())
-    if not rec or rec.long.trades < 1 or rec.long.score < 40:
-        return base
-    st = rec.long
-    sl, tp = st.best_sl_pct, st.best_tp_pct
-    if sl <= 0:
-        sl, tp = default_sl, default_tp
-    bt = (
-        f"BT {st.score:.0f}점 · 승률 {st.win_rate_pct:.0f}% · "
-        f"손익절 {sl:.0f}/{tp:.0f}%"
-    )
-    return f"{base} · {bt}" if base else bt
+    mode = _tier_to_mode(tier)
+    st = None
+    if rec:
+        st = rec.long if mode == "long" else rec.short
+    if st and st.trades >= 1:
+        bt = (
+            f"BT {st.score:.0f}점 · 승률 {st.win_rate_pct:.0f}% · "
+            f"{st.trades}건 · {sl_line}"
+        )
+        return f"{base} · {bt}" if base else bt
+    return f"{base} · {sl_line}" if base else sl_line
 
 
 def _trade_plan(
@@ -226,12 +238,12 @@ def build_recommendations(
     if not pool:
         return []
 
-    sl_use = config.stop_loss_pct
-    tp_use = config.take_profit_pct
-    if backtest is not None:
-        bsl, btp = backtest.best_global_params(sl_use, tp_use)
-        if bsl > 0:
-            sl_use, tp_use = bsl, btp
+    acc = (
+        backtest
+        if isinstance(backtest, BacktestAccumulator)
+        else BacktestAccumulator()
+    )
+    learning = load_learning_state()
 
     weights = [max(1.0, _rank(c)) for c in pool]
     amounts = allocate_amounts_by_weights(weights, cash_krw, fee_pct)
@@ -246,6 +258,21 @@ def build_recommendations(
         )
         price_usdt = 0.0
         qty_est = 0.0
+        tier = (
+            "auto"
+            if c.entry_ok
+            else ("scalp" if getattr(c, "entry_scalp_ok", False) else "watch")
+        )
+        mode = _tier_to_mode(tier)
+        sl_use, tp_use, sl_src = resolve_sl_tp_from_backtest(
+            acc,
+            learning,
+            c.symbol,
+            mode=mode,
+            default_sl=config.stop_loss_pct,
+            default_tp=config.take_profit_pct,
+        )
+
         sl_price = tp_price = sl_krw = tp_krw = 0.0
         if tickers and c.symbol in tickers:
             price_usdt = float(tickers[c.symbol].get("lastPrice") or 0)
@@ -258,11 +285,6 @@ def build_recommendations(
                     tp_use,
                     fee_pct,
                 )
-        tier = (
-            "auto"
-            if c.entry_ok
-            else ("scalp" if getattr(c, "entry_scalp_ok", False) else "watch")
-        )
         recs.append(
             InvestmentRecommendation(
                 symbol=c.symbol,
@@ -280,9 +302,19 @@ def build_recommendations(
                 take_profit_price_usdt=tp_price,
                 stop_loss_krw=sl_krw,
                 take_profit_krw=tp_krw,
+                stop_loss_pct=sl_use,
+                take_profit_pct=tp_use,
+                sl_tp_source=sl_src,
                 entry_tier=tier,
                 entry_detail=_entry_detail_with_backtest(
-                    c, backtest, config.stop_loss_pct, config.take_profit_pct
+                    c,
+                    acc,
+                    tier=tier,
+                    sl_pct=sl_use,
+                    tp_pct=tp_use,
+                    sl_source=sl_src,
+                    default_sl=config.stop_loss_pct,
+                    default_tp=config.take_profit_pct,
                 ),
                 change_24h=c.change_24h,
                 trend=c.trend,

@@ -24,12 +24,15 @@ function enrich(
   config: AppConfig,
   usdtKrw: number
 ): EditableRecommendation {
+  const slPct = r.stop_loss_pct && r.stop_loss_pct > 0 ? r.stop_loss_pct : config.stop_loss_pct;
+  const tpPct =
+    r.take_profit_pct && r.take_profit_pct > 0 ? r.take_profit_pct : config.take_profit_pct;
   const plan = computeTradePlan(
     amount,
     r.price_usdt ?? 0,
     usdtKrw,
-    config.stop_loss_pct,
-    config.take_profit_pct,
+    slPct,
+    tpPct,
     config.trading_fee_pct ?? 0.05
   );
   return {

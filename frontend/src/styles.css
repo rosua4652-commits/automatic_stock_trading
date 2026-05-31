@@ -1538,6 +1538,12 @@ body {
   color: #a5b4c8;
 }
 
+.rec-sltp-pct {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #93c5fd;
+}
+
 .btn-ghost {
   background: transparent;
   border: 1px solid var(--border);

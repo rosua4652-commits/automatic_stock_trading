@@ -207,6 +207,9 @@ export interface InvestmentRecommendation {
   take_profit_price_usdt?: number;
   stop_loss_krw?: number;
   take_profit_krw?: number;
+  stop_loss_pct?: number;
+  take_profit_pct?: number;
+  sl_tp_source?: string;
   entry_tier?: string;
   entry_detail: string;
   change_24h: number;

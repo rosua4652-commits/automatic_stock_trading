@@ -167,7 +167,7 @@ export default function RecommendationsPanel({
                 <th />
                 <th>코인</th>
                 <th>매수 금액</th>
-                <th>익절/손절</th>
+                <th>BT 손익절</th>
                 <th>24h</th>
               </tr>
             </thead>
@@ -200,9 +200,27 @@ export default function RecommendationsPanel({
                     <span className="dim"> AI {fmtKrw(aiAmounts[r.symbol] ?? 0)}</span>
                   </td>
                   <td className="rec-qty">
-                    <span className="up">+{fmtKrw(r.take_profit_krw ?? 0)}</span>
-                    <br />
-                    <span className="down">-{fmtKrw(r.stop_loss_krw ?? 0)}</span>
+                    {(r.stop_loss_pct ?? 0) > 0 ? (
+                      <>
+                        <span className="rec-sltp-pct">
+                          손절 {fmtPct(r.stop_loss_pct ?? 0)} · 익절{" "}
+                          {fmtPct(r.take_profit_pct ?? 0)}
+                        </span>
+                        {r.sl_tp_source ? (
+                          <span className="dim"> ({r.sl_tp_source})</span>
+                        ) : null}
+                        <br />
+                        <span className="up">+{fmtKrw(r.take_profit_krw ?? 0)}</span>
+                        <span className="dim"> / </span>
+                        <span className="down">-{fmtKrw(r.stop_loss_krw ?? 0)}</span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="up">+{fmtKrw(r.take_profit_krw ?? 0)}</span>
+                        <br />
+                        <span className="down">-{fmtKrw(r.stop_loss_krw ?? 0)}</span>
+                      </>
+                    )}
                   </td>
                   <td className={r.change_24h >= 0 ? "up" : "down"}>
                     {fmtPct(r.change_24h)}

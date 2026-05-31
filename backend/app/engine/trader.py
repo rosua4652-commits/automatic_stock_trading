@@ -797,10 +797,19 @@ class TradingEngine:
             1 for c in candidates if c.entry_scalp_ok and not c.entry_ok
         )
         scalp_total = len(enriched) + scalp_only
+        g_sl, g_tp = acc.best_global_params(
+            self.config.stop_loss_pct, self.config.take_profit_pct
+        )
+        bt_sl_tp = (
+            f" · BT손익절 {g_sl:.1f}/{g_tp:.1f}%"
+            if g_sl > 0
+            else ""
+        )
         self.bot.message = (
             f"[{mode}] 분석 {len(candidates)}종 · 자동추천 {len(enriched)}종 · "
             f"단타가능 {scalp_total}종 · "
             f"제안 {len(self.bot.recommendations)}건 · 합계 {total_rec:,.0f}원"
+            f"{bt_sl_tp} (종목별 BT 최적 적용)"
         )
         logger.info("[시장 스캔] 완료 · %s", self.bot.message)
         await self._monitor_positions(tickers)
@@ -871,16 +880,18 @@ class TradingEngine:
         sl_tp_map: dict[str, tuple[float, float]] = {}
         for r in picks:
             sym = r.symbol.upper()
-            mode = "scalp" if (r.entry_tier or "").lower() == "scalp" else "long"
-            sl, tp = strategy_sl_tp(
-                learn,
-                acc,
-                sym,
-                mode=mode,
-                default_sl=self.config.stop_loss_pct,
-                default_tp=self.config.take_profit_pct,
-            )
-            sl_tp_map[sym] = (sl, tp)
+            if float(getattr(r, "stop_loss_pct", 0) or 0) > 0:
+                sl_tp_map[sym] = (float(r.stop_loss_pct), float(r.take_profit_pct))
+            else:
+                mode = "scalp" if (r.entry_tier or "").lower() == "scalp" else "long"
+                sl_tp_map[sym] = strategy_sl_tp(
+                    learn,
+                    acc,
+                    sym,
+                    mode=mode,
+                    default_sl=self.config.stop_loss_pct,
+                    default_tp=self.config.take_profit_pct,
+                )
 
         syms = ", ".join(
             f"{r.base}({'단타' if r.entry_tier == 'scalp' else '롱'})" for r in picks
@@ -938,14 +949,21 @@ class TradingEngine:
             tier = (rec.entry_tier or "auto").lower()
             outlook = "AI 롱 자동" if tier != "scalp" else "AI 단타 자동"
             sl_p, tp_p = (self.config.stop_loss_pct, self.config.take_profit_pct)
-            if sl_tp_pct and sym in sl_tp_pct:
+            if float(getattr(rec, "stop_loss_pct", 0) or 0) > 0:
+                sl_p = float(rec.stop_loss_pct)
+                tp_p = float(rec.take_profit_pct)
+            elif sl_tp_pct and sym in sl_tp_pct:
                 sl_p, tp_p = sl_tp_pct[sym]
             sl_pct = sl_p / 100
             tp_pct = tp_p / 100
             tp_label = f"익절{_fmt_pct_setting(tp_p)}"
             sl_label = f"손절{_fmt_pct_setting(sl_p)}"
+            src = getattr(rec, "sl_tp_source", "") or ""
+            src_tag = f" · BT {src}" if src else ""
             entry_txt = rec.entry_detail or buy_tag
-            buy_reason = f"{buy_tag} · {int(amt):,}원 · {tp_label}/{sl_label}"
+            buy_reason = (
+                f"{buy_tag} · {int(amt):,}원 · {sl_label}/{tp_label}{src_tag}"
+            )
 
             if self._is_live():
                 ok, msg = await live_market_buy(
