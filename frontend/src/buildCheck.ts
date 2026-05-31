@@ -9,6 +9,7 @@ export type AidiCapabilities = {
 const LEGACY_ONLY = ["upbit-truth", "cost-basis"];
 
 const NEW_MARKERS = [
+  "pnl-trade-mobile",
   "small-sell",
   "sl-tp",
   "chart-fix",

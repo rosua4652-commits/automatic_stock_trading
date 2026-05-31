@@ -1,5 +1,5 @@
 import type { CoinCandidate, Portfolio, TradeEvent } from "../types";
-import { fmtKrw, fmtPct } from "../utils";
+import { fmtKrw, fmtPct, fmtQty, tradeAmountKrw, tradeQuantity } from "../utils";
 import CoinCell from "./CoinCell";
 
 type Props = {
@@ -173,7 +173,8 @@ export default function PortfolioPanel({
                   <div className="trade-left">
                     <span className="trade-name">{t.display}</span>
                     <span className="trade-side">
-                      {t.side === "BUY" ? "매수" : "매도"} · {fmtKrw(t.amount_krw)}원
+                      {t.side === "BUY" ? "매수" : "매도"} ·{" "}
+                      {fmtQty(tradeQuantity(t))} · {fmtKrw(tradeAmountKrw(t))}원
                     </span>
                   </div>
                   <span className="trade-reason">{t.reason}</span>

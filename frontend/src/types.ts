@@ -168,6 +168,7 @@ export interface TradeEvent {
   display: string;
   side: string;
   price: number;
+  price_krw?: number;
   quantity: number;
   amount_krw: number;
   amount_usdt: number;

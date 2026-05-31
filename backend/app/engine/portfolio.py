@@ -74,8 +74,19 @@ class PortfolioManager:
         quantity: float,
         reason: str,
         is_auto: bool,
+        *,
+        price_krw: float = 0.0,
+        amount_krw: float | None = None,
     ) -> TradeEvent:
         amount_usdt = price * quantity
+        amt_krw = amount_krw
+        if amt_krw is None:
+            amt_krw = self.usdt_to_krw(amount_usdt)
+        px_krw = price_krw
+        if px_krw <= 0 and quantity > 1e-12 and amt_krw > 0:
+            px_krw = amt_krw / quantity
+        elif px_krw <= 0 and price > 0:
+            px_krw = self.usdt_to_krw(price)
         return TradeEvent(
             ts=time.time(),
             symbol=symbol,
@@ -83,8 +94,9 @@ class PortfolioManager:
             display=meta["display"],
             side=side,
             price=price,
+            price_krw=round(px_krw, 4) if px_krw > 0 else 0.0,
             quantity=quantity,
-            amount_krw=round(self.usdt_to_krw(amount_usdt), 0),
+            amount_krw=round(amt_krw, 0),
             amount_usdt=round(amount_usdt, 4),
             reason=reason,
             is_auto=is_auto,
@@ -361,6 +373,8 @@ class PortfolioManager:
 
             if upbit_truth and pos.exchange_quantity > 0:
                 qty = pos.exchange_quantity
+                if pos.quantity > qty:
+                    qty = pos.quantity
                 px_krw = pos.current_price_krw
                 if sym in prices and prices[sym] > 0:
                     pos.current_price = prices[sym]

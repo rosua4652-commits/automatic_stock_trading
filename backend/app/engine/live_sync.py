@@ -84,10 +84,17 @@ def _resolve_position_costs(
 
     auto_avg = float(pm.get("auto_avg_price", 0)) if auto_q > 0 else 0.0
     manual_avg = float(pm.get("manual_avg_price", 0)) if manual_q > 0 else 0.0
-    if auto_q > 0 and auto_avg <= 0 and avg_usdt > 0:
-        auto_avg = avg_usdt
-    if manual_q > 0 and manual_avg <= 0 and avg_usdt > 0:
-        manual_avg = avg_usdt
+    if avg_buy_krw > 0 and usdt_krw > 0:
+        truth_avg = avg_buy_krw / usdt_krw
+        if manual_q > 0:
+            manual_avg = truth_avg
+        if auto_q > 0:
+            auto_avg = truth_avg
+    else:
+        if auto_q > 0 and auto_avg <= 0 and avg_usdt > 0:
+            auto_avg = avg_usdt
+        if manual_q > 0 and manual_avg <= 0 and avg_usdt > 0:
+            manual_avg = avg_usdt
 
     return auto_cost, man_cost, auto_avg, manual_avg
 

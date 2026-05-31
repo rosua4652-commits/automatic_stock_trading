@@ -8,7 +8,55 @@ import type {
 } from "./types";
 
 export function fmtKrw(n: number) {
-  return new Intl.NumberFormat("ko-KR").format(Math.round(n));
+  const rounded = Math.round(n);
+  if (rounded === 0 && Math.abs(n) >= 0.01) {
+    return n.toLocaleString("ko-KR", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+  }
+  return new Intl.NumberFormat("ko-KR").format(rounded);
+}
+
+export function fmtQty(q: number) {
+  if (!Number.isFinite(q) || q <= 0) return "—";
+  if (q >= 1) return q.toLocaleString("ko-KR", { maximumFractionDigits: 4 });
+  return q.toLocaleString("ko-KR", { maximumFractionDigits: 8 });
+}
+
+export function tradeUnitPriceKrw(t: {
+  price_krw?: number;
+  price: number;
+  quantity: number;
+  amount_krw: number;
+}) {
+  if (t.price_krw && t.price_krw > 0) return t.price_krw;
+  if (t.quantity > 1e-12 && t.amount_krw > 0) return t.amount_krw / t.quantity;
+  return 0;
+}
+
+export function tradeAmountKrw(t: {
+  amount_krw: number;
+  quantity: number;
+  price_krw?: number;
+  price: number;
+}) {
+  if (t.amount_krw > 0) return t.amount_krw;
+  const px = tradeUnitPriceKrw(t);
+  if (px > 0 && t.quantity > 0) return px * t.quantity;
+  return 0;
+}
+
+export function tradeQuantity(t: {
+  quantity: number;
+  amount_krw: number;
+  price_krw?: number;
+  price: number;
+}) {
+  if (t.quantity > 1e-12) return t.quantity;
+  const px = tradeUnitPriceKrw(t);
+  if (px > 0 && t.amount_krw > 0) return t.amount_krw / px;
+  return 0;
 }
 
 export function fmtUsd(n: number, digits = 2) {

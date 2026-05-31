@@ -136,6 +136,18 @@ class Position(BaseModel):
     @computed_field
     @property
     def pnl_pct(self) -> float:
+        if self.avg_buy_price_krw > 0 and self.current_price_krw > 0:
+            return (
+                (self.current_price_krw - self.avg_buy_price_krw)
+                / self.avg_buy_price_krw
+                * 100
+            )
+        if self.cost_basis_krw > 0 and self.current_value_krw > 0:
+            return (
+                (self.current_value_krw - self.cost_basis_krw)
+                / self.cost_basis_krw
+                * 100
+            )
         if self.avg_price <= 0:
             return 0.0
         return (self.current_price - self.avg_price) / self.avg_price * 100
@@ -222,6 +234,7 @@ class TradeEvent(BaseModel):
     display: str
     side: str
     price: float
+    price_krw: float = 0.0
     quantity: float
     amount_krw: float
     amount_usdt: float

@@ -9,6 +9,7 @@ from app.engine.portfolio_store import store
 from app.market.upbit_data import market
 from app.market.coin_registry import coin_meta
 from app.market.upbit_client import symbol_to_upbit, upbit_client
+from app.market.upbit_order_fill import parse_upbit_order_fill
 from app.market.upbit_sell import (
     MIN_MARKET_ASK_KRW,
     clear_pending_exit,
@@ -70,10 +71,28 @@ async def live_market_buy(
         if not upbit_market:
             return False, f"업비트 미상장 종목 ({sym})"
         order = await upbit_client.market_buy_krw(upbit_market, amount_krw)
-        executed_qty = float(order.get("executed_volume", 0))
         portfolio.usdt_krw = portfolio.usdt_krw or await market.usdt_krw_rate()
-        fills_price = (amount_krw / max(executed_qty, 1e-12)) / portfolio.usdt_krw
-        quote_usdt = amount_krw / portfolio.usdt_krw
+        price_hint = 0.0
+        tick = await upbit_client.tickers([upbit_market])
+        if tick.get(upbit_market):
+            price_hint = float(tick[upbit_market].get("trade_price") or 0)
+        executed_qty, fill_krw, price_krw = parse_upbit_order_fill(
+            order,
+            amount_krw_hint=amount_krw,
+            price_krw_hint=price_hint,
+        )
+        if executed_qty <= 0 and price_hint > 0:
+            executed_qty = amount_krw / price_hint
+            fill_krw = amount_krw
+            price_krw = price_hint
+        fills_price = (
+            price_krw / max(portfolio.usdt_krw, 1.0) if price_krw > 0 else 0.0
+        )
+        if fills_price <= 0 and executed_qty > 0:
+            fills_price = (fill_krw or amount_krw) / max(
+                executed_qty * max(portfolio.usdt_krw, 1.0), 1e-12
+            )
+        quote_usdt = (fill_krw or amount_krw) / max(portfolio.usdt_krw, 1.0)
     except Exception as e:
         return False, str(e)
 
@@ -109,8 +128,9 @@ async def live_market_buy(
             display=m["display"],
             side="BUY",
             price=fills_price,
+            price_krw=round(price_krw if price_krw > 0 else amount_krw / max(executed_qty, 1e-12), 4),
             quantity=executed_qty,
-            amount_krw=round(amount_krw, 0),
+            amount_krw=round(fill_krw or amount_krw, 0),
             amount_usdt=round(quote_usdt, 4),
             reason=reason,
             is_auto=as_auto,
@@ -120,7 +140,8 @@ async def live_market_buy(
     _persist_live(portfolio)
     label = "업비트"
     mode = "AI 자동" if as_auto else "수동"
-    return True, f"[{label}] 실거래 {mode} 매수 · {executed_qty:.6f}"
+    qty_txt = f"{executed_qty:.6f}".rstrip("0").rstrip(".")
+    return True, f"[{label}] 실거래 {mode} 매수 · {qty_txt}개 · {int(fill_krw or amount_krw):,}원"
 
 
 async def live_market_sell(
@@ -198,11 +219,21 @@ async def live_market_sell(
         if executed_qty <= sell_qty * 1e-6:
             return False, f"매도 체결 없음 ({sell_mode})"
         clear_pending_exit(store._live_meta, sym)
-        quote_krw = executed_qty * pos.current_price * portfolio.usdt_krw
-        if order.get("trades"):
-            quote_krw = sum(float(t.get("funds", 0)) for t in order["trades"])
-        price = quote_krw / max(executed_qty, 1e-12) / max(portfolio.usdt_krw, 1)
-        quote = quote_krw / max(portfolio.usdt_krw, 1)
+        executed_qty, quote_krw, price_krw = parse_upbit_order_fill(
+            order,
+            price_krw_hint=bid_hint,
+        )
+        if quote_krw <= 0 and bid_hint > 0:
+            quote_krw = executed_qty * bid_hint
+        if price_krw <= 0 and executed_qty > 0 and quote_krw > 0:
+            price_krw = quote_krw / executed_qty
+        elif price_krw <= 0 and pos.current_price_krw > 0:
+            price_krw = pos.current_price_krw
+            quote_krw = executed_qty * price_krw
+        price = price_krw / max(portfolio.usdt_krw, 1.0) if price_krw > 0 else 0.0
+        if price <= 0 and pos.current_price > 0:
+            price = pos.current_price
+        quote = quote_krw / max(portfolio.usdt_krw, 1.0)
     except Exception as e:
         return False, str(e)
 
@@ -224,6 +255,7 @@ async def live_market_sell(
             display=m["display"],
             side="SELL",
             price=price,
+            price_krw=round(price_krw, 4) if price_krw > 0 else 0.0,
             quantity=executed_qty,
             amount_krw=round(quote_krw, 0),
             amount_usdt=round(quote, 4),
@@ -236,7 +268,11 @@ async def live_market_sell(
     label = "업비트"
     kind = "AI" if auto_only else "수동"
     tail = f" · {sell_mode}" if sell_mode != "시장가" else ""
-    return True, f"[{label}] 실거래 {kind} 매도 · {executed_qty:.6f}{tail}"
+    qty_txt = f"{executed_qty:.6f}".rstrip("0").rstrip(".")
+    return True, (
+        f"[{label}] 실거래 {kind} 매도 · {qty_txt}개 · "
+        f"{int(quote_krw):,}원{tail}"
+    )
 
 
 async def retry_pending_exit_sells(config: AppConfig) -> None:

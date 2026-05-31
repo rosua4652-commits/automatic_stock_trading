@@ -9,6 +9,10 @@ import {
   fmtKrw,
   fmtPct,
   fmtPctSetting,
+  fmtQty,
+  tradeAmountKrw,
+  tradeQuantity,
+  tradeUnitPriceKrw,
   fmtUsd,
   gainPctFromAvg,
   isRunning,
@@ -46,11 +50,6 @@ type Props = {
   takeProfitPct: number;
   busy: boolean;
 };
-
-function fmtQty(q: number) {
-  if (q >= 1) return q.toLocaleString("en-US", { maximumFractionDigits: 4 });
-  return q.toLocaleString("en-US", { maximumFractionDigits: 8 });
-}
 
 function fmtTime(ts: number) {
   return new Date(ts * 1000).toLocaleString("ko-KR", {
@@ -504,17 +503,28 @@ export default function FundsTab({
                 trades
                   .slice()
                   .reverse()
-                  .map((t, i) => (
+                  .map((t, i) => {
+                    const qty = tradeQuantity(t);
+                    const amt = tradeAmountKrw(t);
+                    const pxKrw = tradeUnitPriceKrw(t);
+                    const liveKrw =
+                      tradeMode === "live" || t.price_krw != null;
+                    return (
                     <tr key={`${t.ts}-${i}`} className={t.side === "BUY" ? "buy" : "sell"}>
                       <td>{fmtTime(t.ts)}</td>
                       <td>{t.display}</td>
                       <td>{t.side === "BUY" ? "매수" : "매도"}</td>
-                      <td>${fmtUsd(t.price)}</td>
-                      <td>{fmtQty(t.quantity)}</td>
-                      <td>{fmtKrw(t.amount_krw)}원</td>
+                      <td>
+                        {liveKrw && pxKrw > 0
+                          ? `${fmtKrw(pxKrw)}원`
+                          : `$${fmtUsd(t.price)}`}
+                      </td>
+                      <td>{fmtQty(qty)}</td>
+                      <td>{amt > 0 ? `${fmtKrw(amt)}원` : "—"}</td>
                       <td>{t.reason}</td>
                     </tr>
-                  ))
+                    );
+                  })
               )}
             </tbody>
           </table>
