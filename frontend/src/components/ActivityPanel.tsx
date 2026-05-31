@@ -7,10 +7,13 @@ const STORAGE_KEY = "aidi-activity-collapsed";
 
 function readCollapsedPref(): boolean {
   try {
-    return localStorage.getItem(STORAGE_KEY) === "1";
+    const v = localStorage.getItem(STORAGE_KEY);
+    if (v === "1") return true;
+    if (v === "0") return false;
   } catch {
-    return false;
+    /* ignore */
   }
+  return true;
 }
 
 function fmtTime(ts: number): string {
@@ -54,26 +57,30 @@ export default function ActivityPanel({ bot }: Props) {
     <section
       className={`activity-panel${collapsed ? " is-collapsed" : ""}`}
     >
-      <div className="activity-head">
-        <h3 className="activity-title">진행 · 로그</h3>
+      <button
+        type="button"
+        className="activity-panel-toggle"
+        onClick={toggleCollapsed}
+        aria-expanded={!collapsed}
+        title={collapsed ? "로그 펼치기" : "로그 접기"}
+      >
+        <span className="activity-chevron" aria-hidden>
+          {collapsed ? "▶" : "▼"}
+        </span>
+        <span className="activity-title">진행 · 로그</span>
         {running && (bot.seconds_until_scan ?? 0) > 0 && (
           <span className="activity-countdown">
             다음 스캔 {bot.seconds_until_scan}초
           </span>
         )}
-        {bot.phase && running && (
+        {bot.phase && running && !collapsed && (
           <span className="activity-phase">{bot.phase_detail || bot.phase}</span>
         )}
-        <button
-          type="button"
-          className="activity-toggle-btn"
-          onClick={toggleCollapsed}
-          aria-expanded={!collapsed}
-          title={collapsed ? "로그 전체 보기" : "로그 줄이기"}
-        >
+        <span className="activity-toggle-pill">
           {collapsed ? "펼치기" : "접기"}
-        </button>
-      </div>
+        </span>
+      </button>
+
       {!collapsed && bot.ai_settings_summary && (
         <p className="activity-ai-summary">{bot.ai_settings_summary}</p>
       )}
@@ -94,7 +101,7 @@ export default function ActivityPanel({ bot }: Props) {
       </ul>
       {collapsed && logs.length > COLLAPSED_LINES && (
         <p className="activity-more-hint">
-          최근 {COLLAPSED_LINES}줄 · 전체 {logs.length}줄 — 펼치기로 더 보기
+          최근 {COLLAPSED_LINES}줄 · 전체 {logs.length}줄 — 위 「펼치기」 클릭
         </p>
       )}
       {!collapsed && (

@@ -638,7 +638,7 @@ export default function App() {
         </nav>
       </div>
 
-      {running && data.bot.auto_invest_active && (
+      {running && (
         <div className="activity-strip-wrap">
           <ActivityPanel bot={data.bot} />
         </div>

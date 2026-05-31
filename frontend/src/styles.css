@@ -1938,28 +1938,49 @@ main.layout.chart-layout {
   border-radius: 10px;
 }
 
-.activity-head {
+.activity-panel-toggle {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.5rem 1rem;
-  margin-bottom: 0.5rem;
-}
-
-.activity-toggle-btn {
-  margin-left: auto;
-  padding: 0.2rem 0.55rem;
-  font-size: 0.72rem;
-  color: var(--muted);
+  gap: 0.4rem 0.65rem;
+  width: 100%;
+  margin: 0 0 0.5rem;
+  padding: 0.45rem 0.65rem;
+  text-align: left;
+  font: inherit;
+  color: var(--text);
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 8px;
   cursor: pointer;
+  flex-shrink: 0;
 }
 
-.activity-toggle-btn:hover {
-  color: var(--accent);
+.activity-panel-toggle:hover {
   border-color: var(--accent);
+  color: var(--accent);
+}
+
+.activity-chevron {
+  color: var(--accent);
+  font-size: 0.75rem;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.activity-toggle-pill {
+  margin-left: auto;
+  padding: 0.15rem 0.55rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--accent);
+  background: rgba(56, 139, 253, 0.12);
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+
+.activity-panel.is-collapsed .activity-panel-toggle {
+  margin-bottom: 0.35rem;
 }
 
 .activity-panel.is-collapsed {
@@ -1981,6 +2002,8 @@ main.layout.chart-layout {
 .activity-title {
   margin: 0;
   font-size: 0.95rem;
+  font-weight: 600;
+  flex-shrink: 0;
 }
 
 .activity-countdown {
