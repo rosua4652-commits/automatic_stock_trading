@@ -50,10 +50,54 @@ type Props = {
       take_profit_pct?: number;
     }
   ) => Promise<void>;
+  onMigrateExits?: () => Promise<void>;
   stopLossPct: number;
   takeProfitPct: number;
   busy: boolean;
 };
+
+function ExitDistanceGauges({
+  current,
+  stopLoss,
+  takeProfit,
+}: {
+  current: number;
+  stopLoss: number;
+  takeProfit: number;
+}) {
+  const toTp = Math.max(0, ((takeProfit - current) / current) * 100);
+  const toSl = Math.max(0, ((current - stopLoss) / current) * 100);
+  const tpHit = current >= takeProfit * 0.999;
+  const slHit = current <= stopLoss * 1.001;
+  return (
+    <div className="exit-gauges">
+      <div className="exit-gauge-row">
+        <span className="exit-gauge-label up">익절</span>
+        <div className="exit-gauge-track">
+          <div
+            className="exit-gauge-fill up"
+            style={{ width: `${Math.min(100, tpHit ? 100 : toTp * 5)}%` }}
+          />
+        </div>
+        <span className="exit-gauge-pct up">
+          {tpHit ? "도달" : `+${toTp.toFixed(2)}%`}
+        </span>
+      </div>
+      <div className="exit-gauge-row">
+        <span className="exit-gauge-label down">손절</span>
+        <div className="exit-gauge-track">
+          <div
+            className="exit-gauge-fill down"
+            style={{ width: `${Math.min(100, slHit ? 100 : toSl * 5)}%` }}
+          />
+        </div>
+        <span className="exit-gauge-pct down">
+          {slHit ? "도달" : `-${toSl.toFixed(2)}%`}
+        </span>
+      </div>
+    </div>
+  );
+}
 
 function fmtTime(ts: number) {
   return new Date(ts * 1000).toLocaleString("ko-KR", {
@@ -243,6 +287,16 @@ function PositionCard({
           <span className="fg-label">자산 비중</span>
           <span className="fg-val">{pos.weight_pct.toFixed(1)}%</span>
         </div>
+        {pos.current_price > 0 && pos.stop_loss > 0 && pos.take_profit > 0 && (
+          <div className="fg-item fg-item-wide exit-gauge-block">
+            <span className="fg-label">익절·손절까지</span>
+            <ExitDistanceGauges
+              current={pos.current_price}
+              stopLoss={pos.stop_loss}
+              takeProfit={pos.take_profit}
+            />
+          </div>
+        )}
         <div className="fg-item fg-item-wide">
           <span className="fg-label">손절 / 익절</span>
           <span className="fg-val dim">
@@ -388,6 +442,7 @@ export default function FundsTab({
   onSelectChart,
   onExclude,
   onExitPlan,
+  onMigrateExits,
   stopLossPct,
   takeProfitPct,
   busy,
@@ -473,6 +528,16 @@ export default function FundsTab({
       <section className="funds-positions">
         <div className="panel-block-head">
           <h3>보유 코인 상세</h3>
+          {portfolio.positions.length > 0 && onMigrateExits && (
+            <button
+              type="button"
+              className="btn-ghost btn-sm"
+              disabled={busy}
+              onClick={() => onMigrateExits()}
+            >
+              진입 유형별 손익절 재적용
+            </button>
+          )}
           {portfolio.positions.length > 0 && canTrade && onSellAll && (
             <button
               type="button"

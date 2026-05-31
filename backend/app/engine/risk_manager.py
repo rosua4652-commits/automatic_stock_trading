@@ -9,6 +9,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+from app.engine.paper_validation import check_paper_validation_for_live
+from app.engine.trading_hours import auto_buy_window_open
 from app.models import AppConfig, PortfolioSnapshot
 
 KST = timezone(timedelta(hours=9))
@@ -130,6 +132,30 @@ def evaluate_daily_risk(
     return state, daily_pnl, daily_pct
 
 
+def check_position_weight(
+    config: AppConfig,
+    snap: PortfolioSnapshot,
+    symbol: str,
+    add_krw: float,
+) -> tuple[bool, str]:
+    max_w = float(getattr(config, "max_position_weight_pct", 0) or 0)
+    if max_w <= 0 or add_krw <= 0:
+        return True, ""
+    total = max(float(snap.total_value_krw or 0), 1.0)
+    cur = 0.0
+    for p in snap.positions:
+        if p.symbol.upper() == symbol.upper():
+            cur = float(p.current_value_krw or 0)
+            break
+    pct = (cur + add_krw) / total * 100.0
+    if pct > max_w + 0.05:
+        return (
+            False,
+            f"종목 비중 {pct:.1f}% > 한도 {max_w:.1f}% ({symbol})",
+        )
+    return True, ""
+
+
 def check_auto_invest_allowed(
     config: AppConfig,
     snap: PortfolioSnapshot,
@@ -138,7 +164,14 @@ def check_auto_invest_allowed(
     is_paper: bool,
 ) -> tuple[bool, str, RiskDayState]:
     if not is_paper and not getattr(config, "allow_live_auto_invest", False):
-        return False, "실거래 자동투자 비활성 — 모의투자에서 검증 후 사용", load_risk_state()
+        ok_days, days_msg = check_paper_validation_for_live(config, is_paper=False)
+        if not ok_days:
+            return False, days_msg, load_risk_state()
+        return False, "실거래 자동투자 비활성 — 모의 검증 후 설정에서 허용", load_risk_state()
+
+    hours_ok, hours_msg = auto_buy_window_open(config)
+    if not hours_ok:
+        return False, hours_msg, load_risk_state()
 
     state, daily_pnl, daily_pct = evaluate_daily_risk(
         config, snap, realized_pnl_krw=realized_pnl_krw

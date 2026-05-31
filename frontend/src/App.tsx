@@ -13,6 +13,8 @@ import {
   setPositionExitPlan,
   setViewSymbol,
   resetRiskKill,
+  migratePositionExits,
+  setAutoBuyPaused,
   startBot,
   stopBot,
 } from "./api";
@@ -574,14 +576,36 @@ export default function App() {
                 </button>
               </div>
             ) : data.bot.auto_invest_active ? (
-              <span className="auto-invest-badge">
-                자동
-                {data.bot.auto_invest_long && data.bot.auto_invest_scalp
-                  ? " 롱·단타"
-                  : data.bot.auto_invest_long
-                    ? " 롱"
-                    : " 단타"}
-              </span>
+              <>
+                <span className="auto-invest-badge">
+                  자동
+                  {data.bot.auto_invest_long && data.bot.auto_invest_scalp
+                    ? " 롱·단타"
+                    : data.bot.auto_invest_long
+                      ? " 롱"
+                      : " 단타"}
+                  {data.bot.auto_buy_paused ? " · 매수중지" : ""}
+                </span>
+                <button
+                  type="button"
+                  className="btn-ghost btn-xs"
+                  disabled={botBusy}
+                  onClick={async () => {
+                    setBotBusy(true);
+                    try {
+                      const s = await setAutoBuyPaused(!data.bot.auto_buy_paused);
+                      applyPayload(s);
+                      showToast(s.message || "상태 변경");
+                    } catch (e) {
+                      showToast(e instanceof Error ? e.message : "실패");
+                    } finally {
+                      setBotBusy(false);
+                    }
+                  }}
+                >
+                  {data.bot.auto_buy_paused ? "매수 재개" : "매수만 중지"}
+                </button>
+              </>
             ) : null}
             <button
               type="button"
@@ -643,6 +667,12 @@ export default function App() {
           <ActivityPanel bot={data.bot} />
         </div>
       )}
+      {data.bot.scan_health && data.bot.scan_health !== "ok" && (
+        <div className="scan-health-banner warn">
+          {data.bot.scan_health_detail ||
+            "시장 데이터 지연 — 스캔이 잠시 중지될 수 있습니다"}
+        </div>
+      )}
 
       {mainView === "alerts" && (
         <AlertsHub
@@ -653,6 +683,7 @@ export default function App() {
           backtestMessage={data.bot.backtest?.message}
           backtest={data.bot.backtest}
           autoInvestMessage={data.bot.auto_invest_message}
+          bot={data.bot}
           botStatus={data.bot.status}
           cashKrw={data.portfolio.cash_krw}
           feePct={appConfig.trading_fee_pct}
@@ -784,6 +815,18 @@ export default function App() {
                 showToast(s.message || "손익절 설정 저장");
               } catch (e) {
                 showToast(e instanceof Error ? e.message : "손익절 저장 실패");
+              } finally {
+                setTradeBusy(false);
+              }
+            }}
+            onMigrateExits={async () => {
+              setTradeBusy(true);
+              try {
+                const s = await migratePositionExits(true);
+                applyPayload(s);
+                showToast(s.message || "손익절 재적용");
+              } catch (e) {
+                showToast(e instanceof Error ? e.message : "실패");
               } finally {
                 setTradeBusy(false);
               }

@@ -82,6 +82,47 @@ export async function stopBot(): Promise<StatusPayload> {
   return request("/api/bot/stop", { method: "POST" });
 }
 
+export async function setAutoBuyPaused(
+  paused: boolean
+): Promise<StatusPayload> {
+  return request("/api/bot/auto-buy-pause", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ paused }),
+  });
+}
+
+export async function migratePositionExits(
+  force = false
+): Promise<StatusPayload & { migrated_count?: number }> {
+  return request(
+    `/api/positions/migrate-exits?force=${force ? "true" : "false"}`,
+    { method: "POST" }
+  );
+}
+
+export async function fetchDailyReport(): Promise<{
+  ok: boolean;
+  report: Record<string, unknown>;
+}> {
+  return request("/api/reports/daily");
+}
+
+export async function fetchBacktestReport(): Promise<{
+  ok: boolean;
+  report: Record<string, unknown>;
+}> {
+  return request("/api/reports/backtest");
+}
+
+export function dailyReportCsvUrl(): string {
+  return "/api/reports/daily.csv";
+}
+
+export function backupExportUrl(): string {
+  return "/api/backup/export";
+}
+
 export async function resetRiskKill(): Promise<StatusPayload> {
   return request("/api/risk/reset-kill", { method: "POST" });
 }

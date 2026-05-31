@@ -3,9 +3,9 @@ import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import APIRouter, FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, FastAPI, File, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from app.engine.portfolio_store import store
@@ -45,7 +45,7 @@ from app.aidi_middleware import AidiActionLogMiddleware
 STATIC_DIR = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
 
 # PC에서 run.bat 시작 시 표시 — GitHub 최신과 비교용
-AIDI_BUILD = "2026-05-31-prep-dist-fix"
+AIDI_BUILD = "2026-06-01-features-v1"
 
 
 engine = TradingEngine()
@@ -162,6 +162,10 @@ async def _build_status() -> dict:
         "daily_loss_kill": True,
         "execution_feedback": True,
         "flash_crash_guard": True,
+        "auto_buy_pause": True,
+        "position_exit_migrate": True,
+        "daily_report": True,
+        "backup_zip": True,
     }
     payload["all_trades"] = [t.model_dump() for t in portfolio.trades[-500:]]
     if engine.config.trade_mode == TradeMode.LIVE:
@@ -231,6 +235,13 @@ async def lifespan(app: FastAPI):
     get_aidi_logger().info("AIDI 서버 시작 - 빌드 %s", AIDI_BUILD)
     engine.config = apply_credentials_to_config(engine.config)
     engine.bind_portfolio()
+    try:
+        from app.engine.position_exit_migrate import migrate_all_positions
+
+        migrate_all_positions(engine.portfolio, engine.config, force=False)
+        engine._persist()
+    except Exception:
+        pass
     engine.ensure_auto_guard()
     from app.engine.backtest_runner import ensure_backtest_loop, stop_backtest_loop
 
@@ -475,6 +486,101 @@ async def bot_stop():
     engine._persist()
     status = await _build_status()
     status["ok"] = True
+    return status
+
+
+@api.post("/bot/auto-buy-pause")
+async def bot_auto_buy_pause(body: dict | None = None):
+    paused = bool((body or {}).get("paused", True))
+    msg = engine.set_auto_buy_paused(paused)
+    status = await _build_status()
+    status["ok"] = True
+    status["message"] = msg
+    return status
+
+
+@api.post("/positions/migrate-exits")
+async def positions_migrate_exits(force: bool = False):
+    n, msg = engine.migrate_position_exits(force=force)
+    status = await _build_status()
+    status["ok"] = n > 0
+    status["message"] = msg
+    status["migrated_count"] = n
+    return status
+
+
+@api.get("/reports/daily")
+async def reports_daily():
+    from app.engine.daily_report import build_daily_report
+
+    engine.bind_portfolio()
+    portfolio = engine.portfolio
+    snap = portfolio.snapshot({}, engine.config)
+    report = build_daily_report(
+        portfolio.trades,
+        snap,
+        engine.config,
+        realized_pnl_krw=portfolio.realized_pnl_krw,
+    )
+    return {"ok": True, "report": report}
+
+
+@api.get("/reports/daily.csv")
+async def reports_daily_csv():
+    from app.engine.daily_report import build_daily_report, daily_report_csv
+
+    engine.bind_portfolio()
+    portfolio = engine.portfolio
+    snap = portfolio.snapshot({}, engine.config)
+    report = build_daily_report(
+        portfolio.trades,
+        snap,
+        engine.config,
+        realized_pnl_krw=portfolio.realized_pnl_krw,
+    )
+    csv_text = daily_report_csv(report, portfolio.trades)
+    return Response(
+        content=csv_text.encode("utf-8-sig"),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="aidi-daily.csv"'},
+    )
+
+
+@api.get("/reports/backtest")
+async def reports_backtest():
+    from app.engine.backtest_report import build_backtest_report
+
+    return {"ok": True, "report": build_backtest_report()}
+
+
+@api.get("/backup/export")
+async def backup_export():
+    from app.engine.backup_manager import export_backup_zip
+
+    data = export_backup_zip(engine.config)
+    return Response(
+        content=data,
+        media_type="application/zip",
+        headers={"Content-Disposition": 'attachment; filename="aidi-backup.zip"'},
+    )
+
+
+@api.post("/backup/import")
+async def backup_import(file: UploadFile = File(...)):
+    from app.engine.backup_manager import import_backup_zip
+
+    raw = await file.read()
+    if len(raw) > 50_000_000:
+        return JSONResponse(
+            {"ok": False, "message": "ZIP 50MB 초과"},
+            status_code=400,
+        )
+    n, notes = import_backup_zip(raw, merge=True)
+    engine.bind_portfolio()
+    status = await _build_status()
+    status["ok"] = True
+    status["message"] = f"복원 {n}개 파일 · 서버 재시작 권장"
+    status["backup_notes"] = notes
     return status
 
 

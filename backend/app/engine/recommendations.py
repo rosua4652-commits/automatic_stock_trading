@@ -23,6 +23,31 @@ def _tier_to_mode(tier: str) -> str:
     return "scalp" if (tier or "").lower() == "scalp" else "long"
 
 
+def _bt_line_for_symbol(
+    acc: BacktestAccumulator,
+    symbol: str,
+    *,
+    tier: str,
+) -> str:
+    learning = load_learning_state()
+    mode = _tier_to_mode(tier)
+    rec = acc.symbols.get(symbol.upper())
+    st = None
+    if rec:
+        st = rec.long if mode == "long" else rec.short
+    floor = (
+        learning.long_min_bt_score
+        if mode == "long"
+        else learning.scalp_min_bt_score
+    )
+    if st and st.trades >= 1:
+        return (
+            f"BT {st.score:.0f}점 (기준≥{floor:.0f}) · 승률 {st.win_rate_pct:.0f}% · "
+            f"{st.trades}건"
+        )
+    return f"BT 누적 중 · 기준≥{floor:.0f} · 성숙 {learning.data_maturity_pct:.0f}%"
+
+
 def _entry_detail_with_backtest(
     c: CoinCandidate,
     backtest,
@@ -317,6 +342,7 @@ def build_recommendations(
                     default_sl=config.stop_loss_pct,
                     default_tp=config.take_profit_pct,
                 ),
+                bt_line=_bt_line_for_symbol(acc, c.symbol, tier=tier),
                 change_24h=c.change_24h,
                 volume_usdt=float(getattr(c, "volume_usdt", 0) or 0),
                 trend=c.trend,

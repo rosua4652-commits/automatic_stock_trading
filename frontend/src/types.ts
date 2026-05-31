@@ -15,6 +15,11 @@ export interface AppConfig {
   target_profit_krw: number;
   initial_balance_krw: number;
   max_positions: number;
+  max_position_weight_pct?: number;
+  trade_hours_enabled?: boolean;
+  trade_start_hour_kst?: number;
+  trade_end_hour_kst?: number;
+  paper_days_before_live_auto?: number;
   stop_loss_pct: number;
   take_profit_pct: number;
   trading_fee_pct?: number;
@@ -220,6 +225,7 @@ export interface InvestmentRecommendation {
   sl_tp_source?: string;
   entry_tier?: string;
   entry_detail: string;
+  bt_line?: string;
   change_24h: number;
   trend: string;
   selected?: boolean;
@@ -314,6 +320,10 @@ export interface BotState {
   auto_invest_message?: string;
   auto_risk?: AutoInvestRiskStatus;
   paper_auto_full?: boolean;
+  auto_buy_paused?: boolean;
+  scan_health?: string;
+  scan_health_detail?: string;
+  auto_invest_rejects?: string[];
 }
 
 export interface StatusPayload {

@@ -3771,3 +3771,113 @@ main.layout.chart-layout {
     min-width: 520px;
   }
 }
+
+.scan-health-banner {
+  flex-shrink: 0;
+  padding: 0.5rem 1rem;
+  font-size: 0.85rem;
+  background: rgba(251, 191, 36, 0.15);
+  border-bottom: 1px solid rgba(251, 191, 36, 0.35);
+  color: #fbbf24;
+}
+
+.auto-invest-dashboard {
+  margin-bottom: 0.75rem;
+  padding: 0.65rem 0.85rem;
+  background: var(--surface2);
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+}
+
+.auto-invest-dashboard-title {
+  font-size: 0.9rem;
+  margin-bottom: 0.35rem;
+}
+
+.auto-invest-reject-list {
+  list-style: none;
+  font-size: 0.78rem;
+  color: var(--muted);
+  max-height: 140px;
+  overflow-y: auto;
+}
+
+.auto-invest-reject-list li {
+  padding: 0.2rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.report-panel {
+  margin: 0.75rem 0;
+  padding: 0.65rem 0.85rem;
+  background: var(--surface2);
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+}
+
+.report-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 0.5rem;
+  font-size: 0.82rem;
+}
+
+.exit-gauges {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  width: 100%;
+}
+
+.exit-gauge-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.exit-gauge-track {
+  flex: 1;
+  height: 6px;
+  background: rgba(148, 163, 184, 0.15);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.exit-gauge-fill.up {
+  background: var(--green);
+  height: 100%;
+}
+
+.exit-gauge-fill.down {
+  background: var(--red);
+  height: 100%;
+}
+
+.exit-gauge-pct {
+  font-size: 0.72rem;
+  min-width: 4.5rem;
+  text-align: right;
+}
+
+.bt-line {
+  color: var(--accent);
+  font-size: 0.75rem;
+}
+
+.bt-report-table-wrap {
+  max-height: 240px;
+  overflow: auto;
+}
+
+.bt-report-table {
+  width: 100%;
+  font-size: 0.75rem;
+  border-collapse: collapse;
+}
+
+.bt-report-table th,
+.bt-report-table td {
+  padding: 0.25rem 0.4rem;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+}

@@ -211,6 +211,12 @@ export default function RecommendationsPanel({
                         {r.sl_tp_source ? (
                           <span className="dim"> ({r.sl_tp_source})</span>
                         ) : null}
+                        {r.bt_line ? (
+                          <>
+                            <br />
+                            <span className="bt-line dim">{r.bt_line}</span>
+                          </>
+                        ) : null}
                         <br />
                         <span className="up">+{fmtKrw(r.take_profit_krw ?? 0)}</span>
                         <span className="dim"> / </span>

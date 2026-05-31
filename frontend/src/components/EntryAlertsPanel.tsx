@@ -84,6 +84,12 @@ export default function EntryAlertsPanel({
               <span className="alerts-quick-amt">{fmtKrw(r.amount_krw)}원</span>
             </button>
             <p className="alerts-quick-detail">
+              {r.bt_line && (
+                <>
+                  <span className="bt-line">{r.bt_line}</span>
+                  {" · "}
+                </>
+              )}
               {(r.stop_loss_pct ?? 0) > 0 && (
                 <>
                   BT 손절 {r.stop_loss_pct?.toFixed(1)}% · 익절 {r.take_profit_pct?.toFixed(1)}%

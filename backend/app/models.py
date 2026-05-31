@@ -25,6 +25,24 @@ class AppConfig(BaseModel):
         le=30,
         description="0이면 보유 코인 수 제한 없음",
     )
+    max_position_weight_pct: float = Field(
+        default=12.0,
+        ge=3.0,
+        le=50.0,
+        description="종목당 총자산 대비 최대 비중 % (자동 매수)",
+    )
+    trade_hours_enabled: bool = Field(
+        default=True,
+        description="False면 24시간 자동 매수 허용",
+    )
+    trade_start_hour_kst: int = Field(default=8, ge=0, le=23)
+    trade_end_hour_kst: int = Field(default=23, ge=1, le=24)
+    paper_days_before_live_auto: int = Field(
+        default=3,
+        ge=0,
+        le=30,
+        description="실거래 자동투자 전 모의 자동투자 검증 일수",
+    )
     stop_loss_pct: float = Field(default=3.0, ge=0.01, le=25.0)
     take_profit_pct: float = Field(default=5.0, ge=0.01, le=50.0)
     trading_fee_pct: float = Field(
@@ -355,6 +373,10 @@ class InvestmentRecommendation(BaseModel):
     sl_tp_source: str = ""
     entry_tier: str = "watch"
     entry_detail: str = ""
+    bt_line: str = Field(
+        default="",
+        description="BT 점수·학습 기준 한 줄 요약",
+    )
     change_24h: float = 0.0
     volume_usdt: float = 0.0
     trend: str = ""
@@ -475,6 +497,10 @@ class BotState(BaseModel):
     phase_detail: str = ""
     seconds_until_scan: int = 0
     ai_settings_summary: str = ""
+    auto_buy_paused: bool = False
+    scan_health: str = "ok"
+    scan_health_detail: str = ""
+    auto_invest_rejects: list[str] = Field(default_factory=list)
 
 
 class ManualBuyRequest(BaseModel):

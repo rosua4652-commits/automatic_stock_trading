@@ -8,7 +8,63 @@ from app.engine.backtest_learning import (
 )
 from app.engine.backtest_optimizer import BacktestAccumulator
 from app.engine.flash_crash_guard import is_symbol_flash_blocked
+from app.engine.scalp_filters import scalp_market_fit
 from app.models import InvestmentRecommendation
+
+
+def build_auto_invest_rejects(
+    recs: list[InvestmentRecommendation],
+    *,
+    auto_long: bool,
+    auto_scalp: bool,
+    acc: BacktestAccumulator,
+    flash_block_until: dict[str, float] | None,
+    paper_relax_bt: bool = False,
+    max_lines: int = 12,
+) -> list[str]:
+    """UI 고정 표시용 — 종목별 탈락 사유."""
+    learning = load_learning_state()
+    acc = acc or BacktestAccumulator()
+    out: list[str] = []
+
+    for r in recs[:20]:
+        if len(out) >= max_lines:
+            break
+        sym = r.symbol.upper()
+        tier = (r.entry_tier or "").lower()
+        base = r.base or sym.replace("USDT", "")
+
+        if flash_block_until and is_symbol_flash_blocked(flash_block_until, sym):
+            out.append(f"{base}: 급락 차단")
+            continue
+        if tier == "watch":
+            continue
+
+        if tier == "scalp":
+            if not auto_scalp:
+                continue
+            ok_liq, why_liq = scalp_market_fit(
+                volume_usdt=float(getattr(r, "volume_usdt", 0) or 0),
+                change_24h=float(getattr(r, "change_24h", 0) or 0),
+            )
+            if not ok_liq:
+                out.append(f"{base} 단타: {why_liq}")
+                continue
+            ok, why = symbol_passes_learning(
+                acc, learning, sym, mode="scalp", paper_relax=paper_relax_bt
+            )
+            if not ok:
+                out.append(f"{base} 단타: {why}")
+        elif tier == "auto":
+            if not auto_long:
+                continue
+            ok, why = symbol_passes_learning(
+                acc, learning, sym, mode="long", paper_relax=paper_relax_bt
+            )
+            if not ok:
+                out.append(f"{base} 롱: {why}")
+
+    return out
 
 
 def diagnose_auto_invest(

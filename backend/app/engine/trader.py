@@ -20,11 +20,18 @@ from app.engine.portfolio_store import store
 from app.engine.backtest_optimizer import BacktestAccumulator
 from app.engine.backtest_runner import get_accumulator
 from app.engine.backtest_learning import load_learning_state, strategy_sl_tp
-from app.engine.risk_manager import check_auto_invest_allowed, evaluate_daily_risk
+from app.engine.risk_manager import (
+    check_auto_invest_allowed,
+    check_position_weight,
+    evaluate_daily_risk,
+)
+from app.engine.market_health import get_market_health, report_market_error, report_market_ok
+from app.engine.paper_validation import record_paper_auto_day
+from app.engine.position_exit_migrate import migrate_all_positions
+from app.engine.auto_invest_diag import build_auto_invest_rejects, diagnose_auto_invest
 from app.engine.trade_feedback import record_paper_execution
 from app.engine.activity_log import push_activity, set_phase
 from app.engine.ai_settings import apply_ai_settings
-from app.engine.auto_invest_diag import diagnose_auto_invest
 from app.engine.flash_crash_guard import (
     FlashGuardState,
     block_symbol_after_flash,
@@ -323,6 +330,28 @@ class TradingEngine:
         self._notify()
         return True, self.bot.message
 
+    def set_auto_buy_paused(self, paused: bool) -> str:
+        self.bot.auto_buy_paused = bool(paused)
+        self._bump_version()
+        self._notify()
+        if paused:
+            return "신규 자동 매수 일시 중지 — 스캔·손익절 감시는 계속"
+        return "신규 자동 매수 재개"
+
+    def migrate_position_exits(self, *, force: bool = False) -> tuple[int, str]:
+        self.bind_portfolio()
+        n, lines = migrate_all_positions(self.portfolio, self.config, force=force)
+        if not self._is_live():
+            self._persist()
+        self._bump_version()
+        self._notify()
+        if n <= 0:
+            return 0, "적용할 AI 보유 없음 (또는 수동 손익절·이미 적용됨)"
+        summary = "; ".join(lines[:5])
+        if len(lines) > 5:
+            summary += f" 외 {len(lines) - 5}건"
+        return n, f"{n}종 손익절 재적용 — {summary}"
+
     async def stop(self) -> None:
         if self.bot.status == BotStatus.STOPPED:
             return
@@ -347,6 +376,10 @@ class TradingEngine:
         self.bot.auto_invest_scalp = False
         self.bot.auto_invest_message = ""
         self.bot.paper_auto_full = False
+        self.bot.auto_buy_paused = False
+        self.bot.auto_invest_rejects = []
+        self.bot.scan_health = "ok"
+        self.bot.scan_health_detail = ""
         self.bot.message = "분석 중지됨 · 제안 목록에서 승인 매수 또는 수동 매매"
         logger.info("[분석 중지] 루프 종료 · 제안·수동 매매만 가능")
         self._bump_version()
@@ -841,7 +874,29 @@ class TradingEngine:
         self.portfolio.usdt_krw = await market.usdt_krw_rate()
         from app.config import settings as app_settings
 
-        tickers = await market.tickers_24h()
+        try:
+            tickers = await market.tickers_24h()
+            report_market_ok()
+            mh = get_market_health()
+            self.bot.scan_health = mh.status
+            self.bot.scan_health_detail = ""
+        except Exception as e:
+            err = str(e)
+            if "429" in err:
+                from app.engine.market_health import report_rate_limit
+
+                report_rate_limit()
+            else:
+                report_market_error(err)
+            mh = get_market_health()
+            self.bot.scan_health = mh.status
+            self.bot.scan_health_detail = mh.detail or err[:120]
+            self.bot.message = (
+                f"시장 데이터 오류 — 스캔 일시 중지 · {self.bot.scan_health_detail}"
+            )
+            self._log("스캔", self.bot.message, "warn")
+            self._notify()
+            return
         self.bot.liquid_symbols = await top_usdt_symbols(
             app_settings.tab_symbol_limit, is_running=self.is_running
         )
@@ -942,6 +997,11 @@ class TradingEngine:
     async def _maybe_auto_invest_after_scan(self) -> None:
         if not self.bot.auto_invest_active or not self.is_running():
             return
+        if self.bot.auto_buy_paused:
+            self.bot.auto_invest_message = (
+                "자동 매수 일시 중지 — 분석·손익절만 진행 (재개: 매수 재개)"
+            )
+            return
 
         self.bind_portfolio()
         snap = self.portfolio.snapshot({}, self.config)
@@ -974,6 +1034,25 @@ class TradingEngine:
             flash_block_until=self._flash_block_until,
             paper_relax_bt=paper_relax,
         )
+        self.bot.auto_invest_rejects = build_auto_invest_rejects(
+            self.bot.recommendations,
+            auto_long=self.bot.auto_invest_long,
+            auto_scalp=self.bot.auto_invest_scalp,
+            acc=acc,
+            flash_block_until=self._flash_block_until,
+            paper_relax_bt=paper_relax,
+        )
+        weight_ok: list = []
+        for r in picks:
+            ok_w, wmsg = check_position_weight(
+                self.config, snap, r.symbol, float(r.amount_krw or 0)
+            )
+            if ok_w:
+                weight_ok.append(r)
+            elif len(self.bot.auto_invest_rejects) < 12:
+                self.bot.auto_invest_rejects.append(f"{r.base}: {wmsg}")
+        picks = weight_ok
+
         diag, _fails = diagnose_auto_invest(
             self.bot.recommendations,
             auto_long=self.bot.auto_invest_long,
@@ -1146,6 +1225,8 @@ class TradingEngine:
                     fail_msgs.append(f"{rec.base}: 잔고 부족")
 
         if ok_n:
+            if not self._is_live() and self.bot.auto_invest_active:
+                record_paper_auto_day()
             await self._monitor_positions(tickers)
             self._persist()
             self.bot.recent_trades = self.portfolio.trades[-40:]

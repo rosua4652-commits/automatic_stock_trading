@@ -1,8 +1,11 @@
 import { useCallback, useState } from "react";
 import type { ApplyItem, EditableRecommendation } from "../hooks/useRecommendationAmounts";
-import type { BacktestStatus, DirectionSignalItem } from "../types";
+import type { BacktestStatus, BotState, DirectionSignalItem } from "../types";
 import { fmtUsd, isRunning } from "../utils";
+import AutoInvestDashboard from "./AutoInvestDashboard";
+import BacktestReportPanel from "./BacktestReportPanel";
 import CollapsibleSection from "./CollapsibleSection";
+import DailyReportPanel from "./DailyReportPanel";
 import EntryAlertsPanel from "./EntryAlertsPanel";
 
 type Props = {
@@ -13,6 +16,7 @@ type Props = {
   backtestMessage?: string;
   backtest?: BacktestStatus;
   autoInvestMessage?: string;
+  bot: BotState;
   botStatus: string;
   cashKrw: number;
   feePct?: number;
@@ -31,6 +35,7 @@ export default function AlertsHub({
   backtestMessage,
   backtest,
   autoInvestMessage,
+  bot,
   botStatus,
   cashKrw,
   feePct = 0.05,
@@ -64,6 +69,8 @@ export default function AlertsHub({
 
   return (
     <div className="alerts-hub">
+      <AutoInvestDashboard bot={bot} />
+      <DailyReportPanel />
       <CollapsibleSection
         title="투자 제안"
         storageKey="aidi-alerts-rec-collapsed"
@@ -148,6 +155,16 @@ export default function AlertsHub({
           onSelect={onSelectSymbol}
         />
       </section>
+
+      <CollapsibleSection
+        title="백테스트 리포트"
+        storageKey="aidi-alerts-bt-report-collapsed"
+        defaultCollapsed
+        collapsedHint="펼치기 — 롱/단타 BT 표"
+        className="alerts-hub-section"
+      >
+        <BacktestReportPanel />
+      </CollapsibleSection>
 
       {backtestMessage && (
         <footer className="alerts-backtest-foot">

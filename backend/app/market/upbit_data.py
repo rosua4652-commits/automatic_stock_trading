@@ -118,6 +118,9 @@ async def _get_with_retry(client: httpx.AsyncClient, url: str, **kwargs) -> http
         resp = await client.get(url, **kwargs)
         last = resp
         if resp.status_code == 429:
+            from app.engine.market_health import report_rate_limit
+
+            report_rate_limit(retry_sec=min(2.0, 0.35 * (2**attempt)))
             await asyncio.sleep(min(2.0, 0.35 * (2**attempt)))
             continue
         return resp
@@ -136,6 +139,9 @@ async def _fetch_ticker_rows(
             params={"markets": ",".join(part)},
         )
         if resp.status_code == 429:
+            from app.engine.market_health import report_rate_limit
+
+            report_rate_limit("업비트 ticker 429")
             raise httpx.HTTPStatusError(
                 "429 Too Many Requests",
                 request=resp.request,

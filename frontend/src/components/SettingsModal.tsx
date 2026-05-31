@@ -318,6 +318,91 @@ export default function SettingsModal({
                 onChange={(e) => set("scan_interval_sec", Number(e.target.value))}
               />
             </label>
+            <label className="field">
+              <span>최대 보유 종목 (0=무제한)</span>
+              <input
+                type="number"
+                min={0}
+                max={30}
+                value={draft.max_positions ?? 0}
+                onChange={(e) => set("max_positions", Number(e.target.value))}
+              />
+            </label>
+            <label className="field">
+              <span>종목당 최대 비중 (%)</span>
+              <input
+                type="number"
+                min={3}
+                max={50}
+                step={0.5}
+                value={draft.max_position_weight_pct ?? 12}
+                onChange={(e) =>
+                  set("max_position_weight_pct", Number(e.target.value))
+                }
+              />
+            </label>
+            <label className="field checkbox-field">
+              <input
+                type="checkbox"
+                checked={draft.trade_hours_enabled ?? true}
+                onChange={(e) => set("trade_hours_enabled", e.target.checked)}
+              />
+              <span>자동 매수 시간대 (KST)</span>
+            </label>
+            <label className="field">
+              <span>시작 시 (0~23)</span>
+              <input
+                type="number"
+                min={0}
+                max={23}
+                value={draft.trade_start_hour_kst ?? 8}
+                onChange={(e) =>
+                  set("trade_start_hour_kst", Number(e.target.value))
+                }
+              />
+            </label>
+            <label className="field">
+              <span>종료 시 (1~24, 미포함)</span>
+              <input
+                type="number"
+                min={1}
+                max={24}
+                value={draft.trade_end_hour_kst ?? 23}
+                onChange={(e) => set("trade_end_hour_kst", Number(e.target.value))}
+              />
+            </label>
+            <label className="field">
+              <span>실거래 자동투자 전 모의 검증 일수</span>
+              <input
+                type="number"
+                min={0}
+                max={30}
+                value={draft.paper_days_before_live_auto ?? 3}
+                onChange={(e) =>
+                  set("paper_days_before_live_auto", Number(e.target.value))
+                }
+              />
+            </label>
+            <label className="field checkbox-field">
+              <input
+                type="checkbox"
+                checked={!!draft.allow_live_auto_invest}
+                onChange={(e) => set("allow_live_auto_invest", e.target.checked)}
+              />
+              <span>실거래 자동투자 허용 (모의 검증 후)</span>
+            </label>
+          </div>
+        </section>
+
+        <section className="settings-section">
+          <h3>백업</h3>
+          <p className="panel-hint">
+            data 폴더·포지션 메타 백업. API 키는 마스킹되어 포함됩니다.
+          </p>
+          <div className="settings-actions">
+            <a className="btn-secondary" href="/api/backup/export" download>
+              백업 ZIP 받기
+            </a>
           </div>
         </section>
 
