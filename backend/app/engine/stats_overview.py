@@ -36,6 +36,8 @@ def _mode_block(
         equity_start_krw=start,
     )
     report["trade_mode"] = mode
+    daily_pnl = float(report.get("daily_pnl_krw") or 0)
+    daily_pct = float(report.get("daily_pnl_pct") or 0)
     return {
         "mode": mode,
         "total_value_krw": round(snap.total_value_krw, 0),
