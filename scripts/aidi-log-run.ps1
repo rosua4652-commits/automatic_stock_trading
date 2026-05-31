@@ -19,8 +19,13 @@ function Write-TeeLine {
     param([string]$Line)
     if ($null -eq $Line) { return }
     Write-Host $Line
-    $ts = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-    $row = "[$ts] $Line"
+    # AIDI 앱 로그는 이미 타임스탬프 포함
+    if ($Line -match '\| AIDI \|') {
+        $row = $Line
+    } else {
+        $ts = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+        $row = "[$ts] $Line"
+    }
     if ($LogMain) {
         Add-Content -LiteralPath $LogMain -Value $row -Encoding UTF8
     }

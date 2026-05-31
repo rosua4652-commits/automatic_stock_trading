@@ -3,6 +3,8 @@ import time
 import uuid
 from typing import Callable, Optional
 
+from app.aidi_log import get_aidi_logger
+
 from app.engine.exit_rules import (
     config_exit_triggered,
     custom_exit_triggered,
@@ -37,6 +39,8 @@ from app.models import (
 )
 from app.config import settings
 from app.storage.credentials import has_api_keys
+
+logger = get_aidi_logger()
 
 
 def _fmt_pct_setting(n: float) -> str:
@@ -181,6 +185,13 @@ class TradingEngine:
         self.bot.status = BotStatus.RUNNING
         self.bot.manual_mode = True
         self.bot.message = "시장 스캔·차트 분석 중... (승인 후 매수)"
+        mode = "실거래" if self._is_live() else "모의"
+        logger.info(
+            "[분석 시작] %s · 스캔 간격 %ds · 최소진입점수 %.0f",
+            mode,
+            self.config.scan_interval_sec,
+            self.config.min_entry_score,
+        )
         self._task = asyncio.create_task(self._loop())
         await self._tick()
         self._notify()
@@ -206,6 +217,7 @@ class TradingEngine:
         self.bot.status = BotStatus.STOPPED
         self.bot.manual_mode = True
         self.bot.message = "분석 중지됨 · 제안 목록에서 승인 매수 또는 수동 매매"
+        logger.info("[분석 중지] 루프 종료 · 제안·수동 매매만 가능")
         self._bump_version()
         self._notify()
 
@@ -230,6 +242,12 @@ class TradingEngine:
             pass
         self._bump_version()
         self._notify()
+        logger.info(
+            "[설정 변경] 모드 %s → %s · %s",
+            old_mode.value,
+            cfg.trade_mode.value,
+            switch_msg[:120],
+        )
         return switch_msg
 
     async def ensure_candidate_entry(self, symbol: str) -> None:
@@ -274,6 +292,12 @@ class TradingEngine:
             self.bind_portfolio()
             self.bot.recent_trades = self.portfolio.trades[-30:]
             self._notify()
+            logger.info(
+                "[수동 매수] %s 실거래 · %s원 · %s",
+                symbol,
+                int(req.amount_krw),
+                msg[:100],
+            )
             return ok, msg
 
         tickers = await market.tickers_24h()
@@ -304,6 +328,12 @@ class TradingEngine:
         self._persist()
         self.bot.recent_trades = self.portfolio.trades[-30:]
         self._notify()
+        logger.info(
+            "[수동 매수] %s 모의 · %s원 · %s",
+            symbol,
+            int(req.amount_krw),
+            f"{pos.display} 완료",
+        )
         return True, f"{pos.display} 모의 매수 완료"
 
     async def manual_sell(self, req: ManualSellRequest) -> tuple[bool, str]:
@@ -327,6 +357,12 @@ class TradingEngine:
             self.bind_portfolio()
             self.bot.recent_trades = self.portfolio.trades[-30:]
             self._notify()
+            logger.info(
+                "[수동 매도] %s 실거래 · %.0f%% · %s",
+                symbol,
+                req.percent,
+                msg[:100],
+            )
             return ok, msg
 
         tickers = await market.tickers_24h()
@@ -341,6 +377,12 @@ class TradingEngine:
         self._persist()
         self.bot.recent_trades = self.portfolio.trades[-30:]
         self._notify()
+        logger.info(
+            "[수동 매도] %s 모의 · %.0f%% · %s",
+            symbol,
+            req.percent,
+            f"{pos.display} 완료",
+        )
         return True, f"{pos.display} 모의 {req.percent:.0f}% 매도"
 
     async def scan_direction_signals(self, side: str) -> tuple[bool, str]:
@@ -351,14 +393,14 @@ class TradingEngine:
 
         self.bind_portfolio()
         acc = self._backtest_acc or get_accumulator()
+        label = "롱" if side == "long" else "숏"
+        bt_n = len(acc.symbols)
+        logger.info("[%s 분석] BT누적 %d종 · 차트·일목 스캔 시작", label, bt_n)
         items = await self._build_direction_signals(side, acc, scan_cap=60)
         if side == "long":
             self.bot.long_signals = items
         else:
             self.bot.short_signals = items
-
-        label = "롱" if side == "long" else "숏"
-        bt_n = len(acc.symbols)
         if items:
             self.bot.direction_scan_message = (
                 f"{label} 추천 {len(items)}건 · BT누적 {bt_n}종 · 일목·이평·BB·RSI"
@@ -369,6 +411,7 @@ class TradingEngine:
             )
         self._bump_version()
         self._notify()
+        logger.info("[%s 분석] 완료 · %s", label, self.bot.direction_scan_message)
         return True, self.bot.direction_scan_message
 
     async def apply_backtest_insights(
@@ -419,6 +462,12 @@ class TradingEngine:
                 f"백테스트 {acc.cycles}회 · {len(acc.symbols)}종 누적 — "
                 "다음 주기에 시그널 생성"
             )
+        logger.info(
+            "[백테스트 반영] %s · 손익절 %.1f%%/%.1f%%",
+            self.bot.direction_scan_message,
+            sl,
+            tp,
+        )
 
     async def _build_direction_signals(
         self,
@@ -548,6 +597,7 @@ class TradingEngine:
                 except Exception as e:
                     if self.is_running():
                         self.bot.message = f"오류 복구 중: {e}"
+                        logger.warning("[스캔 루프] 오류 복구: %s", e)
                 if not self.is_running():
                     break
                 interval = max(15, self.config.scan_interval_sec)
@@ -581,6 +631,7 @@ class TradingEngine:
         if not self.is_running():
             return
 
+        logger.info("[시장 스캔] 시작 — 종목·진입점수·투자 제안 갱신")
         self.bind_portfolio()
         if self._is_live():
             try:
@@ -670,6 +721,7 @@ class TradingEngine:
             f"단타가능 {scalp_total}종 · "
             f"제안 {len(self.bot.recommendations)}건 · 합계 {total_rec:,.0f}원"
         )
+        logger.info("[시장 스캔] 완료 · %s", self.bot.message)
         await self._monitor_positions(tickers)
         if not self._is_live():
             self._persist()
@@ -818,6 +870,15 @@ class TradingEngine:
         if not to_apply:
             return False, "매수할 코인을 선택하세요"
 
+        syms_label = ", ".join(r.base for r in to_apply[:6])
+        if len(to_apply) > 6:
+            syms_label += f" 외 {len(to_apply) - 6}종"
+        logger.info(
+            "[투자 제안 승인] %d건 매수 시도 · %s",
+            len(to_apply),
+            syms_label,
+        )
+
         raw_amts: dict[str, float] = {}
         for rec in to_apply:
             sym = rec.symbol.upper()
@@ -903,12 +964,13 @@ class TradingEngine:
         self._notify()
 
         if ok_n == 0:
-            return False, fail_msgs[0] if fail_msgs else "매수 실패"
+            err = fail_msgs[0] if fail_msgs else "매수 실패"
+            logger.info("[투자 제안 승인] 실패 · %s", err)
+            return False, err
         tail = f" ({fail_msgs[0]})" if fail_msgs else ""
-        return (
-            True,
-            f"{ok_n}건 AI 자동투자 매수 · 익절/손절 감시 중{tail}",
-        )
+        msg = f"{ok_n}건 AI 자동투자 매수 · 익절/손절 감시 중{tail}"
+        logger.info("[투자 제안 승인] %s", msg)
+        return True, msg
 
     async def set_position_exclude(self, symbol: str, exclude: bool) -> tuple[bool, str]:
         self.bind_portfolio()

@@ -11,9 +11,10 @@ import numpy as np
 
 from app.config import settings
 from app.market.upbit_data import market
+from app.aidi_log import get_aidi_logger
 from app.storage.persistence import load_backtest_state, save_backtest_state
 
-logger = logging.getLogger(__name__)
+logger = get_aidi_logger()
 
 # (손절%, 익절%) 후보 — 설정 주변 그리드
 PARAM_GRID: list[tuple[float, float]] = [
@@ -344,6 +345,11 @@ async def run_accumulator_cycle(
     batch: list[str] = []
     for i in range(batch_size):
         batch.append(symbols[(start + i) % n])
+
+    preview = ", ".join(s.replace("USDT", "") for s in batch[:5])
+    if len(batch) > 5:
+        preview += f" 외 {len(batch) - 5}종"
+    logger.info("[백테스트 배치] %s", preview)
 
     tested = 0
     updated = 0

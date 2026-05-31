@@ -3,15 +3,15 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 import time
 
 from app.config import settings
 from app.engine.backtest_optimizer import BacktestAccumulator, run_accumulator_cycle
+from app.aidi_log import get_aidi_logger
 from app.market.scanner import top_usdt_symbols
 from app.models import BacktestStatus
 
-logger = logging.getLogger(__name__)
+logger = get_aidi_logger()
 
 _backtest_task: asyncio.Task | None = None
 
@@ -81,6 +81,11 @@ async def run_backtest_once(engine=None) -> BacktestStatus:
         default_sl = float(engine.config.stop_loss_pct or default_sl)
         default_tp = float(engine.config.take_profit_pct or default_tp)
 
+    logger.info(
+        "[백테스트 주기] 시작 · 손익절 기준 %.1f%%/%.1f%%",
+        default_sl,
+        default_tp,
+    )
     try:
         symbols = await top_usdt_symbols(80)
     except Exception as e:
@@ -99,6 +104,13 @@ async def run_backtest_once(engine=None) -> BacktestStatus:
         default_tp=default_tp,
         batch_size=20,
     )
+    logger.info(
+        "[백테스트 주기] 배치 %d종 분석 · %d건 갱신 · 누적 %d회 · 저장 %d종",
+        tested,
+        updated,
+        acc.cycles,
+        len(acc.symbols),
+    )
     status = status_from_accumulator(
         acc,
         batch_tested=tested,
@@ -110,7 +122,8 @@ async def run_backtest_once(engine=None) -> BacktestStatus:
         try:
             await engine.apply_backtest_insights(acc)
         except Exception as e:
-            logger.warning("apply_backtest_insights: %s", e)
+            logger.warning("[백테스트 반영] 실패: %s", e)
+    logger.info("[백테스트 주기] 완료 · %s", status.message)
     return status
 
 
@@ -139,6 +152,7 @@ def ensure_backtest_loop(engine) -> None:
     global _backtest_task
     if _backtest_task and not _backtest_task.done():
         return
+    logger.info("[백테스트] 백그라운드 루프 시작 · 약 240초마다 20종 배치")
     _backtest_task = asyncio.create_task(_backtest_loop(engine))
 
 

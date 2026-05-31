@@ -38,12 +38,14 @@ from app.market.live_exchange import close_all, test_exchange_connection
 from app.market.ipv4_http import outbound_ipv4_via_same_stack, upbit_resolved_ipv4
 from app.market.network_info import get_outbound_public_ip
 from app.storage.credentials import load_credentials, mask_key
+from app.aidi_log import get_aidi_logger, setup_aidi_logging
+from app.aidi_middleware import AidiActionLogMiddleware
 
 STATIC_DIR = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
 # PC에서 run.bat 시작 시 표시 — GitHub 최신과 비교용
-AIDI_BUILD = "2026-03-30-backtest-driven-signals"
+AIDI_BUILD = "2026-05-31-detail-logs"
 
 
 def _load_pc_path_hint() -> str:
@@ -228,9 +230,13 @@ async def _broadcast_loop() -> None:
         await asyncio.sleep(3 if engine.config.trade_mode == TradeMode.LIVE else 2)
 
 
+setup_aidi_logging()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global _broadcast_task
+    get_aidi_logger().info("AIDI 서버 시작 · 빌드 %s", AIDI_BUILD)
     engine.config = apply_credentials_to_config(engine.config)
     engine.bind_portfolio()
     engine.ensure_auto_guard()
@@ -254,6 +260,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="AIDI Auto Invest", version="1.3.1", lifespan=lifespan)
+app.add_middleware(AidiActionLogMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -589,9 +596,19 @@ async def legacy_select(symbol: str):
     return await _build_status()
 
 
+_ws_logged_once = False
+
+
 async def _ws_handler(ws: WebSocket):
+    global _ws_logged_once
     await ws.accept()
     _ws_clients.add(ws)
+    if not _ws_logged_once:
+        _ws_logged_once = True
+        get_aidi_logger().info(
+            "브라우저 WebSocket 연결 · 실시간 상태 %d초 간격",
+            3 if engine.config.trade_mode == TradeMode.LIVE else 2,
+        )
     try:
         await ws.send_json(await _build_status())
         while True:
