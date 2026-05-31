@@ -21,7 +21,27 @@ function Read-BuildId([string]$Path, [string]$Pattern) {
     return $null
 }
 
+function Get-RemoteBuildFromGit([string]$Root, [string]$Ref = "origin/main") {
+    if (-not (Test-GitInstalled)) { return $null }
+    $gitDir = Join-Path $Root ".git"
+    if (-not (Test-Path -LiteralPath $gitDir)) { return $null }
+    Push-Location $Root
+    try {
+        git fetch origin -q 2>$null | Out-Null
+        $content = git show "${Ref}:backend/app/main.py" 2>$null
+        if ($content -match 'AIDI_BUILD\s*=\s*"([^"]+)"') {
+            return $matches[1].Trim()
+        }
+    } finally {
+        Pop-Location
+    }
+    return $null
+}
+
 function Get-RemoteBuildId([string]$Root) {
+    $fromGit = Get-RemoteBuildFromGit $Root
+    if ($fromGit) { return $fromGit }
+
     $repo = "rosua4652-commits/automatic_stock_trading"
     $branch = "main"
     $gitDir = Join-Path $Root ".git"
@@ -38,9 +58,10 @@ function Get-RemoteBuildId([string]$Root) {
             Pop-Location
         }
     }
-    $url = "https://raw.githubusercontent.com/$repo/$branch/backend/app/main.py"
+    $cacheBust = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+    $url = "https://raw.githubusercontent.com/$repo/$branch/backend/app/main.py?t=$cacheBust"
     try {
-        $resp = Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 10
+        $resp = Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 12
         if ($resp.Content -match 'AIDI_BUILD\s*=\s*"([^"]+)"') {
             return $matches[1].Trim()
         }
@@ -132,14 +153,11 @@ function Test-FastReady(
     [string]$UiSrc,
     [string]$DistStamp,
     [bool]$VenvOk,
-    [bool]$DistOk,
-    [string]$RemoteBuild
+    [bool]$DistOk
 ) {
     if (-not $LocalBuild -or -not $VenvOk -or -not $DistOk) { return $false }
-    # UI 소스 빌드 ID와 백엔드가 달라도 dist 스탬프만 맞으면 OK
-    if ($UiSrc -ne $LocalBuild -and $DistStamp -ne $UiSrc) { return $false }
-    if ($DistStamp -ne $LocalBuild) { return $false }
-    if ($RemoteBuild -and $RemoteBuild -ne $LocalBuild) { return $false }
+    if ($UiSrc -and $UiSrc -ne $LocalBuild) { return $false }
+    if ($DistStamp -ne $LocalBuild -and $DistStamp -ne $UiSrc) { return $false }
     return $true
 }
 
@@ -168,7 +186,7 @@ if (Test-Path -LiteralPath $statePath) {
     $lastOk = (Get-Content -LiteralPath $statePath -Raw -Encoding UTF8).Trim()
 }
 
-if (Test-FastReady $localBuild $uiSrc $distStamp $venvOk $distOk $remoteBuild) {
+if (Test-FastReady $localBuild $uiSrc $distStamp $venvOk $distOk) {
     Write-Info ""
     Write-Info "  Build $localBuild — OK, starting server..."
     Write-Info ""
@@ -189,29 +207,43 @@ if (-not (Test-GitInstalled)) {
     Write-Info "    Git           : (not installed — use update-zip.bat for updates)"
 }
 
-# Git pull when remote is newer (only if git command exists)
+# Git pull when origin/main build differs (prefer git over raw.githubusercontent cache)
 if ($remoteBuild -and $localBuild -ne $remoteBuild) {
     $gitDir = Join-Path $RepoRoot ".git"
     $canGitPull = (Test-Path -LiteralPath $gitDir) -and (Test-GitInstalled)
     if ($canGitPull) {
         Write-Info "  Updating code from GitHub (git pull)..."
         Push-Location $RepoRoot
-        git fetch origin 2>&1 | Out-Host
-        git pull --ff-only origin main 2>&1 | Out-Host
+        $pullOut = @(
+            (git fetch origin 2>&1),
+            (git pull --ff-only origin main 2>&1)
+        ) | ForEach-Object { "$_" }
         if ($LASTEXITCODE -ne 0) {
-            git pull --ff-only 2>&1 | Out-Host
+            $pullOut += (git pull --ff-only 2>&1 | ForEach-Object { "$_" })
         }
+        $pullOut | ForEach-Object { Write-Info "    $_" }
         Pop-Location
         $localBuild = Read-BuildId $mainPy 'AIDI_BUILD\s*=\s*"([^"]+)"'
         $uiSrc = Read-BuildId (Join-Path $RepoRoot "frontend\src\uiBuild.ts") 'UI_BUILD\s*=\s*"([^"]+)"'
+        $remoteBuild = Get-RemoteBuildFromGit $RepoRoot
+        if (-not $remoteBuild) { $remoteBuild = Get-RemoteBuildId $RepoRoot }
         Write-Info "    After pull    : $localBuild"
-        if ($remoteBuild -ne $localBuild) {
+        if ($remoteBuild -and $remoteBuild -ne $localBuild) {
+            # 로컬이 origin보다 앞선 경우(수동 복사 등) — dist만 다시 빌드하면 됨
+            if ($localBuild -eq $uiSrc) {
+                Write-Info "    Note: PC 소스가 GitHub 표시와 다릅니다 — 로컬 빌드로 진행합니다."
+            } else {
+                Show-ZipUpdateHelp $remoteBuild $localBuild
+                exit 3
+            }
+        }
+    } else {
+        if ($localBuild -eq $uiSrc) {
+            Write-Info "    Note: Git 없음 — 로컬 소스 기준으로 프론트 빌드합니다."
+        } else {
             Show-ZipUpdateHelp $remoteBuild $localBuild
             exit 3
         }
-    } else {
-        Show-ZipUpdateHelp $remoteBuild $localBuild
-        exit 3
     }
 }
 
@@ -246,8 +278,9 @@ if (-not (Test-Path $dataDir)) { New-Item -ItemType Directory -Path $dataDir | O
 
 $needFe = $false
 if (-not $distOk) { $needFe = $true }
-if ($uiSrc -ne $localBuild) { $needFe = $true }
-if ($distStamp -ne $uiSrc) { $needFe = $true }
+if ($uiSrc -and $uiSrc -ne $localBuild) { $needFe = $true }
+if ($distStamp -ne $localBuild) { $needFe = $true }
+if ($uiSrc -and $distStamp -ne $uiSrc) { $needFe = $true }
 
 if ($needFe) {
     try {
