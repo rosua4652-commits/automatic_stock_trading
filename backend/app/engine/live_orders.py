@@ -6,7 +6,12 @@ from typing import Optional
 from app.engine.live_sync import export_live_meta, sync_live_portfolio
 from app.engine.portfolio import PortfolioManager
 from app.engine.portfolio_store import store
-from app.engine.trade_history import remember_order_reason, remember_order_uuid
+from app.engine.trade_history import (
+    merge_trade_events,
+    remember_order_reason,
+    remember_order_uuid,
+)
+from app.market.coin_registry import coin_meta
 from app.market.upbit_data import market
 from app.market.upbit_client import upbit_client
 from app.market.upbit_order_fill import (
@@ -23,7 +28,7 @@ from app.market.upbit_sell import (
     set_pending_exit,
     smart_sell,
 )
-from app.models import AppConfig, Position
+from app.models import AppConfig, Position, TradeEvent
 from app.storage.credentials import get_active_keys
 from app.config import settings
 from app.storage.persistence import save_live_meta
@@ -141,6 +146,35 @@ async def live_market_buy(
                 entry_score=entry_score,
                 score=score,
                 entry_outlook=entry_outlook,
+            )
+
+        if order_uuid and executed_qty > 0:
+            m = coin_meta(sym)
+            portfolio.trades = merge_trade_events(
+                portfolio.trades,
+                [
+                    TradeEvent(
+                        ts=time.time(),
+                        symbol=sym,
+                        base=m["base"],
+                        display=m["display"],
+                        side="BUY",
+                        price=fills_price,
+                        price_krw=round(
+                            price_krw
+                            if price_krw > 0
+                            else (fill_krw or amount_krw) / max(executed_qty, 1e-12),
+                            4,
+                        ),
+                        quantity=executed_qty,
+                        amount_krw=round(fill_krw or amount_krw, 0),
+                        amount_usdt=round(quote_usdt, 4),
+                        reason=reason,
+                        is_auto=as_auto,
+                        order_uuid=order_uuid,
+                    )
+                ],
+                usdt_krw=max(portfolio.usdt_krw, 1.0),
             )
 
         _persist_live(portfolio)
@@ -275,6 +309,30 @@ async def live_market_sell(
             pos_after, before, executed_qty, price, auto_only
         )
         portfolio.realized_pnl_krw += pnl_delta
+
+        if order_uuid and executed_qty > 0:
+            m = coin_meta(sym)
+            portfolio.trades = merge_trade_events(
+                portfolio.trades,
+                [
+                    TradeEvent(
+                        ts=time.time(),
+                        symbol=sym,
+                        base=m["base"],
+                        display=m["display"],
+                        side="SELL",
+                        price=price,
+                        price_krw=round(price_krw, 4) if price_krw > 0 else 0.0,
+                        quantity=executed_qty,
+                        amount_krw=round(quote_krw, 0),
+                        amount_usdt=round(quote, 4),
+                        reason=reason,
+                        is_auto=auto_only,
+                        order_uuid=order_uuid,
+                    )
+                ],
+                usdt_krw=max(portfolio.usdt_krw, 1.0),
+            )
 
         _persist_live(portfolio)
         label = "업비트"
