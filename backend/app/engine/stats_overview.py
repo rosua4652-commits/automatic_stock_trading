@@ -57,7 +57,7 @@ async def build_stats_overview(engine, store, config: AppConfig) -> dict[str, An
     prices = await engine.prices_map()
     if has_api_keys(config):
         try:
-            await store.sync_live(config)
+            await store.sync_live(config, fetch_trades=False)
         except Exception:
             pass
 

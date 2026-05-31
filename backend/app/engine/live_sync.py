@@ -113,10 +113,13 @@ async def sync_live_portfolio(
     portfolio,
     config: AppConfig,
     live_meta: dict[str, Any],
+    *,
+    fetch_trades: bool = True,
 ) -> str:
     """
     거래소 잔고를 기준으로 live 포트폴리오 재구성.
     live_meta: AIDI 전용 메타 (auto/manual 분리, 익절선 등) — 잔고는 거래소가 진실.
+    fetch_trades=False: 잔고·시세만 (스캔/익절 감시용, 체결 API 생략).
     """
     ak, sk = get_active_keys(config)
     if not ak or not sk:
@@ -125,7 +128,56 @@ async def sync_live_portfolio(
     exchange = (config.exchange or "upbit").lower()
     if exchange != "upbit":
         raise RuntimeError("AIDI는 업비트(KRW)만 지원합니다.")
-    return await _sync_upbit(portfolio, config, live_meta, ak, sk)
+    return await _sync_upbit(
+        portfolio, config, live_meta, ak, sk, fetch_trades=fetch_trades
+    )
+
+
+async def refresh_live_position_prices(portfolio, config: AppConfig) -> str:
+    """보유 종목 현재가만 즉시 갱신 — 익절/손절 판단용 (accounts·체결 내역 API 최소)."""
+    from app.market.upbit_markets import get_upbit_krw_markets, resolve_upbit_market
+
+    ak, sk = get_active_keys(config)
+    if not ak or not sk:
+        return ""
+    if not portfolio.positions:
+        return ""
+
+    upbit_client.configure(ak, sk)
+    portfolio.usdt_krw = await upbit_feed.usdt_krw_rate()
+    markets = await get_upbit_krw_markets()
+    krw_list: list[str] = []
+    sym_by_market: dict[str, str] = {}
+    for sym, pos in list(portfolio.positions.items()):
+        if pos.quantity <= 1e-12:
+            continue
+        m = resolve_upbit_market(sym.upper(), markets)
+        if m:
+            krw_list.append(m)
+            sym_by_market[m] = sym.upper()
+
+    if not krw_list:
+        return ""
+
+    tickers = await upbit_client.tickers(krw_list)
+    n = 0
+    for m, sym in sym_by_market.items():
+        t = tickers.get(m)
+        if not t:
+            continue
+        price_krw = float(t.get("trade_price") or 0)
+        if price_krw <= 0:
+            continue
+        pos = portfolio.positions.get(sym)
+        if not pos:
+            continue
+        rate = max(portfolio.usdt_krw, 1.0)
+        pos.current_price_krw = price_krw
+        pos.current_price = price_krw / rate
+        qty = pos.exchange_quantity or pos.quantity
+        pos.valuation_krw = qty * price_krw
+        n += 1
+    return f"시세 {n}종 갱신"
 
 
 async def _sync_upbit(
@@ -134,6 +186,8 @@ async def _sync_upbit(
     live_meta: dict[str, Any],
     access_key: str,
     secret_key: str,
+    *,
+    fetch_trades: bool = True,
 ) -> str:
     from app.market.upbit_markets import get_upbit_krw_markets
 
@@ -285,13 +339,23 @@ async def _sync_upbit(
     portfolio.cash_krw = krw_cash
     portfolio.realized_pnl_krw = float(live_meta.get("realized_pnl_krw", 0))
 
-    force_trades = bool(live_meta.pop("trades_force_sync", False))
-    portfolio.trades = await load_trades_from_upbit(
-        upbit_client,
-        live_meta,
-        usdt_krw=portfolio.usdt_krw,
-        force=force_trades,
-    )
+    if fetch_trades:
+        force_trades = bool(live_meta.pop("trades_force_sync", False))
+        portfolio.trades = await load_trades_from_upbit(
+            upbit_client,
+            live_meta,
+            usdt_krw=portfolio.usdt_krw,
+            force=force_trades,
+        )
+    else:
+        from app.engine.trade_history import merge_trade_events
+
+        portfolio.trades = merge_trade_events(
+            portfolio.trades,
+            live_meta.get("trades", []),
+            usdt_krw=max(portfolio.usdt_krw, 1.0),
+            limit=100,
+        )
 
     n = len(new_positions)
     coin_value = sum(p.valuation_krw for p in new_positions.values())

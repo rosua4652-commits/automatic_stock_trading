@@ -3,7 +3,11 @@
 import asyncio
 
 from app.engine.portfolio import PortfolioManager
-from app.engine.live_sync import export_live_meta, sync_live_portfolio
+from app.engine.live_sync import (
+    export_live_meta,
+    refresh_live_position_prices,
+    sync_live_portfolio,
+)
 from app.models import AppConfig, TradeMode
 from app.storage.credentials import has_api_keys
 from app.storage.persistence import (
@@ -78,13 +82,24 @@ class PortfolioStore:
     def get(self, mode: TradeMode) -> PortfolioManager:
         return self.paper if mode == TradeMode.PAPER else self.live
 
-    async def sync_live(self, config: AppConfig) -> str:
+    async def sync_live(
+        self, config: AppConfig, *, fetch_trades: bool = True
+    ) -> str:
         async with self._lock:
             prev = self._live_meta
-            msg = await sync_live_portfolio(self.live, config, prev)
+            if prev.get("trades_force_sync"):
+                fetch_trades = True
+            msg = await sync_live_portfolio(
+                self.live, config, prev, fetch_trades=fetch_trades
+            )
             self._live_meta = export_live_meta(self.live, preserve=prev)
             save_live_meta(self._live_meta)
             return msg
+
+    async def refresh_live_prices(self, config: AppConfig) -> str:
+        """보유 종목 시세만 빠르게 갱신 (체결 내역 API 없음)."""
+        async with self._lock:
+            return await refresh_live_position_prices(self.live, config)
 
     async def on_mode_change(
         self, old: TradeMode, new: TradeMode, config: AppConfig

@@ -236,9 +236,12 @@ class UpbitDataClient:
                 raise
 
     async def tickers_for_symbols(
-        self, symbols: list[str]
+        self,
+        symbols: list[str],
+        *,
+        fresh: bool = False,
     ) -> dict[str, dict[str, Any]]:
-        """탭·보유 종목만 조회 (전 종목 ticker 호출 방지)."""
+        """탭·보유 종목만 조회 (전 종목 ticker 호출 방지). fresh=True: 캐시 무시."""
         if not symbols:
             return {}
         markets: list[str] = []
@@ -249,11 +252,9 @@ class UpbitDataClient:
                 markets.append(m)
         if not markets:
             return {}
-        # 소량이면 직접 조회, 많으면 전체 캐시에서 필터
-        if len(markets) <= 25:
+        if fresh or len(markets) <= 25:
             try:
-                full = await self._build_tickers_dict(markets)
-                return full
+                return await self._build_tickers_dict(markets)
             except Exception:
                 stale = _stale_tickers()
                 if stale:

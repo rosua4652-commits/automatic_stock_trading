@@ -54,7 +54,10 @@ def _persist_live(portfolio: PortfolioManager) -> None:
 
 async def _sync_live_refresh(portfolio: PortfolioManager, config: AppConfig) -> None:
     prev = store._live_meta
-    await sync_live_portfolio(portfolio, config, prev)
+    fetch_trades = bool(prev.get("trades_force_sync"))
+    await sync_live_portfolio(
+        portfolio, config, prev, fetch_trades=fetch_trades
+    )
 
 
 async def live_market_buy(

@@ -172,7 +172,7 @@ class TradingEngine:
     async def _auto_guard_loop(self) -> None:
         try:
             while True:
-                await asyncio.sleep(3)
+                await asyncio.sleep(2 if self._is_live() else 3)
                 self.bind_portfolio()
                 has_watch = any(
                     p.quantity > 1e-12
@@ -186,10 +186,20 @@ class TradingEngine:
                 if not has_watch:
                     continue
                 try:
-                    tickers = await market.tickers_24h()
                     if self._is_live():
+                        await store.refresh_live_prices(self.config)
                         await retry_pending_exit_sells(self.config)
                         self.bind_portfolio()
+                        syms = [
+                            s
+                            for s, p in self.portfolio.positions.items()
+                            if p.quantity > 1e-12
+                        ]
+                        tickers = await market.tickers_for_symbols(
+                            syms, fresh=True
+                        )
+                    else:
+                        tickers = await market.tickers_24h()
                     await self._monitor_positions(tickers)
                     if not self._is_live():
                         self._persist()
@@ -913,7 +923,9 @@ class TradingEngine:
             apply_ai_settings(self.config, acc_pre, is_paper=not self._is_live())
         if self._is_live():
             try:
-                self._link_message = await store.sync_live(self.config)
+                self._link_message = await store.sync_live(
+                    self.config, fetch_trades=False
+                )
                 self.bind_portfolio()
             except Exception as e:
                 self.bot.message = f"연동 오류: {e}"
@@ -1302,7 +1314,14 @@ class TradingEngine:
         tail = f" ({fail_msgs[0]})" if fail_msgs else ""
         return ok_n, f"{ok_n}건 {buy_tag} · 익절/손절 감시{tail}"
 
-    async def _price_for_symbol(self, sym: str, tickers: dict) -> float:
+    async def _price_for_symbol(
+        self, sym: str, tickers: dict, *, fresh: bool = False
+    ) -> float:
+        if self._is_live() and fresh:
+            row = await market.tickers_for_symbols([sym.upper()], fresh=True)
+            t = row.get(sym.upper())
+            if t:
+                return float(t.get("lastPrice") or 0)
         t = tickers.get(sym)
         if t:
             return float(t.get("lastPrice") or 0)
@@ -1325,7 +1344,9 @@ class TradingEngine:
             pos = self.portfolio.positions.get(sym)
             if not pos or pos.quantity <= 1e-12:
                 continue
-            price = await self._price_for_symbol(sym, tickers)
+            price = await self._price_for_symbol(
+                sym, tickers, fresh=self._is_live()
+            )
             if price <= 0:
                 continue
             await self._manage_exit(sym, price)
@@ -1404,8 +1425,8 @@ class TradingEngine:
         if self.portfolio.usdt_krw <= 0:
             self.portfolio.usdt_krw = await market.usdt_krw_rate()
 
-        tickers = await market.tickers_for_symbols([sym])
-        price = await self._price_for_symbol(sym, tickers)
+        tickers = await market.tickers_for_symbols([sym], fresh=self._is_live())
+        price = await self._price_for_symbol(sym, tickers, fresh=self._is_live())
         if price <= 0 and pos.current_price > 0:
             price = pos.current_price
         if price <= 0 and pos.current_price_krw > 0 and self.portfolio.usdt_krw > 0:
