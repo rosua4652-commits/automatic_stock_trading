@@ -6,6 +6,14 @@ param(
 
 $ErrorActionPreference = "Continue"
 
+try {
+    $utf8 = [System.Text.UTF8Encoding]::new($false)
+    [Console]::OutputEncoding = $utf8
+    $OutputEncoding = $utf8
+} catch {
+    # ignore — aidi-console-utf8.bat may already set chcp 65001
+}
+
 function Write-Info([string]$Msg) {
     if (-not $Quiet) { Write-Host $Msg }
 }
@@ -14,11 +22,28 @@ function Test-GitInstalled {
     return [bool](Get-Command git -ErrorAction SilentlyContinue)
 }
 
+function ConvertTo-SingleText([object]$Value) {
+    if ($null -eq $Value) { return "" }
+    if ($Value -is [string]) { return $Value }
+    if ($Value -is [System.Array]) { return ($Value | ForEach-Object { "$_" }) -join "`n" }
+    return "$Value"
+}
+
+function Parse-BuildIdFromText([string]$Text, [string]$Pattern) {
+    $t = ConvertTo-SingleText $Text
+    if (-not $t) { return $null }
+    if ($t -match $Pattern) {
+        if ($matches -and $matches.Count -ge 2 -and $null -ne $matches[1]) {
+            return "$($matches[1])".Trim()
+        }
+    }
+    return $null
+}
+
 function Read-BuildId([string]$Path, [string]$Pattern) {
     if (-not (Test-Path -LiteralPath $Path)) { return $null }
     $text = Get-Content -LiteralPath $Path -Raw -Encoding UTF8
-    if ($text -match $Pattern) { return $matches[1].Trim() }
-    return $null
+    return Parse-BuildIdFromText $text $Pattern
 }
 
 function Get-RemoteBuildFromGit([string]$Root, [string]$Ref = "origin/main") {
@@ -28,10 +53,9 @@ function Get-RemoteBuildFromGit([string]$Root, [string]$Ref = "origin/main") {
     Push-Location $Root
     try {
         git fetch origin -q 2>$null | Out-Null
-        $content = git show "${Ref}:backend/app/main.py" 2>$null
-        if ($content -match 'AIDI_BUILD\s*=\s*"([^"]+)"') {
-            return $matches[1].Trim()
-        }
+        $raw = git show "${Ref}:backend/app/main.py" 2>$null
+        $id = Parse-BuildIdFromText (ConvertTo-SingleText $raw) 'AIDI_BUILD\s*=\s*"([^"]+)"'
+        if ($id) { return $id }
     } finally {
         Pop-Location
     }
@@ -48,9 +72,10 @@ function Get-RemoteBuildId([string]$Root) {
     if ((Test-Path -LiteralPath $gitDir) -and (Test-GitInstalled)) {
         Push-Location $Root
         try {
-            $origin = (git remote get-url origin 2>$null)
-            if ($origin -match "github\.com[:/]([^/]+/[^/\s]+)") {
-                $repo = $matches[1] -replace "\.git$", ""
+            $origin = ConvertTo-SingleText (git remote get-url origin 2>$null)
+            $repoFromOrigin = Parse-BuildIdFromText $origin 'github\.com[:/]([^/\s]+/[^/\s]+)'
+            if ($repoFromOrigin) {
+                $repo = $repoFromOrigin -replace "\.git$", ""
             }
             $b = (git rev-parse --abbrev-ref HEAD 2>$null)
             if ($b) { $branch = $b.Trim() }
@@ -62,9 +87,8 @@ function Get-RemoteBuildId([string]$Root) {
     $url = "https://raw.githubusercontent.com/$repo/$branch/backend/app/main.py?t=$cacheBust"
     try {
         $resp = Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 12
-        if ($resp.Content -match 'AIDI_BUILD\s*=\s*"([^"]+)"') {
-            return $matches[1].Trim()
-        }
+        $id = Parse-BuildIdFromText $resp.Content 'AIDI_BUILD\s*=\s*"([^"]+)"'
+        if ($id) { return $id }
     } catch {
         return $null
     }
@@ -188,7 +212,7 @@ if (Test-Path -LiteralPath $statePath) {
 
 if (Test-FastReady $localBuild $uiSrc $distStamp $venvOk $distOk) {
     Write-Info ""
-    Write-Info "  Build $localBuild — OK, starting server..."
+    Write-Info "  Build $localBuild - OK, starting server..."
     Write-Info ""
     exit 0
 }
@@ -231,7 +255,7 @@ if ($remoteBuild -and $localBuild -ne $remoteBuild) {
         if ($remoteBuild -and $remoteBuild -ne $localBuild) {
             # 로컬이 origin보다 앞선 경우(수동 복사 등) — dist만 다시 빌드하면 됨
             if ($localBuild -eq $uiSrc) {
-                Write-Info "    Note: PC 소스가 GitHub 표시와 다릅니다 — 로컬 빌드로 진행합니다."
+                Write-Info "    Note: local source != GitHub tag — continuing with local npm build."
             } else {
                 Show-ZipUpdateHelp $remoteBuild $localBuild
                 exit 3
@@ -239,7 +263,7 @@ if ($remoteBuild -and $localBuild -ne $remoteBuild) {
         }
     } else {
         if ($localBuild -eq $uiSrc) {
-            Write-Info "    Note: Git 없음 — 로컬 소스 기준으로 프론트 빌드합니다."
+            Write-Info "    Note: no Git — building frontend from local source."
         } else {
             Show-ZipUpdateHelp $remoteBuild $localBuild
             exit 3
@@ -293,6 +317,6 @@ if ($needFe) {
 
 Set-Content -LiteralPath $statePath -Value $localBuild -Encoding ascii -NoNewline
 Write-Info ""
-Write-Info "  Build $localBuild — ready, starting server..."
+Write-Info "  Build $localBuild - ready, starting server..."
 Write-Info ""
 exit 0
