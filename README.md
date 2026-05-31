@@ -89,11 +89,14 @@ cd automatic_stock_trading-main
 
 ```bat
 cd 프로젝트폴더
-git pull
+git-sync.bat
 run.bat
 ```
 
-`run.bat` 이 pull 을 대신 할 수도 있습니다 (로컬 빌드가 GitHub보다 낮을 때).
+ZIP 폴더에서 처음 Git 쓸 때 `git pull` 오류 나면 **`git-sync.bat`** 한 번 실행  
+(`not a git repository` / `no tracking information` / `move or remove files` 해결)
+
+이후 매일: `git pull` 또는 `git-sync.bat` → `run.bat`
 
 ### Git 없음 (ZIP)
 
