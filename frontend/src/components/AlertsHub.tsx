@@ -2,10 +2,8 @@ import { useCallback, useState } from "react";
 import type { ApplyItem, EditableRecommendation } from "../hooks/useRecommendationAmounts";
 import type { BacktestStatus, DirectionSignalItem } from "../types";
 import { fmtUsd, isRunning } from "../utils";
-import ActivityPanel from "./ActivityPanel";
 import CollapsibleSection from "./CollapsibleSection";
 import EntryAlertsPanel from "./EntryAlertsPanel";
-import type { BotState } from "../types";
 
 type Props = {
   recommendations: EditableRecommendation[];
@@ -15,7 +13,6 @@ type Props = {
   backtestMessage?: string;
   backtest?: BacktestStatus;
   autoInvestMessage?: string;
-  bot: BotState;
   botStatus: string;
   cashKrw: number;
   feePct?: number;
@@ -34,7 +31,6 @@ export default function AlertsHub({
   backtestMessage,
   backtest,
   autoInvestMessage,
-  bot,
   botStatus,
   cashKrw,
   feePct = 0.05,
@@ -68,10 +64,6 @@ export default function AlertsHub({
 
   return (
     <div className="alerts-hub">
-      <ActivityPanel bot={bot} />
-      {autoInvestMessage && (
-        <p className="auto-invest-banner">{autoInvestMessage}</p>
-      )}
       <CollapsibleSection
         title="투자 제안"
         storageKey="aidi-alerts-rec-collapsed"
