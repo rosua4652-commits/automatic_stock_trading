@@ -37,6 +37,9 @@ const ZOOM_OPTIONS = [
 ] as const;
 
 const DEFAULT_VISIBLE_BARS = 100;
+const MIN_MAIN_W = 80;
+const MIN_MAIN_H = 120;
+const MIN_RSI_H = 48;
 
 type OverlayToggles = {
   ichimoku: boolean;
@@ -89,6 +92,8 @@ export default function ChartPanel({
   const candleCountRef = useRef(0);
   const lastBarTimeRef = useRef<number | null>(null);
   const syncingRef = useRef(false);
+  const visibleBarsRef = useRef(visibleBars);
+  visibleBarsRef.current = visibleBars;
 
   const indicators = useMemo(() => computeIndicators(candles), [candles]);
 
@@ -129,10 +134,30 @@ export default function ChartPanel({
     }
   };
 
+  const resizeCharts = () => {
+    const mainEl = mainWrapRef.current;
+    const rsiEl = rsiWrapRef.current;
+    const mainChart = mainChartRef.current;
+    const rsiChart = rsiChartRef.current;
+    if (!mainEl || !rsiEl || !mainChart || !rsiChart) return;
+    const mw = mainEl.clientWidth;
+    const mh = mainEl.clientHeight;
+    const rw = rsiEl.clientWidth;
+    const rh = rsiEl.clientHeight;
+    if (mw < MIN_MAIN_W || mh < MIN_MAIN_H) return;
+    mainChart.applyOptions({ width: mw, height: mh });
+    rsiChart.applyOptions({ width: rw, height: Math.max(rh, MIN_RSI_H) });
+    if (candleCountRef.current > 0) {
+      applyVisibleRange(candleCountRef.current, visibleBarsRef.current);
+    }
+  };
+
   useEffect(() => {
     const mainEl = mainWrapRef.current;
     const rsiEl = rsiWrapRef.current;
     if (!mainEl || !rsiEl) return;
+
+    let disposed = false;
 
     const chartOpts = {
       layout: {
@@ -158,10 +183,32 @@ export default function ChartPanel({
       handleScale: { axisPressedMouseMove: true, mouseWheel: true, pinch: true },
     };
 
-    const mainChart = createChart(mainEl, {
+    const measure = () => ({
+      mw: mainEl.clientWidth,
+      mh: mainEl.clientHeight,
+      rw: rsiEl.clientWidth,
+      rh: rsiEl.clientHeight,
+    });
+
+    const canInit = () => {
+      const { mw, mh, rw, rh } = measure();
+      return mw >= MIN_MAIN_W && mh >= MIN_MAIN_H && rw >= MIN_MAIN_W && rh >= MIN_RSI_H;
+    };
+
+    let mainChart: IChartApi | null = null;
+    let rsiChart: IChartApi | null = null;
+    let bootRo: ResizeObserver | null = null;
+    let roMain: ResizeObserver | null = null;
+    let roRsi: ResizeObserver | null = null;
+
+    const buildCharts = () => {
+      if (disposed || mainChartRef.current || !canInit()) return false;
+      const { mw, mh, rw, rh } = measure();
+
+      mainChart = createChart(mainEl, {
       ...chartOpts,
-      width: mainEl.clientWidth || 600,
-      height: mainEl.clientHeight || 320,
+      width: mw,
+      height: mh,
       rightPriceScale: {
         borderVisible: false,
         autoScale: true,
@@ -169,10 +216,10 @@ export default function ChartPanel({
       },
     });
 
-    const rsiChart = createChart(rsiEl, {
+      rsiChart = createChart(rsiEl, {
       ...chartOpts,
-      width: rsiEl.clientWidth || 600,
-      height: rsiEl.clientHeight || 100,
+      width: rw,
+      height: rh,
       rightPriceScale: {
         borderVisible: false,
         autoScale: false,
@@ -252,62 +299,62 @@ export default function ChartPanel({
       autoScale: true,
     });
 
-    mainChartRef.current = mainChart;
-    rsiChartRef.current = rsiChart;
-    candleRef.current = candleSeries;
-    volRef.current = volSeries;
-    rsiLineRef.current = rsiLine;
-    rsi30Ref.current = rsi30;
-    rsi70Ref.current = rsi70;
+      mainChartRef.current = mainChart;
+      rsiChartRef.current = rsiChart;
+      candleRef.current = candleSeries;
+      volRef.current = volSeries;
+      rsiLineRef.current = rsiLine;
+      rsi30Ref.current = rsi30;
+      rsi70Ref.current = rsi70;
 
-    const syncFromMain = () => {
-      if (syncingRef.current) return;
-      const range = mainChart.timeScale().getVisibleLogicalRange();
-      if (!range) return;
-      syncingRef.current = true;
-      rsiChart.timeScale().setVisibleLogicalRange(range);
-      syncingRef.current = false;
+        const syncFromMain = () => {
+        if (syncingRef.current || !mainChart || !rsiChart) return;
+        const range = mainChart.timeScale().getVisibleLogicalRange();
+        if (!range) return;
+        syncingRef.current = true;
+        rsiChart.timeScale().setVisibleLogicalRange(range);
+        syncingRef.current = false;
+      };
+      const syncFromRsi = () => {
+        if (syncingRef.current || !mainChart || !rsiChart) return;
+        const range = rsiChart.timeScale().getVisibleLogicalRange();
+        if (!range) return;
+        syncingRef.current = true;
+        mainChart.timeScale().setVisibleLogicalRange(range);
+        syncingRef.current = false;
+      };
+      mainChart.timeScale().subscribeVisibleLogicalRangeChange(syncFromMain);
+      rsiChart.timeScale().subscribeVisibleLogicalRangeChange(syncFromRsi);
+
+      roMain = new ResizeObserver(() => resizeCharts());
+      roRsi = new ResizeObserver(() => resizeCharts());
+      roMain.observe(mainEl);
+      roRsi.observe(rsiEl);
+
+      applyOverlayVisibility(overlays);
+      requestAnimationFrame(() => resizeCharts());
+      return true;
     };
-    const syncFromRsi = () => {
-      if (syncingRef.current) return;
-      const range = rsiChart.timeScale().getVisibleLogicalRange();
-      if (!range) return;
-      syncingRef.current = true;
-      mainChart.timeScale().setVisibleLogicalRange(range);
-      syncingRef.current = false;
-    };
-    mainChart.timeScale().subscribeVisibleLogicalRangeChange(syncFromMain);
-    rsiChart.timeScale().subscribeVisibleLogicalRangeChange(syncFromRsi);
 
-    const roMain = new ResizeObserver(() => {
-      if (!mainWrapRef.current) return;
-      const w = mainWrapRef.current.clientWidth;
-      const h = mainWrapRef.current.clientHeight;
-      if (w < 10 || h < 10) return;
-      mainChart.applyOptions({ width: w, height: h });
-      if (candleCountRef.current > 0) {
-        applyVisibleRange(candleCountRef.current, visibleBars);
-      }
-    });
-    const roRsi = new ResizeObserver(() => {
-      if (!rsiWrapRef.current) return;
-      const w = rsiWrapRef.current.clientWidth;
-      const h = rsiWrapRef.current.clientHeight;
-      if (w < 10 || h < 10) return;
-      rsiChart.applyOptions({ width: w, height: h });
-    });
-    roMain.observe(mainEl);
-    roRsi.observe(rsiEl);
-
-    applyOverlayVisibility(overlays);
+    if (!buildCharts()) {
+      bootRo = new ResizeObserver(() => {
+        if (buildCharts()) bootRo?.disconnect();
+      });
+      bootRo.observe(mainEl);
+      bootRo.observe(rsiEl);
+    }
 
     return () => {
-      roMain.disconnect();
-      roRsi.disconnect();
-      mainChart.timeScale().unsubscribeVisibleLogicalRangeChange(syncFromMain);
-      rsiChart.timeScale().unsubscribeVisibleLogicalRangeChange(syncFromRsi);
-      mainChart.remove();
-      rsiChart.remove();
+      disposed = true;
+      bootRo?.disconnect();
+      roMain?.disconnect();
+      roRsi?.disconnect();
+      if (mainChart) {
+        mainChart.remove();
+      }
+      if (rsiChart) {
+        rsiChart.remove();
+      }
       mainChartRef.current = null;
       rsiChartRef.current = null;
       candleRef.current = null;
@@ -408,6 +455,7 @@ export default function ChartPanel({
         { time: t1, value: 70 },
       ]);
     }
+    requestAnimationFrame(() => resizeCharts());
   }, [candles, indicators, visibleBars]);
 
   useEffect(() => {

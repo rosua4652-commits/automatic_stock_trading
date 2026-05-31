@@ -1012,10 +1012,12 @@ class TradingEngine:
             px = float(t.get("lastPrice", 0))
             if px <= 0:
                 continue
+            vol_usdt = float(t.get("quoteVolume", 0) or 0)
             out[sym] = {
                 "price_usdt": px,
                 "price_krw": round(px * rate),
                 "change_24h": float(t.get("priceChangePercent", 0)),
+                "volume_24h_krw": round(vol_usdt * rate),
             }
         return out
 

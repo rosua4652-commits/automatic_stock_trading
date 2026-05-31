@@ -385,6 +385,7 @@ class TabQuote(BaseModel):
     price_usdt: float = 0.0
     price_krw: float = 0.0
     change_24h: float = 0.0
+    volume_24h_krw: float = 0.0
 
 
 class StatusResponse(BaseModel):

@@ -576,6 +576,7 @@ export default function App() {
                 cashKrw={data.portfolio.cash_krw}
                 config={appConfig}
                 recommendation={activeRec}
+                tabQuote={data.tab_quotes?.[activeSymbol]}
                 onBuy={handleManualBuy}
                 onSell={handleManualSell}
               />
