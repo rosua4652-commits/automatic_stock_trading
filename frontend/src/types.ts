@@ -1,6 +1,6 @@
 export type BotStatus = "stopped" | "running" | "stopping";
 export type TradeMode = "paper" | "live";
-export type MainView = "alerts" | "chart" | "funds";
+export type MainView = "alerts" | "stats" | "chart" | "funds";
 
 export interface TabQuote {
   price_usdt: number;

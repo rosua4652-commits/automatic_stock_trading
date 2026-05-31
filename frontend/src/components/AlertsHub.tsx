@@ -5,7 +5,6 @@ import { fmtUsd, isRunning } from "../utils";
 import AutoInvestDashboard from "./AutoInvestDashboard";
 import BacktestReportPanel from "./BacktestReportPanel";
 import CollapsibleSection from "./CollapsibleSection";
-import DailyReportPanel from "./DailyReportPanel";
 import EntryAlertsPanel from "./EntryAlertsPanel";
 
 type Props = {
@@ -70,7 +69,9 @@ export default function AlertsHub({
   return (
     <div className="alerts-hub">
       <AutoInvestDashboard bot={bot} />
-      <DailyReportPanel />
+      <p className="panel-hint dim stats-tab-hint">
+        차트·그래프는 상단 「통계」 탭에서 확인하세요.
+      </p>
       <CollapsibleSection
         title="투자 제안"
         storageKey="aidi-alerts-rec-collapsed"

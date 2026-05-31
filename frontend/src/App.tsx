@@ -26,6 +26,8 @@ import CoinDetailBar from "./components/CoinDetailBar";
 import CoinSearchTabs from "./components/CoinSearchTabs";
 import FundsSummaryStrip from "./components/FundsSummaryStrip";
 import FundsTab from "./components/FundsTab";
+import StatsTab from "./components/StatsTab";
+import PortfolioAllocationPanel from "./components/PortfolioAllocationPanel";
 import PortfolioPanel from "./components/PortfolioPanel";
 import SettingsModal from "./components/SettingsModal";
 import type {
@@ -669,6 +671,13 @@ export default function App() {
           </button>
           <button
             type="button"
+            className={`nav-btn ${mainView === "stats" ? "active" : ""}`}
+            onClick={() => setMainView("stats")}
+          >
+            통계
+          </button>
+          <button
+            type="button"
             className={`nav-btn ${mainView === "chart" ? "active" : ""}`}
             onClick={() => setMainView("chart")}
           >
@@ -694,6 +703,15 @@ export default function App() {
           {data.bot.scan_health_detail ||
             "시장 데이터 지연 — 스캔이 잠시 중지될 수 있습니다"}
         </div>
+      )}
+
+      {mainView === "stats" && (
+        <StatsTab
+          portfolio={data.portfolio}
+          trades={data.all_trades ?? data.bot.recent_trades}
+          bot={data.bot}
+          configMode={data.config.trade_mode}
+        />
       )}
 
       {mainView === "alerts" && (
@@ -790,7 +808,8 @@ export default function App() {
       )}
 
       {mainView === "funds" && (
-        <div className="funds-screen">
+        <div className="funds-screen scroll-y">
+          <PortfolioAllocationPanel portfolio={data.portfolio} />
           <RecommendationsPanel
             variant="full"
             list={editableRecs}

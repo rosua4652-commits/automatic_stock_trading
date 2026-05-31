@@ -3887,3 +3887,238 @@ main.layout.chart-layout {
   border-bottom: 1px solid var(--border);
   text-align: left;
 }
+
+/* —— 통계 탭 · 차트 —— */
+.stats-tab,
+.scroll-y {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 0.75rem 1rem 1.5rem;
+}
+
+.stats-tab-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.stats-tab-head h2 {
+  font-size: 1.1rem;
+  margin: 0;
+}
+
+.stats-tab-hint {
+  margin: 0 0 0.5rem;
+  font-size: 0.78rem;
+}
+
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.kpi-card {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.55rem 0.65rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.kpi-label {
+  font-size: 0.68rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.kpi-value {
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.kpi-sub {
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.kpi-card.tone-up .kpi-value {
+  color: var(--green);
+}
+
+.kpi-card.tone-down .kpi-value {
+  color: var(--red);
+}
+
+.stats-chart-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.stats-chart-card {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.65rem 0.75rem;
+}
+
+.stats-chart-card.wide {
+  grid-column: 1 / -1;
+}
+
+.chart-title {
+  font-size: 0.82rem;
+  font-weight: 600;
+  margin: 0 0 0.5rem;
+  color: var(--text);
+}
+
+.chart-pie-body {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  justify-content: center;
+}
+
+.chart-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  font-size: 0.8rem;
+  border: 1px dashed var(--border);
+  border-radius: 50%;
+}
+
+.chart-legend {
+  list-style: none;
+  font-size: 0.75rem;
+  min-width: 120px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.chart-legend li {
+  display: grid;
+  grid-template-columns: 10px 1fr auto;
+  gap: 0.35rem;
+  align-items: center;
+  padding: 0.2rem 0;
+}
+
+.chart-legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.chart-legend-val {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.chart-bar-list {
+  list-style: none;
+}
+
+.chart-bar-row {
+  display: grid;
+  grid-template-columns: 4.5rem 1fr 2.5rem;
+  gap: 0.4rem;
+  align-items: center;
+  margin-bottom: 0.35rem;
+  font-size: 0.75rem;
+}
+
+.chart-bar-track {
+  height: 8px;
+  background: rgba(148, 163, 184, 0.12);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.chart-bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+.chart-bar-val {
+  text-align: right;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.chart-hourly-svg {
+  width: 100%;
+  max-height: 140px;
+}
+
+.chart-hourly-legend {
+  display: flex;
+  gap: 1rem;
+  font-size: 0.72rem;
+  color: var(--muted);
+  margin-top: 0.35rem;
+}
+
+.chart-hourly-legend .dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  margin-right: 0.25rem;
+  vertical-align: middle;
+}
+
+.chart-hourly-legend .dot.buy {
+  background: #3b9eff;
+}
+
+.chart-hourly-legend .dot.sell {
+  background: #f87171;
+}
+
+.funds-allocation-panel {
+  margin: 0 1rem 1rem;
+  padding: 0.85rem 1rem;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.funds-allocation-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.funds-allocation-head h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.funds-allocation-totals {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  font-size: 0.85rem;
+}
+
+.funds-tab-body {
+  padding-top: 0;
+}

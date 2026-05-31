@@ -458,7 +458,7 @@ export default function FundsTab({
   }, [maxKrw]);
 
   return (
-    <div className="funds-tab">
+    <div className="funds-tab funds-tab-body">
       {running && (
         <div className="funds-notice warn">
           분석 실행 중 — 매수는 「AI 투자 제안」 승인 또는 아래 수동 매매를 이용하세요.
