@@ -478,13 +478,26 @@ export default function FundsTab({
 
   return (
     <div className="funds-tab funds-tab-body">
-      {onSaveMinBuyKrw && (
-        <MinBuyKrwPanel
-          value={minBuy}
-          saving={savingMinBuy}
-          onSave={onSaveMinBuyKrw}
-        />
-      )}
+      <MinBuyKrwPanel
+        value={minBuy}
+        saving={savingMinBuy}
+        onSave={
+          onSaveMinBuyKrw ??
+          (async (krw) => {
+            const r = await fetch("/api/config/min-buy-krw", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ min_buy_krw: krw }),
+            });
+            if (!r.ok) {
+              const j = await r.json().catch(() => ({}));
+              throw new Error(
+                (j as { message?: string }).message || "저장 실패"
+              );
+            }
+          })
+        }
+      />
       {running && (
         <div className="funds-notice warn">
           분석 실행 중 — 매수는 「AI 투자 제안」 승인 또는 아래 수동 매매를 이용하세요.

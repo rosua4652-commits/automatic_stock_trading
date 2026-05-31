@@ -86,16 +86,28 @@ export default function SettingsModal({
       >
         <h2>설정</h2>
 
-        {onSaveMinBuyKrw && (
-          <MinBuyKrwPanel
-            value={getMinBuyKrw(draft)}
-            saving={saving}
-            onSave={async (n) => {
-              set("min_buy_krw", n);
+        <MinBuyKrwPanel
+          value={getMinBuyKrw(draft)}
+          saving={saving}
+          onSave={async (n) => {
+            set("min_buy_krw", n);
+            if (onSaveMinBuyKrw) {
               await onSaveMinBuyKrw(n);
-            }}
-          />
-        )}
+              return;
+            }
+            const r = await fetch("/api/config/min-buy-krw", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ min_buy_krw: n }),
+            });
+            if (!r.ok) {
+              const j = await r.json().catch(() => ({}));
+              throw new Error(
+                (j as { message?: string }).message || "저장 실패"
+              );
+            }
+          }}
+        />
 
         <section className="settings-section">
           <h3>투자 모드</h3>
