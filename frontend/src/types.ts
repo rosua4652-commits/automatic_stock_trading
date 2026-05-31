@@ -241,6 +241,8 @@ export interface StatusPayload {
   };
   all_trades?: TradeEvent[];
   trades_sync_error?: string;
+  trades_display_count?: number;
+  trades_orders_fetched?: number;
   ok?: boolean;
   message?: string;
   switch_message?: string;

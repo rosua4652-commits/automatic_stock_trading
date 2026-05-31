@@ -8,6 +8,7 @@ from app.engine.portfolio import PortfolioManager
 from app.engine.portfolio_store import store
 from app.engine.trade_history import (
     merge_trade_events,
+    normalize_trade_reason,
     remember_order_reason,
     remember_order_uuid,
 )
@@ -121,6 +122,7 @@ async def live_market_buy(
                     order_uuid,
                     reason=reason,
                     is_auto=as_auto,
+                    side="BUY",
                 )
         except Exception as e:
             return False, str(e)
@@ -150,6 +152,9 @@ async def live_market_buy(
 
         if order_uuid and executed_qty > 0:
             m = coin_meta(sym)
+            reason_label = normalize_trade_reason(
+                "BUY", reason, is_auto=as_auto, has_aidi_hint=True
+            )
             portfolio.trades = merge_trade_events(
                 portfolio.trades,
                 [
@@ -169,7 +174,7 @@ async def live_market_buy(
                         quantity=executed_qty,
                         amount_krw=round(fill_krw or amount_krw, 0),
                         amount_usdt=round(quote_usdt, 4),
-                        reason=reason,
+                        reason=reason_label,
                         is_auto=as_auto,
                         order_uuid=order_uuid,
                     )
@@ -293,6 +298,7 @@ async def live_market_sell(
                     order_uuid,
                     reason=reason,
                     is_auto=auto_only,
+                    side="SELL",
                 )
             price = price_krw / max(portfolio.usdt_krw, 1.0) if price_krw > 0 else 0.0
             if price <= 0 and pos.current_price > 0:
@@ -312,6 +318,9 @@ async def live_market_sell(
 
         if order_uuid and executed_qty > 0:
             m = coin_meta(sym)
+            reason_label = normalize_trade_reason(
+                "SELL", reason, is_auto=auto_only, has_aidi_hint=True
+            )
             portfolio.trades = merge_trade_events(
                 portfolio.trades,
                 [
@@ -326,7 +335,7 @@ async def live_market_sell(
                         quantity=executed_qty,
                         amount_krw=round(quote_krw, 0),
                         amount_usdt=round(quote, 4),
-                        reason=reason,
+                        reason=reason_label,
                         is_auto=auto_only,
                         order_uuid=order_uuid,
                     )

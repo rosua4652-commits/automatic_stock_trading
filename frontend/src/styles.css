@@ -2501,6 +2501,14 @@ main.layout.chart-layout {
   margin-bottom: 0.75rem;
 }
 
+.funds-trades-meta {
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: var(--text-dim, #8b9cb3);
+}
+
 .summary-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));

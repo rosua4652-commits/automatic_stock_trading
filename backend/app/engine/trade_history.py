@@ -23,8 +23,9 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 UPBIT_TRADE_HISTORY_DAYS = 90
-UPBIT_TRADE_LIMIT = 200
-DONE_ORDER_MAX_PAGES = 20
+UPBIT_TRADE_LIMIT = 500
+DONE_ORDER_MAX_PAGES = 50
+ORDER_REASONS_KEEP = 800
 
 
 def trade_fingerprint(t: dict[str, Any]) -> tuple:
@@ -90,6 +91,13 @@ def dict_to_trade_event(
         d["display"] = m["display"]
     if not d.get("side"):
         return None
+    uid = str(d.get("order_uuid") or "")
+    d["reason"] = normalize_trade_reason(
+        str(d.get("side") or ""),
+        str(d.get("reason") or ""),
+        is_auto=bool(d.get("is_auto")),
+        has_aidi_hint=bool(uid),
+    )
     try:
         return TradeEvent(**d)
     except Exception as e:
@@ -121,18 +129,96 @@ def _f(val: Any) -> float:
         return 0.0
 
 
+def normalize_trade_reason(
+    side: str,
+    raw_reason: str,
+    *,
+    is_auto: bool = False,
+    has_aidi_hint: bool = False,
+) -> str:
+    """
+    표시용 사유 (4~5종):
+    익절 · 손절 · 수동 매수 · 수동 매도 · 승인 매수(AIDI 승인 버튼)
+    업비트에만 있고 AIDI 로그 없음 → 수동 매수/매도
+    """
+    text = (raw_reason or "").strip()
+    is_buy = str(side).upper() == "BUY"
+
+    if "익절" in text:
+        return "익절"
+    if "손절" in text or "급락" in text:
+        return "손절"
+
+    if is_buy:
+        if not has_aidi_hint:
+            return "수동 매수"
+        if "수동" in text:
+            return "수동 매수"
+        if "승인" in text or "ai" in text.lower():
+            return "승인 매수"
+        return "수동 매수"
+
+    if not has_aidi_hint:
+        return "수동 매도"
+    if "수동" in text:
+        return "수동 매도"
+    if is_auto and not text:
+        return "익절"
+    return "수동 매도"
+
+
+def collect_reason_hints(live_meta: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """order_reasons + pending 지정가 + 저장된 체결 메타."""
+    hints: dict[str, dict[str, Any]] = {}
+    raw = live_meta.get("order_reasons") or {}
+    if isinstance(raw, dict):
+        for k, v in raw.items():
+            if isinstance(v, dict):
+                hints[str(k)] = dict(v)
+
+    for pm in (live_meta.get("positions_meta") or {}).values():
+        if not isinstance(pm, dict):
+            continue
+        pe = pm.get("pending_exit")
+        if isinstance(pe, dict):
+            uid = str(pe.get("order_uuid") or "")
+            if uid:
+                hints[uid] = {
+                    "reason": str(pe.get("reason") or "손절"),
+                    "is_auto": True,
+                }
+
+    for row in live_meta.get("trades") or []:
+        d = _as_dict(row)
+        uid = str(d.get("order_uuid") or "")
+        if uid and uid not in hints and d.get("reason"):
+            hints[uid] = {
+                "reason": str(d.get("reason")),
+                "is_auto": bool(d.get("is_auto")),
+            }
+    return hints
+
+
 def remember_order_reason(
     live_meta: dict[str, Any],
     uuid: str,
     *,
     reason: str,
     is_auto: bool,
+    side: str = "",
 ) -> None:
     uid = str(uuid or "").strip()
     if not uid:
         return
     bag: dict = live_meta.setdefault("order_reasons", {})
-    bag[uid] = {"reason": reason, "is_auto": bool(is_auto)}
+    bag[uid] = {
+        "reason": reason,
+        "is_auto": bool(is_auto),
+        "side": str(side or "").upper(),
+    }
+    if len(bag) > ORDER_REASONS_KEEP:
+        for key in list(bag.keys())[: len(bag) - ORDER_REASONS_KEEP]:
+            del bag[key]
 
 
 def remember_order_uuid(live_meta: dict[str, Any], uuid: str) -> None:
@@ -143,16 +229,6 @@ def remember_order_uuid(live_meta: dict[str, Any], uuid: str) -> None:
     if uid not in rows:
         rows.append(uid)
     live_meta["recorded_order_uuids"] = rows[-300:]
-
-
-def _default_reason(side: str, ord_type: str) -> str:
-    if side == "BUY":
-        if ord_type == "price":
-            return "업비트 시장가 매수"
-        return "업비트 매수"
-    if ord_type in ("market", "best"):
-        return "업비트 시장가 매도"
-    return "업비트 매도"
 
 
 def _fill_from_order(order: dict[str, Any]) -> tuple[float, float, float]:
@@ -219,21 +295,36 @@ async def fetch_done_orders_paginated(
 async def _fetch_closed_orders(
     client: "UpbitClient",
     *,
-    days: int = 7,
+    days: int = UPBIT_TRADE_HISTORY_DAYS,
 ) -> list[dict]:
+    """7일 구간씩 closed API (최대 days일)."""
+    by_uuid: dict[str, dict] = {}
     kst = timezone(timedelta(hours=9))
     end = datetime.now(kst)
-    start = end - timedelta(days=days)
-    try:
-        return await client.closed_orders(
-            start_time=start.strftime("%Y-%m-%dT%H:%M:%S+09:00"),
-            end_time=end.strftime("%Y-%m-%dT%H:%M:%S+09:00"),
-            limit=1000,
-            states=["done"],
-        )
-    except Exception as e:
-        logger.warning("upbit closed_orders: %s", e)
-        return []
+    remaining = max(days, 1)
+
+    while remaining > 0:
+        window = min(7, remaining)
+        start = end - timedelta(days=window)
+        try:
+            batch = await client.closed_orders(
+                start_time=start.strftime("%Y-%m-%dT%H:%M:%S+09:00"),
+                end_time=end.strftime("%Y-%m-%dT%H:%M:%S+09:00"),
+                limit=1000,
+                states=["done"],
+            )
+        except Exception as e:
+            logger.warning("upbit closed_orders: %s", e)
+            break
+        for row in batch:
+            uid = str(row.get("uuid") or "")
+            if uid:
+                by_uuid[uid] = row
+        end = start
+        remaining -= window
+        if not batch:
+            break
+    return list(by_uuid.values())
 
 
 async def _enrich_orders(
@@ -302,8 +393,15 @@ def order_to_trade_dict(
     side = "BUY" if side_raw == "bid" else "SELL"
     ord_type = str(order.get("ord_type") or "").lower()
     hint = reason_hints.get(uid) or {}
-    reason = str(hint.get("reason") or _default_reason(side, ord_type))
+    raw_reason = str(hint.get("reason") or "")
     is_auto = bool(hint.get("is_auto", False))
+    has_hint = bool(uid and uid in reason_hints)
+    reason = normalize_trade_reason(
+        side,
+        raw_reason,
+        is_auto=is_auto,
+        has_aidi_hint=has_hint,
+    )
 
     qty, funds, px_krw = _fill_from_order(order)
     if qty <= 1e-12:
@@ -413,19 +511,15 @@ async def load_trades_from_upbit(
     cached = live_meta.get("trades") or []
     prev = merge_trade_events(cached, usdt_krw=usdt_krw, limit=UPBIT_TRADE_LIMIT)
 
-    hints: dict[str, dict[str, Any]] = {}
-    raw_hints = live_meta.get("order_reasons") or {}
-    if isinstance(raw_hints, dict):
-        for k, v in raw_hints.items():
-            if isinstance(v, dict):
-                hints[str(k)] = v
+    hints = collect_reason_hints(live_meta)
 
     api_trades: list[TradeEvent] = []
     err_msg: str | None = None
+    orders_fetched = 0
 
     try:
         orders = await fetch_done_orders_paginated(client)
-        closed = await _fetch_closed_orders(client, days=7)
+        closed = await _fetch_closed_orders(client)
         by_uid = {str(o.get("uuid") or ""): o for o in orders}
         for row in closed:
             uid = str(row.get("uuid") or "")
@@ -433,10 +527,12 @@ async def load_trades_from_upbit(
                 if str(row.get("market") or "").startswith("KRW-"):
                     by_uid[uid] = row
         orders = list(by_uid.values())
+        orders_fetched = len(orders)
         orders = await _enrich_orders(client, orders)
         api_trades = await orders_to_trades(
             client, orders, usdt_krw=usdt_krw, reason_hints=hints
         )
+        live_meta["trades_orders_fetched"] = orders_fetched
         for t in api_trades:
             if t.order_uuid:
                 remember_order_uuid(live_meta, t.order_uuid)
@@ -464,9 +560,19 @@ async def load_trades_from_upbit(
         live_meta.pop("trades_sync_error", None)
 
     live_meta["trades_upbit_synced_at"] = time.time()
-    live_meta["trades"] = merge_trade_dicts(
+    merged_rows = merge_trade_dicts(
         [t.model_dump() for t in combined],
         usdt_krw=usdt_krw,
         limit=UPBIT_TRADE_LIMIT,
     )
-    return combined
+    for row in merged_rows:
+        uid = str(row.get("order_uuid") or "")
+        row["reason"] = normalize_trade_reason(
+            str(row.get("side") or ""),
+            str(row.get("reason") or ""),
+            is_auto=bool(row.get("is_auto")),
+            has_aidi_hint=bool(uid and uid in hints),
+        )
+    live_meta["trades"] = merged_rows
+    live_meta["trades_display_count"] = len(merged_rows)
+    return merge_trade_events(merged_rows, usdt_krw=usdt_krw, limit=UPBIT_TRADE_LIMIT)

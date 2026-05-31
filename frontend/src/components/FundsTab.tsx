@@ -33,6 +33,8 @@ type Props = {
   manualMode: boolean;
   tradeMode?: "paper" | "live";
   tradesSyncError?: string;
+  tradesDisplayCount?: number;
+  tradesOrdersFetched?: number;
   upbitSnapshot?: UpbitAccountSnapshot | null;
   onManualBuy: (symbol: string, amountKrw: number) => Promise<void>;
   onManualSell: (symbol: string, percent: number) => Promise<void>;
@@ -356,6 +358,8 @@ export default function FundsTab({
   manualMode,
   tradeMode = "paper",
   tradesSyncError,
+  tradesDisplayCount,
+  tradesOrdersFetched,
   upbitSnapshot,
   onManualBuy,
   onManualSell,
@@ -480,7 +484,18 @@ export default function FundsTab({
       </section>
 
       <section className="funds-trades">
-        <h3>매매 내역</h3>
+        <h3>
+          매매 내역
+          {tradeMode === "live" && (tradesDisplayCount ?? trades.length) > 0 && (
+            <span className="funds-trades-meta">
+              {" "}
+              · 표시 {tradesDisplayCount ?? trades.length}건
+              {tradesOrdersFetched && tradesOrdersFetched > (tradesDisplayCount ?? 0)
+                ? ` (업비트 체결 ${tradesOrdersFetched}건 중)`
+                : ""}
+            </span>
+          )}
+        </h3>
         <div className="trades-table-wrap">
           <table className="trades-table">
             <thead>
