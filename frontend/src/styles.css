@@ -2008,10 +2008,62 @@ main.layout.chart-layout {
   padding-bottom: 0.55rem;
 }
 
-.activity-panel.is-collapsed .activity-list {
-  max-height: 4.6rem;
+.activity-log-count {
+  margin: 0.35rem 0 0.25rem;
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.activity-list-wrap {
+  margin-top: 0.35rem;
+}
+
+.activity-list-wrap--mini {
+  max-height: 4.8rem;
   overflow: hidden;
-  margin-top: 0.25rem;
+}
+
+.activity-panel.is-expanded .activity-list-wrap {
+  max-height: min(42vh, 320px);
+  overflow-x: hidden;
+  overflow-y: scroll;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.15);
+  padding: 0.15rem 0.1rem 0.15rem 0.35rem;
+}
+
+.activity-panel.is-expanded .activity-list {
+  max-height: none;
+  overflow: visible;
+  margin: 0;
+  padding: 0 0.15rem 0 0;
+}
+
+.activity-list-wrap::-webkit-scrollbar {
+  width: 10px;
+}
+
+.activity-list-wrap::-webkit-scrollbar-track {
+  background: var(--surface);
+  border-radius: 6px;
+}
+
+.activity-list-wrap::-webkit-scrollbar-thumb {
+  background: rgba(56, 139, 253, 0.45);
+  border-radius: 6px;
+  border: 2px solid var(--surface);
+}
+
+.activity-list-wrap::-webkit-scrollbar-thumb:hover {
+  background: var(--accent);
+}
+
+.activity-list-wrap {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(56, 139, 253, 0.55) var(--surface);
 }
 
 .activity-more-hint {
@@ -2052,10 +2104,8 @@ main.layout.chart-layout {
 
 .activity-list {
   list-style: none;
-  margin: 0.5rem 0 0;
+  margin: 0;
   padding: 0;
-  max-height: 220px;
-  overflow-y: auto;
 }
 
 .activity-item {

@@ -51,11 +51,12 @@ export default function ActivityPanel({ bot }: Props) {
     return null;
   }
 
-  const visibleLogs = logs.slice(0, collapsed ? COLLAPSED_LINES : 20);
+  const visibleLogs = collapsed ? logs.slice(0, COLLAPSED_LINES) : logs;
+  const totalLogs = logs.length;
 
   return (
     <section
-      className={`activity-panel${collapsed ? " is-collapsed" : ""}`}
+      className={`activity-panel${collapsed ? " is-collapsed" : " is-expanded"}`}
     >
       <button
         type="button"
@@ -90,18 +91,29 @@ export default function ActivityPanel({ bot }: Props) {
       {!collapsed && bot.backtest?.message && (
         <p className="activity-bt-msg">BT: {bot.backtest.message}</p>
       )}
-      <ul className="activity-list">
-        {visibleLogs.length === 0 ? (
-          <li className="activity-item muted">스캔·자동매수 단계가 여기 표시됩니다</li>
-        ) : (
-          visibleLogs.map((e, i) => (
-            <ActivityLine key={`${e.ts}-${i}`} entry={e} />
-          ))
-        )}
-      </ul>
-      {collapsed && logs.length > COLLAPSED_LINES && (
+      {!collapsed && totalLogs > 0 && (
+        <p className="activity-log-count">
+          로그 {totalLogs}줄 · 아래 목록 스크롤
+        </p>
+      )}
+      <div
+        className={`activity-list-wrap${collapsed ? " activity-list-wrap--mini" : ""}`}
+      >
+        <ul className="activity-list" role="log">
+          {visibleLogs.length === 0 ? (
+            <li className="activity-item muted">
+              스캔·자동매수 단계가 여기 표시됩니다
+            </li>
+          ) : (
+            visibleLogs.map((e, i) => (
+              <ActivityLine key={`${e.ts}-${i}`} entry={e} />
+            ))
+          )}
+        </ul>
+      </div>
+      {collapsed && totalLogs > COLLAPSED_LINES && (
         <p className="activity-more-hint">
-          최근 {COLLAPSED_LINES}줄 · 전체 {logs.length}줄 — 위 「펼치기」 클릭
+          최근 {COLLAPSED_LINES}줄 · 전체 {totalLogs}줄 — 위 「펼치기」 클릭
         </p>
       )}
       {!collapsed && (
