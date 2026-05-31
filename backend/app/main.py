@@ -45,7 +45,7 @@ from app.aidi_middleware import AidiActionLogMiddleware
 STATIC_DIR = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
 
 # PC에서 run.bat 시작 시 표시 — GitHub 최신과 비교용
-AIDI_BUILD = "2026-05-31-activity-ai-settings"
+AIDI_BUILD = "2026-05-31-chart-sl-tp-lines"
 
 
 engine = TradingEngine()
@@ -537,11 +537,22 @@ async def chart(symbol: str, interval: str = "1h"):
             for r in cached
         ]
     markers = [m.model_dump() for m in engine.portfolio.chart_markers(sym)]
+    last_px = float(data[-1]["close"]) if data else 0.0
+    from app.engine.chart_levels import chart_trade_levels
+
+    levels = chart_trade_levels(
+        sym,
+        engine.config,
+        engine.portfolio.positions,
+        engine.bot.recommendations,
+        last_price_usdt=last_px,
+    )
     return {
         "symbol": sym,
         "interval": iv,
         "candles": data,
         "markers": markers,
+        "levels": levels,
         "stale": stale,
         "chart_error": chart_error,
     }

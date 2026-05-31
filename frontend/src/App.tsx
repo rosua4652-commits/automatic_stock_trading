@@ -26,7 +26,14 @@ import FundsSummaryStrip from "./components/FundsSummaryStrip";
 import FundsTab from "./components/FundsTab";
 import PortfolioPanel from "./components/PortfolioPanel";
 import SettingsModal from "./components/SettingsModal";
-import type { AppConfig, Candle, MainView, StatusPayload } from "./types";
+import type {
+  AppConfig,
+  Candle,
+  ChartMarkerDto,
+  ChartTradeLevels,
+  MainView,
+  StatusPayload,
+} from "./types";
 import { useRecommendationAmounts } from "./hooks/useRecommendationAmounts";
 import type { ApplyItem } from "./hooks/useRecommendationAmounts";
 import {
@@ -54,6 +61,8 @@ export default function App() {
   const [candles, setCandles] = useState<Candle[]>([]);
   const [chartLoading, setChartLoading] = useState(false);
   const [chartError, setChartError] = useState<string | null>(null);
+  const [chartLevels, setChartLevels] = useState<ChartTradeLevels | null>(null);
+  const [chartMarkers, setChartMarkers] = useState<ChartMarkerDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [botBusy, setBotBusy] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -126,6 +135,8 @@ export default function App() {
         const res = await fetchChart(sym, iv);
         if (!cancelled && activeSymbolRef.current === sym) {
           setCandles(res.candles || []);
+          setChartLevels(res.levels ?? null);
+          setChartMarkers(res.markers ?? []);
           if (res.stale) {
             setChartError(
               res.chart_error || "업비트 요청 제한 — 잠시 후 자동 갱신됩니다"
@@ -159,6 +170,8 @@ export default function App() {
     async (sym: string) => {
       setActiveSymbol(sym);
       setCandles([]);
+      setChartLevels(null);
+      setChartMarkers([]);
       setChartError(null);
       try {
         const status = await setViewSymbol(sym);
@@ -625,6 +638,12 @@ export default function App() {
         </nav>
       </div>
 
+      {running && data.bot.auto_invest_active && (
+        <div className="activity-strip-wrap">
+          <ActivityPanel bot={data.bot} />
+        </div>
+      )}
+
       {mainView === "alerts" && (
         <AlertsHub
           recommendations={editableRecs}
@@ -709,6 +728,8 @@ export default function App() {
                 candles={candles}
                 chartLoading={chartLoading}
                 chartError={chartError}
+                tradeLevels={chartLevels}
+                tradeMarkers={chartMarkers}
                 onIntervalChange={setChartInterval}
               />
             </div>

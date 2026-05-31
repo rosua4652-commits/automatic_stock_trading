@@ -358,10 +358,30 @@ export interface Candle {
   volume: number;
 }
 
+export interface ChartMarkerDto {
+  time: number;
+  price: number;
+  side: string;
+  text: string;
+  is_auto?: boolean;
+}
+
+export interface ChartTradeLevels {
+  kind: "position" | "proposal" | "estimate" | "none" | string;
+  entry?: number | null;
+  stop_loss?: number | null;
+  take_profit?: number | null;
+  stop_loss_pct?: number;
+  take_profit_pct?: number;
+  label?: string;
+}
+
 export interface ChartResponse {
   symbol: string;
   interval: string;
   candles: Candle[];
+  markers?: ChartMarkerDto[];
+  levels?: ChartTradeLevels;
   stale?: boolean;
   chart_error?: string;
 }

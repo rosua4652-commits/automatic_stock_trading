@@ -1792,6 +1792,22 @@ main.layout.chart-layout {
   color: var(--red);
 }
 
+.chart-level-legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-left: 0.5rem;
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.chart-level-kind {
+  padding: 0.1rem 0.35rem;
+  border-radius: 4px;
+  background: rgba(56, 139, 253, 0.15);
+  color: var(--accent);
+}
+
 .activity-strip-wrap {
   padding: 0 1rem 0.5rem;
   max-width: 1400px;

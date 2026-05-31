@@ -44,6 +44,10 @@ def setup_aidi_logging() -> logging.Logger:
         lg.setLevel(logging.INFO)
         lg.propagate = True
 
+    # httpx INFO floods logs (every Upbit/ipify request)
+    for name in ("httpx", "httpcore", "h11"):
+        logging.getLogger(name).setLevel(logging.WARNING)
+
     aidi = logging.getLogger(AIDI_LOGGER_NAME)
     if not aidi.handlers:
         # root로만 전파
@@ -54,7 +58,10 @@ def setup_aidi_logging() -> logging.Logger:
 
     logging.getLogger("uvicorn.error").setLevel(logging.INFO)
 
-    aidi.info("로그 모드 — 버튼·백테스트·스캔 상세 기록 (차트/상태 폴링은 생략)")
+    aidi.info(
+        "로그 모드 — 스캔·자동투자·버튼·백테스트 기록 "
+        "(HTTP 요청·차트/상태 폴링은 생략)"
+    )
     return aidi
 
 

@@ -2,14 +2,16 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   createChart,
   type IChartApi,
+  type IPriceLine,
   type ISeriesApi,
   type LineData,
+  type SeriesMarker,
   type UTCTimestamp,
   ColorType,
   LineStyle,
 } from "lightweight-charts";
 import { computeIndicators } from "../chart/indicators";
-import type { Candle } from "../types";
+import type { Candle, ChartMarkerDto, ChartTradeLevels } from "../types";
 
 type Props = {
   symbol: string;
@@ -18,6 +20,8 @@ type Props = {
   candles: Candle[];
   chartLoading: boolean;
   chartError: string | null;
+  tradeLevels?: ChartTradeLevels | null;
+  tradeMarkers?: ChartMarkerDto[];
   onIntervalChange: (v: string) => void;
 };
 
@@ -69,6 +73,8 @@ export default function ChartPanel({
   candles,
   chartLoading,
   chartError,
+  tradeLevels,
+  tradeMarkers = [],
   onIntervalChange,
 }: Props) {
   const mainWrapRef = useRef<HTMLDivElement>(null);
@@ -81,6 +87,7 @@ export default function ChartPanel({
   const rsiLineRef = useRef<ISeriesApi<"Line"> | null>(null);
   const rsi30Ref = useRef<ISeriesApi<"Line"> | null>(null);
   const rsi70Ref = useRef<ISeriesApi<"Line"> | null>(null);
+  const priceLineRefs = useRef<IPriceLine[]>([]);
 
   const [visibleBars, setVisibleBarsState] = useState(DEFAULT_VISIBLE_BARS);
   const [overlays, setOverlays] = useState<OverlayToggles>({
@@ -459,6 +466,73 @@ export default function ChartPanel({
   }, [candles, indicators, visibleBars]);
 
   useEffect(() => {
+    const series = candleRef.current;
+    if (!series) return;
+    priceLineRefs.current.forEach((line) => {
+      try {
+        series.removePriceLine(line);
+      } catch {
+        /* ignore */
+      }
+    });
+    priceLineRefs.current = [];
+
+    const lv = tradeLevels;
+    if (!lv || lv.kind === "none") {
+      return;
+    }
+    const dashed = lv.kind === "proposal" || lv.kind === "estimate";
+    const addLine = (
+      price: number | null | undefined,
+      color: string,
+      title: string
+    ) => {
+      if (price == null || price <= 0) return;
+      const line = series.createPriceLine({
+        price,
+        color,
+        lineWidth: 2,
+        lineStyle: dashed ? LineStyle.Dashed : LineStyle.Solid,
+        axisLabelVisible: true,
+        title,
+      });
+      priceLineRefs.current.push(line);
+    };
+    const entryTitle =
+      lv.kind === "position"
+        ? "진입(평단)"
+        : lv.kind === "proposal"
+          ? "진입(제안)"
+          : "현재가";
+    addLine(lv.entry, "#38bdf8", entryTitle);
+    addLine(
+      lv.stop_loss,
+      "#f87171",
+      `손절${lv.stop_loss_pct ? ` ${lv.stop_loss_pct}%` : ""}`
+    );
+    addLine(
+      lv.take_profit,
+      "#22d3a5",
+      `익절${lv.take_profit_pct ? ` ${lv.take_profit_pct}%` : ""}`
+    );
+  }, [tradeLevels, candles.length, symbol]);
+
+  useEffect(() => {
+    const series = candleRef.current;
+    if (!series) return;
+    const markers: SeriesMarker<UTCTimestamp>[] = tradeMarkers
+      .filter((m) => m.time > 0 && m.price > 0)
+      .map((m) => ({
+        time: m.time as UTCTimestamp,
+        position: m.side === "BUY" ? ("belowBar" as const) : ("aboveBar" as const),
+        color: m.side === "BUY" ? "#22d3a5" : "#f87171",
+        shape: m.side === "BUY" ? ("arrowUp" as const) : ("arrowDown" as const),
+        text: m.text?.slice(0, 12) || m.side,
+      }));
+    series.setMarkers(markers);
+  }, [tradeMarkers, candles.length, symbol]);
+
+  useEffect(() => {
     const main = mainChartRef.current;
     const rsi = rsiChartRef.current;
     if (!main) return;
@@ -549,6 +623,20 @@ export default function ChartPanel({
           <span style={{ color: "#38bdf8" }}>E50</span>
           <span style={{ color: "#a78bfa" }}>BB·RSI</span>
         </div>
+        {tradeLevels && tradeLevels.kind !== "none" && (
+          <div className="chart-level-legend" title={tradeLevels.label}>
+            <span style={{ color: "#38bdf8" }}>진입</span>
+            <span style={{ color: "#f87171" }}>손절</span>
+            <span style={{ color: "#22d3a5" }}>익절</span>
+            <span className="chart-level-kind">
+              {tradeLevels.kind === "position"
+                ? "보유"
+                : tradeLevels.kind === "proposal"
+                  ? "AI제안"
+                  : "예상"}
+            </span>
+          </div>
+        )}
       </div>
 
       <div className="chart-canvas-wrap chart-canvas-stack">
