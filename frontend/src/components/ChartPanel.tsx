@@ -1,10 +1,14 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   createChart,
   type IChartApi,
   type ISeriesApi,
+  type LineData,
+  type UTCTimestamp,
   ColorType,
+  LineStyle,
 } from "lightweight-charts";
+import { computeIndicators } from "../chart/indicators";
 import type { Candle } from "../types";
 
 type Props = {
@@ -17,7 +21,6 @@ type Props = {
   onIntervalChange: (v: string) => void;
 };
 
-/** 각 캔들이 의미하는 시간 (1시간봉 = 60분봉, 같은 것) */
 const INTERVALS = [
   { v: "1s", label: "1초봉" },
   { v: "1m", label: "1분봉" },
@@ -27,7 +30,6 @@ const INTERVALS = [
   { v: "1d", label: "일봉" },
 ];
 
-/** 화면 줌 — 캔들 개수만 조절 (분/시간봉과 무관) */
 const ZOOM_OPTIONS = [
   { bars: 50, label: "좁게" },
   { bars: 100, label: "보통" },
@@ -35,6 +37,27 @@ const ZOOM_OPTIONS = [
 ] as const;
 
 const DEFAULT_VISIBLE_BARS = 100;
+
+type OverlayToggles = {
+  ichimoku: boolean;
+  ema: boolean;
+  bb: boolean;
+  rsi: boolean;
+};
+
+const LEGEND = [
+  { key: "ichimoku" as const, label: "일목", items: ["전환·기준·선행스팬 A/B (26봉 선행)"] },
+  { key: "ema" as const, label: "이평", items: ["EMA20", "EMA50", "EMA200"] },
+  { key: "bb" as const, label: "BB", items: ["상·중·하단"] },
+  { key: "rsi" as const, label: "RSI", items: ["14"] },
+];
+
+function toUtc(data: LineData[]): LineData<UTCTimestamp>[] {
+  return data.map((d) => ({
+    time: d.time as UTCTimestamp,
+    value: d.value,
+  }));
+}
 
 export default function ChartPanel({
   symbol,
@@ -45,36 +68,73 @@ export default function ChartPanel({
   chartError,
   onIntervalChange,
 }: Props) {
-  const wrapRef = useRef<HTMLDivElement>(null);
-  const chartRef = useRef<IChartApi | null>(null);
+  const mainWrapRef = useRef<HTMLDivElement>(null);
+  const rsiWrapRef = useRef<HTMLDivElement>(null);
+  const mainChartRef = useRef<IChartApi | null>(null);
+  const rsiChartRef = useRef<IChartApi | null>(null);
   const candleRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
   const volRef = useRef<ISeriesApi<"Histogram"> | null>(null);
+  const overlayRefs = useRef<Record<string, ISeriesApi<"Line"> | null>>({});
+  const rsiLineRef = useRef<ISeriesApi<"Line"> | null>(null);
+  const rsi30Ref = useRef<ISeriesApi<"Line"> | null>(null);
+  const rsi70Ref = useRef<ISeriesApi<"Line"> | null>(null);
+
   const [visibleBars, setVisibleBarsState] = useState(DEFAULT_VISIBLE_BARS);
+  const [overlays, setOverlays] = useState<OverlayToggles>({
+    ichimoku: true,
+    ema: true,
+    bb: true,
+    rsi: true,
+  });
   const candleCountRef = useRef(0);
   const lastBarTimeRef = useRef<number | null>(null);
+  const syncingRef = useRef(false);
 
-  const applyVisibleRange = (barCount: number, visibleBars: number) => {
-    const chart = chartRef.current;
+  const indicators = useMemo(() => computeIndicators(candles), [candles]);
+
+  const applyVisibleRange = (barCount: number, bars: number) => {
+    const chart = mainChartRef.current;
     if (!chart || barCount <= 0) return;
-    const n = Math.min(visibleBars, barCount);
-    if (barCount <= n) {
+    const n = Math.min(bars, barCount);
+    const range =
+      barCount <= n
+        ? null
+        : { from: barCount - n, to: barCount - 1 };
+    syncingRef.current = true;
+    if (range) {
+      chart.timeScale().setVisibleLogicalRange(range);
+      rsiChartRef.current?.timeScale().setVisibleLogicalRange(range);
+    } else {
       chart.timeScale().fitContent();
-      return;
+      rsiChartRef.current?.timeScale().fitContent();
     }
-    chart.timeScale().setVisibleLogicalRange({
-      from: barCount - n,
-      to: barCount - 1,
-    });
+    syncingRef.current = false;
   };
 
-  // symbol 바뀔 때 차트 전체 재생성
-  useEffect(() => {
-    const el = wrapRef.current;
-    if (!el) return;
+  const setSeriesVisible = (key: string, visible: boolean) => {
+    const s = overlayRefs.current[key];
+    if (s) s.applyOptions({ visible });
+  };
 
-    const chart = createChart(el, {
-      width: el.clientWidth || 600,
-      height: el.clientHeight || 400,
+  const applyOverlayVisibility = (t: OverlayToggles) => {
+    const ichKeys = ["tenkan", "kijun", "spanA", "spanB"];
+    ichKeys.forEach((k) => setSeriesVisible(k, t.ichimoku));
+    ["ema20", "ema50", "ema200"].forEach((k) => setSeriesVisible(k, t.ema));
+    ["bbUpper", "bbMid", "bbLower"].forEach((k) => setSeriesVisible(k, t.bb));
+    rsiLineRef.current?.applyOptions({ visible: t.rsi });
+    rsi30Ref.current?.applyOptions({ visible: t.rsi });
+    rsi70Ref.current?.applyOptions({ visible: t.rsi });
+    if (rsiWrapRef.current) {
+      rsiWrapRef.current.style.display = t.rsi ? "" : "none";
+    }
+  };
+
+  useEffect(() => {
+    const mainEl = mainWrapRef.current;
+    const rsiEl = rsiWrapRef.current;
+    if (!mainEl || !rsiEl) return;
+
+    const chartOpts = {
       layout: {
         background: { type: ColorType.Solid, color: "#121820" },
         textColor: "#94a3b8",
@@ -83,11 +143,7 @@ export default function ChartPanel({
         vertLines: { color: "rgba(148,163,184,0.08)" },
         horzLines: { color: "rgba(148,163,184,0.08)" },
       },
-      rightPriceScale: {
-        borderVisible: false,
-        autoScale: true,
-        scaleMargins: { top: 0.08, bottom: 0.08 },
-      },
+      rightPriceScale: { borderVisible: false },
       timeScale: {
         borderVisible: false,
         timeVisible: true,
@@ -96,69 +152,198 @@ export default function ChartPanel({
         barSpacing: chartInterval === "1s" ? 4 : 8,
         minBarSpacing: chartInterval === "1s" ? 2 : 4,
         fixLeftEdge: true,
-        lockVisibleTimeRangeOnResize: true,
       },
+      crosshair: { mode: 1 as const },
       handleScroll: { mouseWheel: true, pressedMouseMove: true },
       handleScale: { axisPressedMouseMove: true, mouseWheel: true, pinch: true },
-      crosshair: { mode: 1 },
+    };
+
+    const mainChart = createChart(mainEl, {
+      ...chartOpts,
+      width: mainEl.clientWidth || 600,
+      height: mainEl.clientHeight || 320,
+      rightPriceScale: {
+        borderVisible: false,
+        autoScale: true,
+        scaleMargins: { top: 0.06, bottom: 0.12 },
+      },
     });
 
-    const candlesSeries = chart.addCandlestickSeries({
+    const rsiChart = createChart(rsiEl, {
+      ...chartOpts,
+      width: rsiEl.clientWidth || 600,
+      height: rsiEl.clientHeight || 100,
+      rightPriceScale: {
+        borderVisible: false,
+        autoScale: false,
+        scaleMargins: { top: 0.1, bottom: 0.05 },
+      },
+      timeScale: { ...chartOpts.timeScale, visible: false },
+    });
+
+    const candleSeries = mainChart.addCandlestickSeries({
       upColor: "#22d3a5",
       downColor: "#f87171",
       borderVisible: false,
       wickUpColor: "#22d3a5",
       wickDownColor: "#f87171",
     });
-    const volSeries = chart.addHistogramSeries({
+    const volSeries = mainChart.addHistogramSeries({
       priceFormat: { type: "volume" },
       priceScaleId: "vol",
     });
-    chart.priceScale("vol").applyOptions({
+    mainChart.priceScale("vol").applyOptions({
       scaleMargins: { top: 0.82, bottom: 0 },
     });
 
-    chartRef.current = chart;
-    candleRef.current = candlesSeries;
-    volRef.current = volSeries;
+    const line = (
+      key: string,
+      color: string,
+      width = 1,
+      style?: number
+    ) => {
+      const s = mainChart.addLineSeries({
+        color,
+        lineWidth: width,
+        lineStyle: style,
+        priceLineVisible: false,
+        lastValueVisible: false,
+        crosshairMarkerVisible: false,
+      });
+      overlayRefs.current[key] = s;
+      return s;
+    };
 
-    const ro = new ResizeObserver(() => {
-      if (!wrapRef.current) return;
-      const w = wrapRef.current.clientWidth;
-      const h = wrapRef.current.clientHeight;
+    line("ema20", "#fbbf24", 1);
+    line("ema50", "#38bdf8", 1);
+    line("ema200", "#c084fc", 1);
+    line("bbUpper", "rgba(167,139,250,0.85)", 1, LineStyle.Dashed);
+    line("bbMid", "rgba(167,139,250,0.55)", 1);
+    line("bbLower", "rgba(167,139,250,0.85)", 1, LineStyle.Dashed);
+    line("tenkan", "#fb923c", 1);
+    line("kijun", "#60a5fa", 1);
+    line("spanA", "rgba(74,222,128,0.8)", 1, LineStyle.Dashed);
+    line("spanB", "rgba(248,113,113,0.8)", 1, LineStyle.Dashed);
+
+    const rsiLine = rsiChart.addLineSeries({
+      color: "#a78bfa",
+      lineWidth: 2,
+      priceLineVisible: false,
+      lastValueVisible: true,
+    });
+    const rsi30 = rsiChart.addLineSeries({
+      color: "rgba(148,163,184,0.35)",
+      lineWidth: 1,
+      lineStyle: 2,
+      priceLineVisible: false,
+      lastValueVisible: false,
+      crosshairMarkerVisible: false,
+    });
+    const rsi70 = rsiChart.addLineSeries({
+      color: "rgba(148,163,184,0.35)",
+      lineWidth: 1,
+      lineStyle: 2,
+      priceLineVisible: false,
+      lastValueVisible: false,
+      crosshairMarkerVisible: false,
+    });
+
+    rsiChart.priceScale("right").applyOptions({
+      autoScale: true,
+    });
+
+    mainChartRef.current = mainChart;
+    rsiChartRef.current = rsiChart;
+    candleRef.current = candleSeries;
+    volRef.current = volSeries;
+    rsiLineRef.current = rsiLine;
+    rsi30Ref.current = rsi30;
+    rsi70Ref.current = rsi70;
+
+    const syncFromMain = () => {
+      if (syncingRef.current) return;
+      const range = mainChart.timeScale().getVisibleLogicalRange();
+      if (!range) return;
+      syncingRef.current = true;
+      rsiChart.timeScale().setVisibleLogicalRange(range);
+      syncingRef.current = false;
+    };
+    const syncFromRsi = () => {
+      if (syncingRef.current) return;
+      const range = rsiChart.timeScale().getVisibleLogicalRange();
+      if (!range) return;
+      syncingRef.current = true;
+      mainChart.timeScale().setVisibleLogicalRange(range);
+      syncingRef.current = false;
+    };
+    mainChart.timeScale().subscribeVisibleLogicalRangeChange(syncFromMain);
+    rsiChart.timeScale().subscribeVisibleLogicalRangeChange(syncFromRsi);
+
+    const roMain = new ResizeObserver(() => {
+      if (!mainWrapRef.current) return;
+      const w = mainWrapRef.current.clientWidth;
+      const h = mainWrapRef.current.clientHeight;
       if (w < 10 || h < 10) return;
-      chart.applyOptions({ width: w, height: h });
+      mainChart.applyOptions({ width: w, height: h });
       if (candleCountRef.current > 0) {
         applyVisibleRange(candleCountRef.current, visibleBars);
       }
     });
-    ro.observe(el);
+    const roRsi = new ResizeObserver(() => {
+      if (!rsiWrapRef.current) return;
+      const w = rsiWrapRef.current.clientWidth;
+      const h = rsiWrapRef.current.clientHeight;
+      if (w < 10 || h < 10) return;
+      rsiChart.applyOptions({ width: w, height: h });
+    });
+    roMain.observe(mainEl);
+    roRsi.observe(rsiEl);
+
+    applyOverlayVisibility(overlays);
 
     return () => {
-      ro.disconnect();
-      chart.remove();
-      chartRef.current = null;
+      roMain.disconnect();
+      roRsi.disconnect();
+      mainChart.timeScale().unsubscribeVisibleLogicalRangeChange(syncFromMain);
+      rsiChart.timeScale().unsubscribeVisibleLogicalRangeChange(syncFromRsi);
+      mainChart.remove();
+      rsiChart.remove();
+      mainChartRef.current = null;
+      rsiChartRef.current = null;
       candleRef.current = null;
       volRef.current = null;
+      rsiLineRef.current = null;
+      rsi30Ref.current = null;
+      rsi70Ref.current = null;
+      overlayRefs.current = {};
     };
   }, [symbol, chartInterval]);
+
+  useEffect(() => {
+    applyOverlayVisibility(overlays);
+  }, [overlays]);
 
   useEffect(() => {
     if (!candleRef.current || !volRef.current) return;
     if (!candles.length) {
       candleRef.current.setData([]);
       volRef.current.setData([]);
+      Object.values(overlayRefs.current).forEach((s) => s?.setData([]));
+      rsiLineRef.current?.setData([]);
+      rsi30Ref.current?.setData([]);
+      rsi70Ref.current?.setData([]);
       return;
     }
+
     const cs = candles.map((c) => ({
-      time: c.time as import("lightweight-charts").UTCTimestamp,
+      time: c.time as UTCTimestamp,
       open: c.open,
       high: c.high,
       low: c.low,
       close: c.close,
     }));
     const vs = candles.map((c) => ({
-      time: c.time as import("lightweight-charts").UTCTimestamp,
+      time: c.time as UTCTimestamp,
       value: c.volume,
       color:
         c.close >= c.open
@@ -184,24 +369,61 @@ export default function ChartPanel({
         applyVisibleRange(cs.length, visibleBars);
       }
       lastBarTimeRef.current = last.time as number;
-      return;
+    } else {
+      candleRef.current.setData(cs);
+      volRef.current.setData(vs);
+      candleCountRef.current = cs.length;
+      lastBarTimeRef.current = last ? (last.time as number) : null;
+      applyVisibleRange(cs.length, visibleBars);
     }
 
-    candleRef.current.setData(cs);
-    volRef.current.setData(vs);
-    candleCountRef.current = cs.length;
-    lastBarTimeRef.current = last ? (last.time as number) : null;
-    applyVisibleRange(cs.length, visibleBars);
-  }, [candles, visibleBars]);
+    // 지표는 매 틱마다 갱신 (실시간 봉 반영)
+
+    const setLine = (key: string, points: { time: number; value: number }[]) => {
+      const s = overlayRefs.current[key] as ISeriesApi<"Line"> | undefined;
+      if (s && "setData" in s) s.setData(toUtc(points as LineData[]));
+    };
+    setLine("ema20", indicators.ema20);
+    setLine("ema50", indicators.ema50);
+    setLine("ema200", indicators.ema200);
+    setLine("bbUpper", indicators.bbUpper);
+    setLine("bbMid", indicators.bbMid);
+    setLine("bbLower", indicators.bbLower);
+    setLine("tenkan", indicators.tenkan);
+    setLine("kijun", indicators.kijun);
+    setLine("spanA", indicators.spanA);
+    setLine("spanB", indicators.spanB);
+
+    const rsiData = toUtc(indicators.rsi as LineData[]);
+    rsiLineRef.current?.setData(rsiData);
+    if (rsiData.length > 0) {
+      const t0 = rsiData[0].time;
+      const t1 = rsiData[rsiData.length - 1].time;
+      rsi30Ref.current?.setData([
+        { time: t0, value: 30 },
+        { time: t1, value: 30 },
+      ]);
+      rsi70Ref.current?.setData([
+        { time: t0, value: 70 },
+        { time: t1, value: 70 },
+      ]);
+    }
+  }, [candles, indicators, visibleBars]);
 
   useEffect(() => {
-    const chart = chartRef.current;
-    if (!chart) return;
+    const main = mainChartRef.current;
+    const rsi = rsiChartRef.current;
+    if (!main) return;
     const isSec = chartInterval === "1s";
     const isMin = chartInterval === "1m";
-    chart.timeScale().applyOptions({
+    main.timeScale().applyOptions({
       secondsVisible: isSec,
       timeVisible: true,
+      barSpacing: isSec ? 4 : isMin ? 5 : 8,
+      minBarSpacing: isSec ? 2 : 3,
+    });
+    rsi?.timeScale().applyOptions({
+      secondsVisible: isSec,
       barSpacing: isSec ? 4 : isMin ? 5 : 8,
       minBarSpacing: isSec ? 2 : 3,
     });
@@ -210,8 +432,8 @@ export default function ChartPanel({
     }
   }, [chartInterval, visibleBars]);
 
-  const setVisibleBars = (bars: number) => {
-    setVisibleBarsState(bars);
+  const toggleOverlay = (key: keyof OverlayToggles) => {
+    setOverlays((o) => ({ ...o, [key]: !o[key] }));
   };
 
   return (
@@ -241,8 +463,8 @@ export default function ChartPanel({
             <span className="chart-tools-label">줌</span>
             <select
               value={visibleBars}
-              onChange={(e) => setVisibleBars(Number(e.target.value))}
-              title="화면에 보이는 캔들 개수 (마우스 휠로도 조절 가능)"
+              onChange={(e) => setVisibleBarsState(Number(e.target.value))}
+              title="화면에 보이는 캔들 개수"
             >
               {ZOOM_OPTIONS.map((r) => (
                 <option key={r.bars} value={r.bars}>
@@ -253,7 +475,35 @@ export default function ChartPanel({
           </label>
         </div>
       </div>
-      <div className="chart-canvas-wrap">
+
+      <div className="chart-indicator-bar">
+        <span className="chart-tools-label">지표</span>
+        {LEGEND.map((g) => (
+          <button
+            key={g.key}
+            type="button"
+            className={`indicator-toggle ${overlays[g.key] ? "on" : ""}`}
+            onClick={() => toggleOverlay(g.key)}
+            title={g.items.join(" · ")}
+          >
+            {g.label}
+            {g.key === "rsi" && indicators.lastRsi != null && overlays.rsi && (
+              <span className="indicator-rsi-val">
+                {indicators.lastRsi.toFixed(0)}
+              </span>
+            )}
+          </button>
+        ))}
+        <div className="chart-legend-colors" aria-hidden>
+          <span style={{ color: "#fb923c" }}>전환</span>
+          <span style={{ color: "#60a5fa" }}>기준</span>
+          <span style={{ color: "#fbbf24" }}>E20</span>
+          <span style={{ color: "#38bdf8" }}>E50</span>
+          <span style={{ color: "#a78bfa" }}>BB·RSI</span>
+        </div>
+      </div>
+
+      <div className="chart-canvas-wrap chart-canvas-stack">
         {chartLoading && (
           <div className="chart-overlay">차트 불러오는 중...</div>
         )}
@@ -263,7 +513,11 @@ export default function ChartPanel({
         {!chartLoading && !chartError && candles.length === 0 && (
           <div className="chart-overlay">차트 데이터 없음</div>
         )}
-        <div className="chart-canvas" ref={wrapRef} />
+        <div className="chart-canvas chart-canvas-main" ref={mainWrapRef} />
+        <div
+          className={`chart-canvas chart-canvas-rsi ${overlays.rsi ? "" : "hidden"}`}
+          ref={rsiWrapRef}
+        />
       </div>
     </div>
   );

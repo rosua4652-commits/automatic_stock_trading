@@ -2207,6 +2207,79 @@ main.layout.chart-layout {
   border: 1px solid var(--border);
 }
 
+.chart-canvas-stack {
+  display: flex;
+  flex-direction: column;
+}
+
+.chart-canvas-main {
+  position: relative;
+  flex: 1 1 72%;
+  min-height: 160px;
+  inset: auto;
+}
+
+.chart-canvas-rsi {
+  position: relative;
+  flex: 0 0 28%;
+  min-height: 72px;
+  max-height: 120px;
+  border-top: 1px solid var(--border);
+  inset: auto;
+}
+
+.chart-canvas-rsi.hidden {
+  display: none;
+}
+
+.chart-indicator-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.5rem;
+  margin-bottom: 0.4rem;
+  flex-shrink: 0;
+}
+
+.indicator-toggle {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 0.68rem;
+  padding: 0.22rem 0.5rem;
+  border-radius: 8px;
+  cursor: pointer;
+  font-family: inherit;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.indicator-toggle.on {
+  border-color: rgba(59, 158, 255, 0.45);
+  background: rgba(59, 158, 255, 0.12);
+  color: var(--text);
+}
+
+.indicator-rsi-val {
+  font-weight: 700;
+  color: #a78bfa;
+  font-size: 0.65rem;
+}
+
+.chart-legend-colors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-left: auto;
+  font-size: 0.6rem;
+  font-weight: 600;
+}
+
+.chart-legend-colors span {
+  opacity: 0.9;
+}
+
 .chart-tools-label {
   font-size: 0.68rem;
   color: var(--muted);
