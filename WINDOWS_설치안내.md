@@ -74,6 +74,10 @@ Windows 방화벽 팝업이 뜨면 **허용**.
 | **`logs-aidi.bat`** | 메뉴 — 실시간 tail, 메모장, 폴더 열기, 로그 비우기 |
 | **`run-log.bat`** | 서버 실행 + `logs\aidi-server.log` 에 저장 (화면에도 출력) |
 | **`tail-log.bat`** | 실시간 로그만 바로 보기 |
+| **`restart-log.bat`** | 기존 서버 종료 후 로그 모드로 재시작 |
+| **`stop-aidi.bat`** | 포트 8000 사용 중인 서버만 종료 |
+
+`run-log.bat` 이 바로 꺼지면 → **`run.bat` 창이 이미 켜져 있음** (포트 충돌). `stop-aidi.bat` 실행 후 `run-log.bat` 다시.
 
 - 메인 로그: `logs\aidi-server.log`
 - 날짜별: `logs\aidi-YYYY-MM-DD.log`

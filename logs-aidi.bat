@@ -27,10 +27,11 @@ echo   4  로그 폴더 열기
 echo   5  로그 파일 비우기 (백업 후 삭제)
 echo   6  로그 모드로 서버 시작 (새 창, run-log.bat)
 echo   7  일반 서버 시작 (run.bat)
+echo   8  포트 8000 서버만 종료 (stop-aidi.bat)
 echo   0  종료
 echo.
 set "CHO="
-set /p CHO=선택 (0-7): 
+set /p CHO=선택 (0-8): 
 if "%CHO%"=="1" goto :tail
 if "%CHO%"=="2" goto :head
 if "%CHO%"=="3" goto :notepad
@@ -38,6 +39,7 @@ if "%CHO%"=="4" goto :explorer
 if "%CHO%"=="5" goto :clear
 if "%CHO%"=="6" goto :runlog
 if "%CHO%"=="7" goto :runnormal
+if "%CHO%"=="8" goto :stoponly
 if "%CHO%"=="0" exit /b 0
 goto :menu
 
@@ -103,4 +105,9 @@ goto :menu
 :runnormal
 start "AIDI Server" cmd /k "%~dp0run.bat"
 timeout /t 2 /nobreak >nul
+goto :menu
+
+:stoponly
+call "%~dp0stop-aidi.bat"
+pause
 goto :menu
