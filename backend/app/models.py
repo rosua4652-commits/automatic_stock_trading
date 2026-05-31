@@ -472,6 +472,8 @@ class BotStartRequest(BaseModel):
 
 class BotState(BaseModel):
     status: BotStatus = BotStatus.STOPPED
+    """현재 bot.* 스캔·제안·로그가 반영하는 계정 (paper | live)."""
+    active_trade_mode: str = "paper"
     view_symbol: str = "BTCUSDT"
     last_scan: Optional[float] = None
     message: str = "대기 중"

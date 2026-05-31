@@ -300,6 +300,8 @@ export interface ActivityEntry {
 
 export interface BotState {
   status: BotStatus;
+  /** paper | live — 아래 제안·로그가 어느 계정 기준인지 */
+  active_trade_mode?: string;
   view_symbol: string;
   message: string;
   last_scan?: number;

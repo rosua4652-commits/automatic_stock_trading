@@ -45,7 +45,7 @@ from app.aidi_middleware import AidiActionLogMiddleware
 STATIC_DIR = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
 
 # PC에서 run.bat 시작 시 표시 — GitHub 최신과 비교용
-AIDI_BUILD = "2026-06-03-asset-isolation"
+AIDI_BUILD = "2026-06-03-asset-isolation-2"
 
 
 engine = TradingEngine()

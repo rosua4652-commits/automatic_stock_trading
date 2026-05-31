@@ -281,6 +281,9 @@ class TradingEngine:
         self.bind_portfolio()
         self._bump_version()
         self.bot.status = BotStatus.RUNNING
+        self.bot.active_trade_mode = (
+            "live" if self._is_live() else "paper"
+        )
         self.bot.manual_mode = not auto_invest
         self.bot.auto_invest_active = auto_invest
         self.bot.auto_invest_long = auto_long
@@ -472,11 +475,20 @@ class TradingEngine:
         from app.engine.risk_manager import on_trade_mode_switch
 
         snap = self.portfolio.snapshot({}, cfg)
-        on_trade_mode_switch(cfg.trade_mode.value, snap.total_value_krw)
+        mode_val = cfg.trade_mode.value
+        on_trade_mode_switch(mode_val, snap.total_value_krw)
         self._flash_block_until.clear()
         from app.models import AutoInvestRiskStatus
 
-        self.bot.auto_risk = AutoInvestRiskStatus()
+        self.bot.active_trade_mode = mode_val
+        self.bot.auto_risk = AutoInvestRiskStatus(risk_mode=mode_val)
+        self.bot.activity_log = []
+        self.bot.recommendations = []
+        self.bot.long_signals = []
+        self.bot.short_signals = []
+        self.bot.direction_scan_message = ""
+        self.bot.auto_invest_rejects = []
+        self.bot.auto_invest_message = ""
         self.bot.recent_trades = self.portfolio.trades[-40:]
         if cfg.trade_mode == TradeMode.PAPER:
             self.portfolio.apply_config(cfg)
