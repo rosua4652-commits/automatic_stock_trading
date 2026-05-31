@@ -1,10 +1,11 @@
 import type { EditableRecommendation } from "../hooks/useRecommendationAmounts";
-import { fmtKrw, MIN_BUY_KRW } from "../utils";
+import { fmtKrw } from "../utils";
 
 type Props = {
   row: EditableRecommendation;
   aiAmount: number;
   cashKrw: number;
+  minBuyKrw?: number;
   disabled?: boolean;
   onAmountChange: (symbol: string, amount: number) => void;
   onResetAi: (symbol: string) => void;
@@ -14,10 +15,12 @@ export default function RecommendationAmountField({
   row,
   aiAmount,
   cashKrw,
+  minBuyKrw = 10_000,
   disabled,
   onAmountChange,
   onResetAi,
 }: Props) {
+  const minBuy = Math.max(5_000, Math.round(minBuyKrw / 1000) * 1000);
   const changed = row.amount_krw !== aiAmount;
 
   return (
@@ -31,12 +34,12 @@ export default function RecommendationAmountField({
           <input
             type="number"
             className="rec-amount-input"
-            min={MIN_BUY_KRW}
+            min={minBuy}
             step={1000}
             value={row.amount_krw}
             disabled={disabled}
             onChange={(e) =>
-              onAmountChange(row.symbol, Number(e.target.value) || MIN_BUY_KRW)
+              onAmountChange(row.symbol, Number(e.target.value) || minBuy)
             }
           />
           <span className="rec-amount-unit">원</span>

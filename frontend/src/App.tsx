@@ -52,7 +52,8 @@ import {
   fmtKrw,
   isRunning,
   mergeWsPayload,
-  MIN_BUY_KRW,
+  getMinBuyKrw,
+  normalizeAppConfig,
   roundPct2,
 } from "./utils";
 
@@ -109,7 +110,7 @@ export default function App() {
       .then((s) => {
         applyPayload(s);
         setActiveSymbol(s.bot.view_symbol || "BTCUSDT");
-        setConfigDraft(s.config);
+        setConfigDraft(normalizeAppConfig(s.config));
       })
       .catch((e) => setToast(String(e)))
       .finally(() => setLoading(false));
@@ -352,14 +353,32 @@ export default function App() {
     handleSelectCoin(sym);
   };
 
+  const handleSaveMinBuyKrw = async (minBuyKrw: number) => {
+    setSaving(true);
+    try {
+      const toSave = normalizeAppConfig({
+        ...appConfig,
+        min_buy_krw: minBuyKrw,
+      });
+      setConfigDraft(toSave);
+      const s = await saveConfig(toSave);
+      applyPayload(s);
+      showToast(`최소 매수 금액 ${fmtKrw(minBuyKrw)}원 저장됨`);
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "저장 실패");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleSaveSettings = async () => {
     setSaving(true);
     try {
-      const toSave: AppConfig = {
+      const toSave = normalizeAppConfig({
         ...configDraft,
         stop_loss_pct: roundPct2(configDraft.stop_loss_pct),
         take_profit_pct: roundPct2(configDraft.take_profit_pct),
-      };
+      });
       setConfigDraft(toSave);
       const s = await saveConfig(toSave);
       applyPayload(s);
@@ -465,8 +484,9 @@ export default function App() {
 
   const handleQuickBuy = (symbol: string) => {
     const cash = data?.portfolio.cash_krw ?? 0;
+    const minBuy = getMinBuyKrw(appConfig);
     const amount = Math.max(
-      MIN_BUY_KRW,
+      minBuy,
       Math.min(Math.floor(cash * 0.25), Math.floor(cash * 0.95))
     );
     handleManualBuy(symbol, amount);
@@ -640,7 +660,7 @@ export default function App() {
               type="button"
               className="btn-ghost btn-settings"
               onClick={() => {
-                setConfigDraft(data.config);
+                setConfigDraft(normalizeAppConfig(data.config));
                 setSettingsOpen(true);
               }}
             >
@@ -763,6 +783,7 @@ export default function App() {
                 botStatus={data.bot.status}
                 cashKrw={data.portfolio.cash_krw}
                 feePct={appConfig.trading_fee_pct ?? 0.05}
+                minBuyKrw={appConfig.min_buy_krw}
                 busy={tradeBusy}
                 onAmountChange={setRecAmount}
                 onResetAi={resetRecAi}
@@ -822,6 +843,7 @@ export default function App() {
             botStatus={data.bot.status}
             cashKrw={data.portfolio.cash_krw}
             feePct={appConfig.trading_fee_pct ?? 0.05}
+            minBuyKrw={appConfig.min_buy_krw}
             busy={tradeBusy}
             onAmountChange={setRecAmount}
             onResetAi={resetRecAi}
@@ -879,6 +901,9 @@ export default function App() {
             }}
             stopLossPct={data.config.stop_loss_pct}
             takeProfitPct={data.config.take_profit_pct}
+            minBuyKrw={data.config.min_buy_krw}
+            onSaveMinBuyKrw={handleSaveMinBuyKrw}
+            savingMinBuy={saving}
             busy={tradeBusy}
           />
         </div>
@@ -892,11 +917,12 @@ export default function App() {
           draft={configDraft}
           onChange={setConfigDraft}
           onSave={handleSaveSettings}
+          onSaveMinBuyKrw={handleSaveMinBuyKrw}
           onClose={() => setSettingsOpen(false)}
           saving={saving}
           onAfterReset={(s) => {
             applyPayload(s);
-            setConfigDraft(s.config);
+            setConfigDraft(normalizeAppConfig(s.config));
             showToast(s.message || "초기화 완료");
           }}
         />

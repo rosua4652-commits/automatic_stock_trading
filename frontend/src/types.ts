@@ -25,6 +25,8 @@ export interface AppConfig {
   trading_fee_pct?: number;
   scan_interval_sec: number;
   min_buy_score: number;
+  /** 건당 최소 매수 금액(원). 업비트 하한 5,000원 이상 */
+  min_buy_krw?: number;
   min_entry_score: number;
   max_auto_buys_per_scan?: number;
   paper_max_auto_buys_per_scan?: number;
@@ -193,6 +195,7 @@ export interface TradeEvent {
   amount_krw: number;
   amount_usdt: number;
   reason: string;
+  entry_mode?: string;
 }
 
 export interface CoinView {

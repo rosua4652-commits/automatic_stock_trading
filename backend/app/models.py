@@ -53,6 +53,12 @@ class AppConfig(BaseModel):
     )
     scan_interval_sec: int = Field(default=30, ge=15, le=300)
     min_buy_score: float = Field(default=28.0, ge=15.0, le=90.0)
+    min_buy_krw: float = Field(
+        default=10_000.0,
+        ge=5_000.0,
+        le=5_000_000.0,
+        description="건당 최소 매수 금액(원). 업비트 하한 5,000원 이상",
+    )
     min_entry_score: float = Field(default=38.0, ge=25.0, le=90.0)
     max_auto_buys_per_scan: int = Field(
         default=2,
@@ -333,6 +339,7 @@ class TradeEvent(BaseModel):
     reason: str
     is_auto: bool = True
     order_uuid: str = ""
+    entry_mode: str = ""  # 롱 | 단타 | AI — 매매 내역 표시용
 
 
 class ChartMarker(BaseModel):

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import type { CoinView, InvestmentRecommendation } from "../types";
 import BuyAmountControl, { maxBuyKrw } from "./BuyAmountControl";
 import SellPctControl from "./SellPctControl";
-import { fmtKrw, MIN_BUY_KRW } from "../utils";
+import { fmtKrw } from "../utils";
 
 type Props = {
   view: CoinView;
@@ -10,6 +10,7 @@ type Props = {
   running: boolean;
   busy: boolean;
   cashKrw: number;
+  minBuyKrw?: number;
   recommendation?: InvestmentRecommendation | null;
   onBuy: (symbol: string, amountKrw: number) => Promise<void>;
   onSell: (symbol: string, percent: number) => Promise<void>;
@@ -21,21 +22,23 @@ export default function CoinTradeBar({
   running,
   busy,
   cashKrw,
+  minBuyKrw = 10_000,
   recommendation,
   onBuy,
   onSell,
 }: Props) {
+  const minBuy = Math.max(5_000, Math.round(minBuyKrw / 1000) * 1000);
   const recAmt =
-    recommendation && recommendation.amount_krw >= MIN_BUY_KRW
+    recommendation && recommendation.amount_krw >= minBuy
       ? recommendation.amount_krw
       : null;
   const [amount, setAmount] = useState(() =>
-    Math.min(recAmt ?? 500_000, maxBuyKrw(cashKrw))
+    Math.min(recAmt ?? 500_000, maxBuyKrw(cashKrw, minBuy))
   );
   const [sellPct, setSellPct] = useState(100);
   const sym = view.meta.symbol;
   const held = view.in_portfolio && view.position;
-  const maxKrw = maxBuyKrw(cashKrw);
+  const maxKrw = maxBuyKrw(cashKrw, minBuy);
 
   useEffect(() => {
     if (recAmt) {
@@ -46,7 +49,7 @@ export default function CoinTradeBar({
   }, [maxKrw, sym, recAmt]);
 
   const canBuy =
-    canTrade && !busy && amount >= MIN_BUY_KRW && amount <= cashKrw && cashKrw >= MIN_BUY_KRW;
+    canTrade && !busy && amount >= minBuy && amount <= cashKrw && cashKrw >= minBuy;
 
   const entryLine = view.candidate?.entry_detail;
   const shortEntry =
@@ -82,6 +85,7 @@ export default function CoinTradeBar({
           value={amount}
           onChange={setAmount}
           disabled={!canTrade || busy}
+          minBuyKrw={minBuy}
         />
         <button
           type="button"

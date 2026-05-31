@@ -17,13 +17,14 @@ import {
   gainPctFromAvg,
   isRunning,
   lossPctFromAvg,
-  MIN_BUY_KRW,
+  getMinBuyKrw,
   pctFromAvg,
   pricesFromExitPct,
   resolveEntryTier,
   roundPct2,
 } from "../utils";
 import BuyAmountControl, { maxBuyKrw } from "./BuyAmountControl";
+import MinBuyKrwPanel from "./MinBuyKrwPanel";
 import ExitPctControl from "./ExitPctControl";
 import SellPctControl from "./SellPctControl";
 
@@ -53,6 +54,9 @@ type Props = {
   onMigrateExits?: () => Promise<void>;
   stopLossPct: number;
   takeProfitPct: number;
+  minBuyKrw?: number;
+  onSaveMinBuyKrw?: (minBuyKrw: number) => Promise<void>;
+  savingMinBuy?: boolean;
   busy: boolean;
 };
 
@@ -367,9 +371,20 @@ function PositionCard({
         )}
       </div>
 
-      {pos.entry_outlook && (
+      {(pos.entry_outlook ||
+        tier.kind === "long" ||
+        tier.kind === "scalp" ||
+        (pos.auto_quantity > 0 && !pos.excluded_from_auto)) && (
         <p className="entry-outlook-line dim">
-          <strong>진입 유형:</strong> {pos.entry_outlook}
+          <strong>진입 유형:</strong>{" "}
+          {pos.entry_outlook ||
+            (tier.kind === "scalp"
+              ? "AI 단타 자동"
+              : tier.kind === "long"
+                ? "AI 롱 자동"
+                : pos.auto_quantity > 0
+                  ? "AI 자동 (롱·현물 매수)"
+                  : "")}
         </p>
       )}
       {pos.entry_reason && (
@@ -445,20 +460,31 @@ export default function FundsTab({
   onMigrateExits,
   stopLossPct,
   takeProfitPct,
+  minBuyKrw = 10_000,
+  onSaveMinBuyKrw,
+  savingMinBuy,
   busy,
 }: Props) {
+  const minBuy = getMinBuyKrw({ min_buy_krw: minBuyKrw });
   const [buySymbol, setBuySymbol] = useState("BTCUSDT");
   const [buyAmount, setBuyAmount] = useState(500_000);
   const running = isRunning(botStatus);
   const canTrade = botStatus !== "stopping";
-  const maxKrw = maxBuyKrw(portfolio.cash_krw);
+  const maxKrw = maxBuyKrw(portfolio.cash_krw, minBuy);
 
   useEffect(() => {
-    setBuyAmount((prev) => Math.min(prev, maxKrw));
-  }, [maxKrw]);
+    setBuyAmount((prev) => Math.max(minBuy, Math.min(prev, maxKrw)));
+  }, [maxKrw, minBuy]);
 
   return (
     <div className="funds-tab funds-tab-body">
+      {onSaveMinBuyKrw && (
+        <MinBuyKrwPanel
+          value={minBuy}
+          saving={savingMinBuy}
+          onSave={onSaveMinBuyKrw}
+        />
+      )}
       {running && (
         <div className="funds-notice warn">
           분석 실행 중 — 매수는 「AI 투자 제안」 승인 또는 아래 수동 매매를 이용하세요.
@@ -508,13 +534,14 @@ export default function FundsTab({
               value={buyAmount}
               onChange={setBuyAmount}
               disabled={busy}
+              minBuyKrw={minBuy}
             />
             <button
               type="button"
               className="btn-primary buy-submit-btn"
               disabled={
                 busy ||
-                buyAmount < MIN_BUY_KRW ||
+                buyAmount < minBuy ||
                 buyAmount > portfolio.cash_krw
               }
               onClick={() => onManualBuy(buySymbol, buyAmount)}
@@ -592,13 +619,14 @@ export default function FundsTab({
                 <th>단가</th>
                 <th>수량</th>
                 <th>체결금액</th>
+                <th>진입</th>
                 <th>사유</th>
               </tr>
             </thead>
             <tbody>
               {trades.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="empty-cell">
+                  <td colSpan={8} className="empty-cell">
                     {tradesSyncError
                       ? `체결 내역 없음 — ${tradesSyncError}`
                       : tradeMode === "live"
@@ -631,6 +659,9 @@ export default function FundsTab({
                         <td>{pxText}</td>
                         <td>{fmtQty(qty)}</td>
                         <td>{amt > 0 ? `${fmtKrw(amt)}원` : "—"}</td>
+                        <td className="trade-entry-mode">
+                          {t.side === "BUY" && t.entry_mode ? t.entry_mode : "—"}
+                        </td>
                         <td>{t.reason}</td>
                       </tr>
                     );

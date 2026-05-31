@@ -20,6 +20,10 @@ from app.models import (
     UpbitAccountSnapshot,
     UpbitHoldingRow,
 )
+from app.engine.live_position_meta import (
+    default_entry_reason,
+    heal_position_meta,
+)
 from app.storage.credentials import get_active_keys
 
 STABLE = {"USDT", "USDC", "BUSD", "FDUSD", "DAI", "TUSD", "KRW"}
@@ -137,7 +141,7 @@ async def _sync_upbit(
     allowed_markets = await get_upbit_krw_markets()
     accounts = await upbit_client.accounts()
     portfolio.usdt_krw = await upbit_feed.usdt_krw_rate()
-    meta_map: dict = live_meta.get("positions_meta", {})
+    meta_map: dict = live_meta.setdefault("positions_meta", {})
 
     krw_cash = 0.0
     holdings: dict[str, float] = {}
@@ -174,16 +178,25 @@ async def _sync_upbit(
         price_usdt = price_krw / portfolio.usdt_krw
         symbol = upbit_to_symbol(krw_market)
         base = krw_market.replace("KRW-", "")
-        pm = meta_map.get(symbol, {})
+        pm = heal_position_meta(
+            meta_map.get(symbol, {}),
+            symbol,
+            live_meta,
+            total_qty=total_qty,
+        )
+        meta_map[symbol] = pm
 
         auto_q = min(float(pm.get("auto_quantity", 0)), total_qty)
         manual_q = max(0.0, total_qty - auto_q)
         if pm.get("excluded_from_auto"):
             manual_q = total_qty
             auto_q = 0.0
-        if abs(auto_q + manual_q - total_qty) > 1e-8:
-            manual_q = total_qty
-            auto_q = 0.0
+        elif abs(auto_q + manual_q - total_qty) > 1e-6:
+            if auto_q > 1e-12:
+                manual_q = max(0.0, total_qty - auto_q)
+            else:
+                manual_q = total_qty
+                auto_q = 0.0
 
         bal = balances_by_currency.get(base, {})
         avg_buy_krw = _parse_avg_buy_krw(bal)
@@ -240,9 +253,9 @@ async def _sync_upbit(
             cost_basis_krw=cost_krw,
             auto_cost_basis_krw=auto_cost,
             manual_cost_basis_krw=man_cost,
-            entry_reason=pm.get("entry_reason", "업비트 동기화"),
+            entry_reason=default_entry_reason(pm, symbol, live_meta),
             entry_score=float(pm.get("entry_score", 0)),
-            entry_outlook=pm.get("entry_outlook", ""),
+            entry_outlook=str(pm.get("entry_outlook") or ""),
             excluded_from_auto=bool(pm.get("excluded_from_auto", False)),
             custom_sl_tp=custom_sl,
             custom_stop_loss_pct=sl_pct_meta if custom_sl else 0.0,
@@ -323,7 +336,7 @@ async def _sync_binance(
     account = await binance_live.account()
     tickers = await upbit_feed.tickers_24h()
     portfolio.usdt_krw = await upbit_feed.usdt_krw_rate()
-    meta_map: dict = live_meta.get("positions_meta", {})
+    meta_map: dict = live_meta.setdefault("positions_meta", {})
 
     usdt_free = 0.0
     new_positions: dict[str, Position] = {}

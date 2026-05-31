@@ -1,6 +1,6 @@
 """AI 투자 제안: 비중·금액 산출."""
 
-from app.config import settings
+from app.engine.buy_limits import UPBIT_MIN_ORDER_KRW, effective_min_buy_krw
 from app.engine.trading_fees import (
     cash_required_for_buy,
     deployable_cash_krw,
@@ -15,8 +15,6 @@ from app.engine.backtest_learning import (
 )
 from app.engine.backtest_optimizer import BacktestAccumulator
 from app.models import AppConfig, CoinCandidate, InvestmentRecommendation
-
-MIN_BUY = settings.min_buy_krw
 
 
 def _tier_to_mode(tier: str) -> str:
@@ -118,19 +116,23 @@ def allocate_amounts_by_weights(
     weights: list[float],
     cash_krw: float,
     fee_pct: float = 0.05,
+    *,
+    min_buy_krw: float | None = None,
 ) -> list[float]:
     """
-    점수 비중으로 현금 배분. 합계 <= deployable cash, 각 건 MIN_BUY 이상(또는 0).
+    점수 비중으로 현금 배분. 합계 <= deployable cash, 각 건 min_buy 이상(또는 0).
     """
-    if not weights or cash_krw < MIN_BUY:
+    floor = max(UPBIT_MIN_ORDER_KRW, float(min_buy_krw or UPBIT_MIN_ORDER_KRW))
+
+    if not weights or cash_krw < floor:
         return [0.0] * len(weights)
 
     budget = round(deployable_cash_krw(cash_krw, fee_pct), -3)
-    if budget < MIN_BUY:
+    if budget < floor:
         return [0.0] * len(weights)
 
     n = len(weights)
-    max_slots = min(n, int(budget // MIN_BUY))
+    max_slots = min(n, int(budget // floor))
     if max_slots <= 0:
         return [0.0] * n
 
@@ -142,7 +144,7 @@ def allocate_amounts_by_weights(
 
     amts: list[float] = []
     for w in sel_w:
-        amts.append(max(MIN_BUY, round(budget * w / wsum, -3)))
+        amts.append(max(floor, round(budget * w / wsum, -3)))
 
     def _trim() -> None:
         nonlocal amts, order, sel_w
@@ -151,21 +153,21 @@ def allocate_amounts_by_weights(
             order = order[: len(amts)]
             sel_w = sel_w[: len(amts)]
             wsum = sum(sel_w)
-            amts = [max(MIN_BUY, round(budget * w / wsum, -3)) for w in sel_w]
+            amts = [max(floor, round(budget * w / wsum, -3)) for w in sel_w]
 
         while sum(amts) > budget and amts:
             over = sum(amts) - budget
             i = max(range(len(amts)), key=lambda j: amts[j])
-            cut = min(over, amts[i] - MIN_BUY)
+            cut = min(over, amts[i] - floor)
             if cut < 1000:
                 if len(amts) > 1:
                     amts.pop(i)
                     order.pop(i)
                     sel_w.pop(i)
                     wsum = sum(sel_w) or 1
-                    amts = [max(MIN_BUY, round(budget * w / wsum, -3)) for w in sel_w]
+                    amts = [max(floor, round(budget * w / wsum, -3)) for w in sel_w]
                 else:
-                    amts[i] = max(MIN_BUY, budget)
+                    amts[i] = max(floor, budget)
                     break
             else:
                 amts[i] = round(amts[i] - cut, -3)
@@ -174,16 +176,16 @@ def allocate_amounts_by_weights(
 
     out = [0.0] * n
     for idx, a in zip(order, amts):
-        if a >= MIN_BUY:
+        if a >= floor:
             out[idx] = a
 
     while sum(out) > budget:
-        active = [i for i in range(n) if out[i] >= MIN_BUY]
+        active = [i for i in range(n) if out[i] >= floor]
         if not active:
             break
         i = max(active, key=lambda j: out[j])
         over = sum(out) - budget
-        if out[i] - max(MIN_BUY, over) >= MIN_BUY:
+        if out[i] - max(floor, over) >= floor:
             out[i] = round(out[i] - max(over, 1000), -3)
         elif len(active) > 1:
             out[i] = 0.0
@@ -197,19 +199,24 @@ def cap_apply_amounts(
     amounts: dict[str, float],
     cash_krw: float,
     fee_pct: float = 0.05,
+    *,
+    min_buy_krw: float | None = None,
 ) -> dict[str, float]:
     """승인 매수 합계가 현금을 넘지 않도록 비례 축소."""
     if not amounts:
         return amounts
+    floor = max(UPBIT_MIN_ORDER_KRW, float(min_buy_krw or UPBIT_MIN_ORDER_KRW))
     budget = deployable_cash_krw(cash_krw, fee_pct)
     total = sum(amounts.values())
     if total <= budget:
-        out = {k: max(MIN_BUY, round(v, -3)) for k, v in amounts.items() if v >= MIN_BUY}
+        out = {k: max(floor, round(v, -3)) for k, v in amounts.items() if v >= floor}
     else:
         keys = list(amounts.keys())
         weights = [amounts[k] for k in keys]
-        scaled = allocate_amounts_by_weights(weights, cash_krw, fee_pct)
-        out = {k: scaled[i] for i, k in enumerate(keys) if scaled[i] >= MIN_BUY}
+        scaled = allocate_amounts_by_weights(
+            weights, cash_krw, fee_pct, min_buy_krw=floor
+        )
+        out = {k: scaled[i] for i, k in enumerate(keys) if scaled[i] >= floor}
 
     # 매수 원금 + 편도 수수료 합이 현금을 넘지 않도록 최종 검증
     principal_sum = sum(out.values())
@@ -217,9 +224,9 @@ def cap_apply_amounts(
     if need > cash_krw and principal_sum > 0:
         scale = deployable_cash_krw(cash_krw, fee_pct) / principal_sum
         out = {
-            k: max(MIN_BUY, round(v * scale, -3))
+            k: max(floor, round(v * scale, -3))
             for k, v in out.items()
-            if v * scale >= MIN_BUY
+            if v * scale >= floor
         }
     return out
 
@@ -236,8 +243,9 @@ def build_recommendations(
 ) -> list[InvestmentRecommendation]:
     """진입 가능 후보에 보유 현금 범위 내에서 점수 비중 배분."""
     fee_pct = float(getattr(config, "trading_fee_pct", 0.05))
+    min_buy = effective_min_buy_krw(config)
     budget = deployable_cash_krw(cash_krw, fee_pct)
-    if budget < MIN_BUY:
+    if budget < min_buy:
         return []
 
     pool: list[CoinCandidate] = []
@@ -272,12 +280,14 @@ def build_recommendations(
     learning = load_learning_state()
 
     weights = [max(1.0, _rank(c)) for c in pool]
-    amounts = allocate_amounts_by_weights(weights, cash_krw, fee_pct)
+    amounts = allocate_amounts_by_weights(
+        weights, cash_krw, fee_pct, min_buy_krw=min_buy
+    )
     total_allocated = sum(amounts)
 
     recs: list[InvestmentRecommendation] = []
     for c, amount, w in zip(pool, amounts, weights):
-        if amount < MIN_BUY:
+        if amount < min_buy:
             continue
         weight_pct = (
             round(amount / total_allocated * 100, 1) if total_allocated > 0 else 0.0

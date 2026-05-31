@@ -13,6 +13,7 @@ type Props = {
   botStatus: string;
   cashKrw: number;
   feePct?: number;
+  minBuyKrw?: number;
   busy: boolean;
   onAmountChange: (symbol: string, amount: number) => void;
   onResetAi: (symbol: string) => void;
@@ -26,6 +27,7 @@ export default function RecommendationsPanel({
   botStatus,
   cashKrw,
   feePct = 0.05,
+  minBuyKrw = 10_000,
   busy,
   onAmountChange,
   onResetAi,
@@ -153,6 +155,7 @@ export default function RecommendationsPanel({
                       row={r}
                       aiAmount={aiAmounts[r.symbol] ?? r.amount_krw}
                       cashKrw={cashKrw}
+                      minBuyKrw={minBuyKrw}
                       disabled={busy}
                       onAmountChange={onAmountChange}
                       onResetAi={onResetAi}

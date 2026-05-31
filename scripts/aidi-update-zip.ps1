@@ -54,6 +54,38 @@ try {
     }
 
     Remove-Item -LiteralPath (Join-Path $RepoRoot "backend\.aidi-prep-state") -Force -ErrorAction SilentlyContinue
+
+    $feRoot = Join-Path $RepoRoot "frontend"
+    $pkg = Join-Path $feRoot "package.json"
+    if (Test-Path -LiteralPath $pkg) {
+        Write-Host "  Building frontend (npm) — dist is not copied from ZIP..."
+        Push-Location $feRoot
+        try {
+            if (-not (Test-Path (Join-Path $feRoot "node_modules"))) {
+                Write-Host "    npm install..."
+                & npm install
+                if ($LASTEXITCODE -ne 0) { throw "npm install failed" }
+            }
+            & npm run build
+            if ($LASTEXITCODE -ne 0) { throw "npm run build failed" }
+            $buildId = "unknown"
+            $mainPy = Join-Path $RepoRoot "backend\app\main.py"
+            if (Test-Path $mainPy) {
+                $t = Get-Content $mainPy -Raw
+                if ($t -match 'AIDI_BUILD\s*=\s*"([^"]+)"') { $buildId = $matches[1] }
+            }
+            $stamp = Join-Path $feRoot "dist\.aidi-ui-build"
+            if ($buildId -ne "unknown") {
+                Set-Content -LiteralPath $stamp -Value $buildId -Encoding ascii -ErrorAction SilentlyContinue
+            }
+            Write-Host "    frontend\dist OK"
+        } finally {
+            Pop-Location
+        }
+    } else {
+        Write-Host "  WARN: frontend\package.json missing — run update-zip again or copy frontend folder"
+    }
+
     $build = $null
     $mainPy = Join-Path $RepoRoot "backend\app\main.py"
     if (Test-Path $mainPy) {

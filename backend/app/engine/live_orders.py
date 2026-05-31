@@ -3,6 +3,10 @@
 import time
 from typing import Optional
 
+from app.engine.live_position_meta import (
+    entry_mode_label,
+    patch_position_meta_for_buy,
+)
 from app.engine.live_sync import export_live_meta, sync_live_portfolio
 from app.engine.portfolio import PortfolioManager
 from app.engine.portfolio_store import store
@@ -32,10 +36,8 @@ from app.market.upbit_sell import (
 )
 from app.models import AppConfig, Position, TradeEvent
 from app.storage.credentials import get_active_keys
-from app.config import settings
+from app.engine.buy_limits import effective_min_buy_krw
 from app.storage.persistence import save_live_meta
-
-MIN_BUY_KRW = settings.min_buy_krw
 
 
 def _persist_live(portfolio: PortfolioManager) -> None:
@@ -74,8 +76,12 @@ async def live_market_buy(
         if exchange != "upbit":
             return False, "AIDI는 업비트(KRW) 실거래만 지원합니다."
 
-        if amount_krw < MIN_BUY_KRW:
-            return False, f"최소 주문 금액은 {int(MIN_BUY_KRW):,}원입니다"
+        min_buy = effective_min_buy_krw(config)
+        if amount_krw < min_buy:
+            return (
+                False,
+                f"최소 매수 금액은 {int(min_buy):,}원입니다 (설정 → 최소 매수 금액)",
+            )
 
         before = PortfolioManager.position_snap(portfolio.positions.get(sym))
 
@@ -128,6 +134,17 @@ async def live_market_buy(
         except Exception as e:
             return False, str(e)
 
+        if executed_qty > 1e-12:
+            patch_position_meta_for_buy(
+                store._live_meta,
+                sym,
+                add_qty=executed_qty,
+                amount_krw=float(fill_krw or amount_krw),
+                entry_outlook=entry_outlook,
+                entry_reason=entry_reason or reason,
+                as_auto=as_auto,
+            )
+
         store._live_meta["trades_force_sync"] = True
         await _sync_live_refresh(portfolio, config)
 
@@ -178,6 +195,9 @@ async def live_market_buy(
                         reason=reason_label,
                         is_auto=as_auto,
                         order_uuid=order_uuid,
+                        entry_mode=entry_mode_label(
+                            entry_outlook or reason
+                        ),
                     )
                 ],
                 usdt_krw=max(portfolio.usdt_krw, 1.0),

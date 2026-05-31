@@ -40,6 +40,7 @@ from app.engine.flash_crash_guard import (
 )
 from app.engine.scalp_filters import apply_scalp_liquidity_to_candidate
 from app.util.numbers import as_float
+from app.engine.buy_limits import effective_min_buy_krw
 from app.engine.recommendations import (
     build_recommendations,
     cap_apply_amounts,
@@ -547,6 +548,12 @@ class TradingEngine:
         self.bind_portfolio()
         self.portfolio.usdt_krw = await market.usdt_krw_rate()
         symbol = req.symbol.upper()
+        min_buy = effective_min_buy_krw(self.config)
+        if req.amount_krw < min_buy:
+            return (
+                False,
+                f"최소 매수 금액은 {int(min_buy):,}원입니다 (설정 → 최소 매수 금액)",
+            )
 
         if self._is_live():
             ok, msg = await live_market_buy(
@@ -579,6 +586,7 @@ class TradingEngine:
             req.amount_krw,
             sl,
             tp,
+            min_buy_krw=min_buy,
             reason=f"수동 매수 · {int(req.amount_krw):,}원",
             entry_reason=(
                 f"수동 매수 · ${price:.4f} · {int(req.amount_krw):,}원 · "
@@ -1134,7 +1142,9 @@ class TradingEngine:
                 raw_amts = {
                     k: max(0.0, round(v * scale, -3)) for k, v in raw_amts.items()
                 }
-        capped = cap_apply_amounts(raw_amts, cash, fee_pct)
+        capped = cap_apply_amounts(
+            raw_amts, cash, fee_pct, min_buy_krw=effective_min_buy_krw(self.config)
+        )
         if not capped:
             self.bot.auto_invest_message = "자동 매수 스킵 — 가용 현금 부족"
             return
@@ -1190,7 +1200,12 @@ class TradingEngine:
             raw_amts[sym] = float(
                 (amount_overrides or {}).get(sym, rec.amount_krw)
             )
-        capped_amts = cap_apply_amounts(raw_amts, self.portfolio.cash_krw, fee_pct)
+        capped_amts = cap_apply_amounts(
+            raw_amts,
+            self.portfolio.cash_krw,
+            fee_pct,
+            min_buy_krw=effective_min_buy_krw(self.config),
+        )
         if not capped_amts:
             return 0, "현금 부족"
 
@@ -1261,12 +1276,14 @@ class TradingEngine:
                     entry_score=rec.entry_score,
                     entry_outlook=outlook,
                     auto_managed=True,
+                    min_buy_krw=effective_min_buy_krw(self.config),
                 )
                 if pos:
                     ok_n += 1
                     success_syms.add(sym)
                 else:
-                    fail_msgs.append(f"{rec.base}: 잔고 부족")
+                    min_b = int(effective_min_buy_krw(self.config))
+                    fail_msgs.append(f"{rec.base}: 잔고 부족 또는 최소 {min_b:,}원 미달")
 
         if ok_n:
             if not self._is_live() and self.bot.auto_invest_active:

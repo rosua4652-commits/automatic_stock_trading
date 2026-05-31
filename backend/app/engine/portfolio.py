@@ -491,11 +491,19 @@ class PortfolioManager:
         entry_score: float = 0.0,
         entry_outlook: str = "",
         auto_managed: bool = True,
+        min_buy_krw: float | None = None,
     ) -> Optional[Position]:
+        from app.engine.buy_limits import effective_min_buy_krw
+
+        floor = (
+            max(1.0, float(min_buy_krw))
+            if min_buy_krw is not None
+            else effective_min_buy_krw()
+        )
         fee_rate = getattr(self, "trading_fee_pct", 0.05) / 100
         max_spend = self.cash_krw / (1 + fee_rate) if fee_rate > 0 else self.cash_krw
         cost_krw = min(allocation_krw, max_spend)
-        if cost_krw < settings.min_buy_krw:
+        if cost_krw < floor:
             return None
         fee_krw = self._fee_krw(cost_krw)
         usdt = self.krw_to_usdt(cost_krw)

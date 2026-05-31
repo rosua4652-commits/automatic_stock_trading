@@ -2640,6 +2640,79 @@ main.layout.chart-layout {
   border-bottom: 1px solid var(--border);
 }
 
+.min-buy-panel {
+  margin-bottom: 1rem;
+  padding: 1rem 1.1rem;
+  border: 2px solid rgba(56, 189, 248, 0.55);
+  border-radius: 12px;
+  background: linear-gradient(
+    135deg,
+    rgba(56, 189, 248, 0.14) 0%,
+    rgba(15, 23, 42, 0.5) 100%
+  );
+}
+
+.min-buy-panel-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.35rem 1rem;
+  margin-bottom: 0.35rem;
+}
+
+.min-buy-panel-head h3 {
+  margin: 0;
+  font-size: 1.05rem;
+  color: #7dd3fc;
+}
+
+.min-buy-panel-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  margin-top: 0.65rem;
+}
+
+.min-buy-panel-input {
+  width: min(12rem, 100%);
+  padding: 0.65rem 0.85rem;
+  font-size: 1.1rem;
+  font-weight: 600;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+}
+
+.min-buy-panel-unit {
+  font-size: 0.95rem;
+  color: var(--muted);
+}
+
+.min-buy-panel-compact {
+  padding: 0.75rem 1rem;
+}
+
+.settings-section-highlight {
+  background: rgba(56, 189, 248, 0.08);
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  border-radius: 10px;
+  padding: 0.85rem 1rem !important;
+  margin-bottom: 1.1rem !important;
+}
+
+.settings-section-highlight h3 {
+  color: var(--accent, #38bdf8);
+  font-size: 0.92rem !important;
+}
+
+.settings-modal .field-prominent input {
+  font-size: 1.15rem;
+  font-weight: 600;
+}
+
 .settings-section h3 {
   font-size: 0.8rem;
   color: var(--muted);

@@ -1,4 +1,5 @@
 import type {
+  AppConfig,
   CoinCandidate,
   InvestmentRecommendation,
   Portfolio,
@@ -237,8 +238,26 @@ export function mergeWsPayload(
   return incoming;
 }
 
-/** 최소 매수 금액 (원) — 백엔드와 동일 */
-export const MIN_BUY_KRW = 5_000;
+/** 업비트 주문 하한 (원) — 설정보다 낮출 수 없음 */
+export const UPBIT_MIN_ORDER_KRW = 5_000;
+
+/** @deprecated config.min_buy_krw 사용 */
+export const MIN_BUY_KRW = UPBIT_MIN_ORDER_KRW;
+
+export function getMinBuyKrw(config?: { min_buy_krw?: number } | null): number {
+  const raw = Number(config?.min_buy_krw);
+  if (!Number.isFinite(raw) || raw <= 0) return 10_000;
+  return Math.max(UPBIT_MIN_ORDER_KRW, Math.round(raw / 1000) * 1000);
+}
+
+/** API·저장 설정에 min_buy_krw 없을 때 기본값 보정 */
+export function normalizeAppConfig(cfg: AppConfig): AppConfig {
+  return {
+    ...DEFAULT_CONFIG,
+    ...cfg,
+    min_buy_krw: getMinBuyKrw(cfg),
+  };
+}
 
 /** 편도 fee% · 왕복(매수+매도) 반영 후 배분 가능 매수 원금 */
 export function deployableCashKrw(cashKrw: number, feePct = 0.05) {
@@ -260,16 +279,18 @@ export function cashRequiredForBuy(principalKrw: number, feePct = 0.05) {
 export function balanceRecommendationAmounts(
   recs: { symbol: string; amount_krw: number; selected?: boolean }[],
   cashKrw: number,
-  feePct = 0.05
+  feePct = 0.05,
+  minBuyKrw = 10_000
 ): Record<string, number> {
+  const floor = getMinBuyKrw({ min_buy_krw: minBuyKrw });
   const budget = Math.round(deployableCashKrw(cashKrw, feePct) / 1000) * 1000;
   const active = recs.filter((r) => r.selected !== false);
-  if (!active.length || budget < MIN_BUY_KRW) return {};
+  if (!active.length || budget < floor) return {};
 
   const weights = active.map((r) => Math.max(1, r.amount_krw));
   const wsum = weights.reduce((a, b) => a + b, 0);
   let amounts = active.map((r, i) =>
-    Math.max(MIN_BUY_KRW, Math.round((budget * weights[i]) / wsum / 1000) * 1000)
+    Math.max(floor, Math.round((budget * weights[i]) / wsum / 1000) * 1000)
   );
 
   const trim = () => {
@@ -278,14 +299,14 @@ export function balanceRecommendationAmounts(
       const ws = weights.slice(0, amounts.length);
       const s = ws.reduce((a, b) => a + b, 0) || 1;
       amounts = ws.map((w) =>
-        Math.max(MIN_BUY_KRW, Math.round((budget * w) / s / 1000) * 1000)
+        Math.max(floor, Math.round((budget * w) / s / 1000) * 1000)
       );
     }
     let total = amounts.reduce((a, b) => a + b, 0);
     while (total > budget && amounts.length) {
       const over = total - budget;
       let i = amounts.indexOf(Math.max(...amounts));
-      const cut = Math.min(over, amounts[i] - MIN_BUY_KRW);
+      const cut = Math.min(over, amounts[i] - floor);
       if (cut < 1000) {
         if (amounts.length > 1) {
           amounts.splice(i, 1);
@@ -303,7 +324,7 @@ export function balanceRecommendationAmounts(
 
   const out: Record<string, number> = {};
   active.slice(0, amounts.length).forEach((r, i) => {
-    if (amounts[i] >= MIN_BUY_KRW) out[r.symbol] = amounts[i];
+    if (amounts[i] >= floor) out[r.symbol] = amounts[i];
   });
   return out;
 }
@@ -349,7 +370,7 @@ export function recommendationTpSl(
       fromAi: true,
     };
   }
-  if (priceUsdt <= 0 || amountKrw < MIN_BUY_KRW) {
+  if (priceUsdt <= 0 || amountKrw < UPBIT_MIN_ORDER_KRW) {
     return { hasLevels: false, stop_loss: 0, take_profit: 0, stop_loss_krw: 0, take_profit_krw: 0, fromAi: false };
   }
   const plan = computeTradePlan(amountKrw, priceUsdt, usdtKrw, stopLossPct, takeProfitPct);
@@ -458,7 +479,7 @@ export function resolveEntryTier(pos: {
   return { kind: null, label: "" };
 }
 
-export const DEFAULT_CONFIG = {
+export const DEFAULT_CONFIG: AppConfig = {
   trade_mode: "paper" as const,
   target_profit_krw: 2_000_000,
   initial_balance_krw: 10_000_000,
@@ -473,6 +494,7 @@ export const DEFAULT_CONFIG = {
   trading_fee_pct: 0.05,
   scan_interval_sec: 30,
   min_buy_score: 28,
+  min_buy_krw: 10_000,
   min_entry_score: 38,
   max_auto_buys_per_scan: 2,
   paper_max_auto_buys_per_scan: 4,

@@ -1,7 +1,6 @@
 import { useEffect, useMemo } from "react";
-import { fmtKrw, MIN_BUY_KRW } from "../utils";
+import { fmtKrw } from "../utils";
 
-const MIN_KRW = MIN_BUY_KRW;
 const STEP = 1_000;
 
 const PRESETS: { label: string; ratio: number }[] = [
@@ -18,16 +17,17 @@ type Props = {
   onChange: (amount: number) => void;
   disabled?: boolean;
   id?: string;
+  minBuyKrw?: number;
 };
 
-function clampAmount(amount: number, maxKrw: number) {
-  const max = Math.max(MIN_KRW, maxKrw);
+function clampAmount(amount: number, maxKrw: number, minKrw: number) {
+  const max = Math.max(minKrw, maxKrw);
   const n = Math.round(amount / STEP) * STEP;
-  return Math.min(max, Math.max(MIN_KRW, n));
+  return Math.min(max, Math.max(minKrw, n));
 }
 
-export function maxBuyKrw(cashKrw: number) {
-  return Math.max(MIN_KRW, Math.floor(cashKrw * 0.95));
+export function maxBuyKrw(cashKrw: number, minBuyKrw = 10_000) {
+  return Math.max(minBuyKrw, Math.floor(cashKrw * 0.95));
 }
 
 export default function BuyAmountControl({
@@ -36,13 +36,15 @@ export default function BuyAmountControl({
   onChange,
   disabled,
   id = "buy-amount",
+  minBuyKrw = 10_000,
 }: Props) {
-  const maxKrw = useMemo(() => maxBuyKrw(cashKrw), [cashKrw]);
+  const minKrw = Math.max(5_000, Math.round(minBuyKrw / 1000) * 1000);
+  const maxKrw = useMemo(() => maxBuyKrw(cashKrw, minKrw), [cashKrw, minKrw]);
 
   const sliderPct = useMemo(() => {
-    if (maxKrw <= MIN_KRW) return 100;
-    return Math.round(((value - MIN_KRW) / (maxKrw - MIN_KRW)) * 100);
-  }, [value, maxKrw]);
+    if (maxKrw <= minKrw) return 100;
+    return Math.round(((value - minKrw) / (maxKrw - minKrw)) * 100);
+  }, [value, maxKrw, minKrw]);
 
   const cashPct = useMemo(() => {
     if (cashKrw <= 0) return 0;
@@ -50,19 +52,19 @@ export default function BuyAmountControl({
   }, [value, cashKrw]);
 
   useEffect(() => {
-    const clamped = clampAmount(value, maxKrw);
+    const clamped = clampAmount(value, maxKrw, minKrw);
     if (clamped !== value) onChange(clamped);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [maxKrw]);
+  }, [maxKrw, minKrw]);
 
   const setFromSlider = (p: number) => {
     const ratio = Math.min(100, Math.max(0, p)) / 100;
-    const raw = MIN_KRW + (maxKrw - MIN_KRW) * ratio;
-    onChange(clampAmount(raw, maxKrw));
+    const raw = minKrw + (maxKrw - minKrw) * ratio;
+    onChange(clampAmount(raw, maxKrw, minKrw));
   };
 
   const setPreset = (ratio: number) => {
-    onChange(clampAmount(cashKrw * ratio, maxKrw));
+    onChange(clampAmount(cashKrw * ratio, maxKrw, minKrw));
   };
 
   const insufficient = value > cashKrw;
@@ -72,7 +74,7 @@ export default function BuyAmountControl({
       <div className="buy-amount-head">
         <span className="buy-amount-label">매수 금액</span>
         <span className="buy-amount-cash dim">
-          보유 {fmtKrw(cashKrw)}원 · 최대 {fmtKrw(maxKrw)}원
+          보유 {fmtKrw(cashKrw)}원 · 최소 {fmtKrw(minKrw)}원 · 최대 {fmtKrw(maxKrw)}원
         </span>
       </div>
 
@@ -81,12 +83,12 @@ export default function BuyAmountControl({
           id={id}
           type="number"
           className="buy-amount-number"
-          min={MIN_KRW}
+          min={minKrw}
           max={maxKrw}
           step={STEP}
           value={value}
           disabled={disabled}
-          onChange={(e) => onChange(clampAmount(Number(e.target.value), maxKrw))}
+          onChange={(e) => onChange(clampAmount(Number(e.target.value), maxKrw, minKrw))}
         />
         <span className="buy-amount-unit">원</span>
       </div>
@@ -99,7 +101,7 @@ export default function BuyAmountControl({
           max={100}
           step={1}
           value={sliderPct}
-          disabled={disabled || maxKrw <= MIN_KRW}
+          disabled={disabled || maxKrw <= minKrw}
           onChange={(e) => setFromSlider(Number(e.target.value))}
           aria-label="매수 금액 비율"
         />
@@ -112,7 +114,7 @@ export default function BuyAmountControl({
             key={p.label}
             type="button"
             className="preset-chip"
-            disabled={disabled || cashKrw < MIN_KRW}
+            disabled={disabled || cashKrw < minKrw}
             onClick={() => setPreset(p.ratio)}
           >
             {p.label}

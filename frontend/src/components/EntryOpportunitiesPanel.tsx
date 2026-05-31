@@ -87,6 +87,7 @@ export default function EntryOpportunitiesPanel({
               row={r}
               aiAmount={aiAmounts[r.symbol] ?? r.amount_krw}
               cashKrw={cashKrw}
+              minBuyKrw={config.min_buy_krw}
               disabled={busy}
               onAmountChange={onAmountChange}
               onResetAi={onResetAi}

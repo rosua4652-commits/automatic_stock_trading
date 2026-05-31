@@ -2,7 +2,7 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    min_buy_krw: float = 5_000.0
+    min_buy_krw: float = 10_000.0  # env fallback; AppConfig.min_buy_krw 우선
     initial_balance_krw: float = 10_000_000.0
     binance_api: str = "https://api.binance.com/api/v3"
     scan_interval_sec: int = 45

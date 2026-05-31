@@ -5,8 +5,9 @@ from pathlib import Path
 
 from fastapi import APIRouter, FastAPI, File, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, Field
 
 from app.engine.portfolio_store import store
 from app.engine.trader import TradingEngine
@@ -39,6 +40,8 @@ from app.market.live_exchange import close_all, test_exchange_connection
 from app.market.ipv4_http import outbound_ipv4_via_same_stack, upbit_resolved_ipv4
 from app.market.network_info import get_outbound_public_ip
 from app.storage.credentials import load_credentials, mask_key
+from app.engine.buy_limits import effective_min_buy_krw
+from app.min_buy_setting_page import MIN_BUY_SETTING_HTML, MIN_BUY_SETTING_PATH
 from app.storage.user_settings import merge_user_settings_into_config, save_user_settings
 from app.aidi_log import get_aidi_logger, setup_aidi_logging
 from app.aidi_middleware import AidiActionLogMiddleware
@@ -46,7 +49,7 @@ from app.aidi_middleware import AidiActionLogMiddleware
 STATIC_DIR = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
 
 # PC에서 run.bat 시작 시 표시 — GitHub 최신과 비교용
-AIDI_BUILD = "2026-06-03-stats-overview-fix"
+AIDI_BUILD = "2026-06-04-min-buy-panel-visible"
 
 
 engine = TradingEngine()
@@ -185,6 +188,7 @@ async def _build_status() -> dict:
         "execution_feedback": True,
         "flash_crash_guard": True,
         "auto_buy_pause": True,
+        "min_buy_krw_setting": True,
         "position_exit_migrate": True,
         "daily_report": True,
         "backup_zip": True,
@@ -335,6 +339,29 @@ async def set_config(cfg: AppConfig):
     save_user_settings(engine.config)
     status = await _build_status()
     status["switch_message"] = msg
+    return status
+
+
+class MinBuyKrwPatch(BaseModel):
+    min_buy_krw: float = Field(ge=5_000.0, le=5_000_000.0)
+
+
+@api.post("/config/min-buy-krw")
+async def set_min_buy_krw(body: MinBuyKrwPatch):
+    """최소 매수 금액만 저장 (구버전 UI·/min-buy-setting 페이지용)."""
+    krw = float(body.min_buy_krw)
+    merged = engine.config.model_copy(update={"min_buy_krw": krw})
+    if krw < effective_min_buy_krw(merged):
+        return JSONResponse(
+            {"error": "invalid", "message": "최소 5,000원 이상이어야 합니다."},
+            status_code=400,
+        )
+    msg = await engine.update_config(merged)
+    engine.config = apply_credentials_to_config(engine.config)
+    save_user_settings(engine.config)
+    status = await _build_status()
+    status["switch_message"] = msg
+    status["message"] = f"최소 매수 금액 {int(krw):,}원 저장됨"
     return status
 
 
@@ -838,6 +865,15 @@ app.include_router(api)
 @app.websocket("/ws")
 async def websocket_root(ws: WebSocket):
     await _ws_handler(ws)
+
+
+@app.get(MIN_BUY_SETTING_PATH)
+async def min_buy_setting_page():
+    """React 빌드와 무관 — 최소 매수 금액 설정 전용 페이지."""
+    return HTMLResponse(
+        MIN_BUY_SETTING_HTML,
+        headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
+    )
 
 
 if STATIC_DIR.exists():

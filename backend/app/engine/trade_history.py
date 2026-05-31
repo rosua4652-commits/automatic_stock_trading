@@ -474,6 +474,13 @@ def order_to_trade_dict(
     rate = max(usdt_krw, 1.0)
     ts = _parse_upbit_ts(order.get("created_at")) or time.time()
 
+    mode = ""
+    if side == "BUY":
+        from app.engine.live_position_meta import entry_mode_label, outlook_from_reason_text
+
+        mode = entry_mode_label(
+            outlook_from_reason_text(raw_reason) or outlook_from_reason_text(reason)
+        )
     return repair_trade_dict(
         {
             "ts": ts,
@@ -489,6 +496,7 @@ def order_to_trade_dict(
             "reason": reason,
             "is_auto": is_auto,
             "order_uuid": uid,
+            "entry_mode": mode,
         },
         usdt_krw=rate,
     )

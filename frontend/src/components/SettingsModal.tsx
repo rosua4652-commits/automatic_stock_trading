@@ -2,7 +2,8 @@ import { useState } from "react";
 import { resetBacktestData, resetPaperData, testCredentials } from "../api";
 import type { StatusPayload } from "../types";
 import type { AppConfig } from "../types";
-import { fmtKrw, roundPct2 } from "../utils";
+import { fmtKrw, getMinBuyKrw, roundPct2 } from "../utils";
+import MinBuyKrwPanel from "./MinBuyKrwPanel";
 
 type Props = {
   config: AppConfig;
@@ -12,6 +13,7 @@ type Props = {
   onClose: () => void;
   saving: boolean;
   onAfterReset?: (status: StatusPayload) => void;
+  onSaveMinBuyKrw?: (minBuyKrw: number) => Promise<void>;
 };
 
 export default function SettingsModal({
@@ -22,6 +24,7 @@ export default function SettingsModal({
   onClose,
   saving,
   onAfterReset,
+  onSaveMinBuyKrw,
 }: Props) {
   const [testing, setTesting] = useState(false);
   const [resetBusy, setResetBusy] = useState<"paper" | "backtest" | null>(null);
@@ -82,6 +85,17 @@ export default function SettingsModal({
         role="dialog"
       >
         <h2>설정</h2>
+
+        {onSaveMinBuyKrw && (
+          <MinBuyKrwPanel
+            value={getMinBuyKrw(draft)}
+            saving={saving}
+            onSave={async (n) => {
+              set("min_buy_krw", n);
+              await onSaveMinBuyKrw(n);
+            }}
+          />
+        )}
 
         <section className="settings-section">
           <h3>투자 모드</h3>

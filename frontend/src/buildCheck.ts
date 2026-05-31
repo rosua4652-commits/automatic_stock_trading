@@ -9,6 +9,8 @@ export type AidiCapabilities = {
 const LEGACY_ONLY = ["upbit-truth", "cost-basis"];
 
 const NEW_MARKERS = [
+  "min-buy-panel",
+  "min-buy-krw",
   "upbit-trades",
   "trade-history",
   "trade-fill-fix",

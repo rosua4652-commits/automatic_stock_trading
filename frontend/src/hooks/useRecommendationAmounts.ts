@@ -4,7 +4,7 @@ import {
   balanceRecommendationAmounts,
   computeTradePlan,
   deployableCashKrw,
-  MIN_BUY_KRW,
+  getMinBuyKrw,
 } from "../utils";
 
 export type EditableRecommendation = InvestmentRecommendation & {
@@ -53,11 +53,12 @@ export function useRecommendationAmounts(
   usdtKrw = 1350
 ) {
   const feePct = config.trading_fee_pct ?? 0.05;
+  const minBuy = getMinBuyKrw(config);
   const budget = deployableCashKrw(cashKrw, feePct);
 
   const balancedBase = useMemo(
-    () => balanceRecommendationAmounts(recommendations, cashKrw, feePct),
-    [recommendations, cashKrw, feePct]
+    () => balanceRecommendationAmounts(recommendations, cashKrw, feePct, minBuy),
+    [recommendations, cashKrw, feePct, minBuy]
   );
 
   const recKey = useMemo(
@@ -80,10 +81,7 @@ export function useRecommendationAmounts(
   const list: EditableRecommendation[] = useMemo(() => {
     const merged = recommendations.map((r) => {
       const raw = amounts[r.symbol] ?? balancedBase[r.symbol] ?? r.amount_krw;
-      const amt = Math.max(
-        MIN_BUY_KRW,
-        Math.round(raw / 1000) * 1000
-      );
+      const amt = Math.max(minBuy, Math.round(raw / 1000) * 1000);
       return enrich(r, amt, config, usdtKrw);
     });
 
@@ -97,15 +95,16 @@ export function useRecommendationAmounts(
         selected: r.selected,
       })),
       cashKrw,
-      feePct
+      feePct,
+      minBuy
     );
     return merged
       .map((r) => {
         const amt = scaled[r.symbol] ?? r.amount_krw;
-        return enrich(r, amt >= MIN_BUY_KRW ? amt : 0, config, usdtKrw);
+        return enrich(r, amt >= minBuy ? amt : 0, config, usdtKrw);
       })
-      .filter((r) => r.amount_krw >= MIN_BUY_KRW);
-  }, [recommendations, amounts, balancedBase, config, usdtKrw, cashKrw, feePct, budget]);
+      .filter((r) => r.amount_krw >= minBuy);
+  }, [recommendations, amounts, balancedBase, config, usdtKrw, cashKrw, feePct, budget, minBuy]);
 
   const totalSelected = useMemo(
     () =>
@@ -120,17 +119,17 @@ export function useRecommendationAmounts(
       setAmounts((prev) => {
         const next = {
           ...prev,
-          [symbol]: Math.max(MIN_BUY_KRW, Math.round(amount / 1000) * 1000),
+          [symbol]: Math.max(minBuy, Math.round(amount / 1000) * 1000),
         };
         const draft = recommendations.map((r) => ({
           symbol: r.symbol,
           amount_krw: next[r.symbol] ?? prev[r.symbol] ?? r.amount_krw,
           selected: r.selected,
         }));
-        return balanceRecommendationAmounts(draft, cashKrw, feePct);
+        return balanceRecommendationAmounts(draft, cashKrw, feePct, minBuy);
       });
     },
-    [recommendations, cashKrw, feePct]
+    [recommendations, cashKrw, feePct, minBuy]
   );
 
   const resetToAi = useCallback(
@@ -152,10 +151,10 @@ export function useRecommendationAmounts(
           const row = list.find((r) => r.symbol === sym);
           return {
             symbol: sym,
-            amount_krw: row?.amount_krw ?? amounts[sym] ?? MIN_BUY_KRW,
+            amount_krw: row?.amount_krw ?? amounts[sym] ?? minBuy,
           };
         })
-        .filter((i) => i.amount_krw >= MIN_BUY_KRW);
+        .filter((i) => i.amount_krw >= minBuy);
       const scaled = balanceRecommendationAmounts(
         items.map((i) => ({
           symbol: i.symbol,
@@ -163,13 +162,14 @@ export function useRecommendationAmounts(
           selected: true,
         })),
         cashKrw,
-        feePct
+        feePct,
+        minBuy
       );
       return symbols
-        .filter((sym) => scaled[sym] >= MIN_BUY_KRW)
+        .filter((sym) => scaled[sym] >= minBuy)
         .map((sym) => ({ symbol: sym, amount_krw: scaled[sym] }));
     },
-    [list, amounts, cashKrw, feePct]
+    [list, amounts, cashKrw, feePct, minBuy]
   );
 
   const aiAmounts = useMemo(() => ({ ...balancedBase }), [balancedBase]);

@@ -6,7 +6,7 @@ import {
   fmtUsd,
   fmtVolumeKrw,
   isRunning,
-  MIN_BUY_KRW,
+  getMinBuyKrw,
   fmtPctSetting,
   positionTpSl,
   recommendationTpSl,
@@ -43,10 +43,11 @@ export default function CoinDetailBar({
   const { meta, price_usdt, change_24h, in_portfolio, position, candidate } = view;
   const running = isRunning(botStatus);
   const entry = entryBadge(candidate ?? undefined);
+  const minBuy = getMinBuyKrw(config);
 
   const heldTpSl = position ? positionTpSl(position) : null;
   const previewAmt =
-    recommendation && recommendation.amount_krw >= MIN_BUY_KRW
+    recommendation && recommendation.amount_krw >= minBuy
       ? recommendation.amount_krw
       : 0;
   const previewTpSl =
@@ -157,6 +158,7 @@ export default function CoinDetailBar({
         running={running}
         busy={busy}
         cashKrw={cashKrw}
+        minBuyKrw={minBuy}
         recommendation={recommendation}
         onBuy={onBuy}
         onSell={onSell}
