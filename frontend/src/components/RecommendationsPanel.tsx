@@ -2,7 +2,10 @@ import { useEffect, useState } from "react";
 import type { EditableRecommendation } from "../hooks/useRecommendationAmounts";
 import type { ApplyItem } from "../hooks/useRecommendationAmounts";
 import { deployableCashKrw, fmtKrw, fmtPct, fmtUsd, isRunning } from "../utils";
+import CollapsibleSection from "./CollapsibleSection";
 import RecommendationAmountField from "./RecommendationAmountField";
+
+const REC_PANEL_STORAGE = "aidi-rec-panel-collapsed";
 
 type Props = {
   list: EditableRecommendation[];
@@ -31,7 +34,7 @@ export default function RecommendationsPanel({
 }: Props) {
   const sidebar = variant === "sidebar";
   const [selected, setSelected] = useState<Record<string, boolean>>({});
-  const [expanded, setExpanded] = useState<string | null>(null);
+  const [amountRowOpen, setAmountRowOpen] = useState<string | null>(null);
 
   useEffect(() => {
     const m: Record<string, boolean> = {};
@@ -66,23 +69,20 @@ export default function RecommendationsPanel({
     );
   };
 
-  if (list.length === 0) {
-    return (
-      <section className={`rec-panel empty ${sidebar ? "rec-sidebar" : ""}`}>
-        <h3>투자 제안</h3>
-        <p className="empty">
-          {running
-            ? "분석 중…"
-            : "분석 시작 → AI 제안 (금액 조절 후 승인 · 익절/손절 자동)"}
-        </p>
-      </section>
-    );
-  }
+  const panelClass = `rec-panel ${sidebar ? "rec-sidebar" : ""}${
+    list.length === 0 ? " empty" : ""
+  }`;
 
-  return (
-    <section className={`rec-panel ${sidebar ? "rec-sidebar" : ""}`}>
+  const body =
+    list.length === 0 ? (
+      <p className="empty">
+        {running
+          ? "분석 중…"
+          : "분석 시작 → AI 제안 (금액 조절 후 승인 · 익절/손절 자동)"}
+      </p>
+    ) : (
+      <>
       <div className="rec-head">
-        <h3>투자 제안</h3>
         <p className="panel-hint">
           AI 금액 수정 가능 · 승인 시 손절/익절 자동 · 수수료 편도 {feePct}% (왕복{" "}
           {(feePct * 2).toFixed(2)}% 반영)
@@ -139,13 +139,15 @@ export default function RecommendationsPanel({
                     className="rec-row-amt-btn"
                     onClick={(e) => {
                       e.preventDefault();
-                      setExpanded(expanded === r.symbol ? null : r.symbol);
+                      setAmountRowOpen(
+                        amountRowOpen === r.symbol ? null : r.symbol
+                      );
                     }}
                   >
                     {fmtKrw(r.amount_krw)}원
                   </button>
                 </label>
-                {expanded === r.symbol && (
+                {amountRowOpen === r.symbol && (
                   <div className="rec-expand">
                     <RecommendationAmountField
                       row={r}
@@ -231,6 +233,18 @@ export default function RecommendationsPanel({
           </table>
         )}
       </div>
-    </section>
+      </>
+    );
+
+  return (
+    <CollapsibleSection
+      title="투자 제안"
+      storageKey={REC_PANEL_STORAGE}
+      defaultCollapsed={true}
+      count={list.length}
+      className={panelClass}
+    >
+      {body}
+    </CollapsibleSection>
   );
 }

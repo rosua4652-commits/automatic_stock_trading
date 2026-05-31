@@ -3,6 +3,7 @@ import type { ApplyItem, EditableRecommendation } from "../hooks/useRecommendati
 import type { BacktestStatus, DirectionSignalItem } from "../types";
 import { fmtUsd, isRunning } from "../utils";
 import ActivityPanel from "./ActivityPanel";
+import CollapsibleSection from "./CollapsibleSection";
 import EntryAlertsPanel from "./EntryAlertsPanel";
 import type { BotState } from "../types";
 
@@ -71,9 +72,14 @@ export default function AlertsHub({
       {autoInvestMessage && (
         <p className="auto-invest-banner">{autoInvestMessage}</p>
       )}
-      <section className="alerts-hub-section alerts-hub-recs">
+      <CollapsibleSection
+        title="투자 제안"
+        storageKey="aidi-alerts-rec-collapsed"
+        defaultCollapsed={true}
+        count={visibleRecs.length}
+        className="alerts-hub-section alerts-hub-recs"
+      >
         <div className="alerts-hub-section-head">
-          <h2 className="alerts-hub-title">투자 제안</h2>
           <p className="panel-hint">
             분석 시작=제안만 · 자동 투자 시작=롱/단타 체크 후 BT·학습 통과 시 자동 매수
           </p>
@@ -97,7 +103,7 @@ export default function AlertsHub({
           onOpenChart={onOpenChart}
           onSelectSymbol={onSelectSymbol}
         />
-      </section>
+      </CollapsibleSection>
 
       <section className="alerts-hub-section alerts-hub-direction">
         <div className="alerts-hub-section-head">
