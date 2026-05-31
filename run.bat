@@ -133,6 +133,7 @@ echo.
 echo  Open in browser: http://127.0.0.1:%PORT%
 echo  Tablet same Wi-Fi: http://YOUR-PC-IP:%PORT%
 echo  Stop server: Ctrl+C in this window
+echo  Log file mode: run-log.bat  ^|  View logs: logs-aidi.bat
 echo.
 
 cd /d "%~dp0backend"

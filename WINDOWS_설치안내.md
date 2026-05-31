@@ -67,7 +67,19 @@ http://192.168.0.10:8000
 
 Windows 방화벽 팝업이 뜨면 **허용**.
 
-## 4. Python만으로 실행 (run.bat 대신)
+## 4. 로그 (파일 저장·실시간 보기)
+
+| 파일 | 용도 |
+|------|------|
+| **`logs-aidi.bat`** | 메뉴 — 실시간 tail, 메모장, 폴더 열기, 로그 비우기 |
+| **`run-log.bat`** | 서버 실행 + `logs\aidi-server.log` 에 저장 (화면에도 출력) |
+| **`tail-log.bat`** | 실시간 로그만 바로 보기 |
+
+- 메인 로그: `logs\aidi-server.log`
+- 날짜별: `logs\aidi-YYYY-MM-DD.log`
+- 일반 실행(`run.bat`)은 콘솔만 — 파일 로그는 `run-log.bat` 사용
+
+## 5. Python만으로 실행 (run.bat 대신)
 
 ```cmd
 cd C:\경로\automatic_stock_trading
