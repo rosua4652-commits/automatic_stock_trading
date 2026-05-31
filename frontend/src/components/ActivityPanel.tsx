@@ -1,5 +1,17 @@
+import { useCallback, useState } from "react";
 import type { ActivityEntry, BotState } from "../types";
 import { isRunning } from "../utils";
+
+const COLLAPSED_LINES = 3;
+const STORAGE_KEY = "aidi-activity-collapsed";
+
+function readCollapsedPref(): boolean {
+  try {
+    return localStorage.getItem(STORAGE_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
 
 function fmtTime(ts: number): string {
   if (!ts) return "";
@@ -18,13 +30,30 @@ type Props = {
 export default function ActivityPanel({ bot }: Props) {
   const running = isRunning(bot.status);
   const logs = bot.activity_log ?? [];
+  const [collapsed, setCollapsed] = useState(readCollapsedPref);
+
+  const toggleCollapsed = useCallback(() => {
+    setCollapsed((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem(STORAGE_KEY, next ? "1" : "0");
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  }, []);
 
   if (!running && logs.length === 0) {
     return null;
   }
 
+  const visibleLogs = logs.slice(0, collapsed ? COLLAPSED_LINES : 20);
+
   return (
-    <section className="activity-panel">
+    <section
+      className={`activity-panel${collapsed ? " is-collapsed" : ""}`}
+    >
       <div className="activity-head">
         <h3 className="activity-title">진행 · 로그</h3>
         {running && (bot.seconds_until_scan ?? 0) > 0 && (
@@ -35,28 +64,44 @@ export default function ActivityPanel({ bot }: Props) {
         {bot.phase && running && (
           <span className="activity-phase">{bot.phase_detail || bot.phase}</span>
         )}
+        <button
+          type="button"
+          className="activity-toggle-btn"
+          onClick={toggleCollapsed}
+          aria-expanded={!collapsed}
+          title={collapsed ? "로그 전체 보기" : "로그 줄이기"}
+        >
+          {collapsed ? "펼치기" : "접기"}
+        </button>
       </div>
-      {bot.ai_settings_summary && (
+      {!collapsed && bot.ai_settings_summary && (
         <p className="activity-ai-summary">{bot.ai_settings_summary}</p>
       )}
-      {bot.auto_invest_message && (
+      {!collapsed && bot.auto_invest_message && (
         <p className="activity-auto-msg">{bot.auto_invest_message}</p>
       )}
-      {bot.backtest?.message && (
+      {!collapsed && bot.backtest?.message && (
         <p className="activity-bt-msg">BT: {bot.backtest.message}</p>
       )}
       <ul className="activity-list">
-        {logs.length === 0 ? (
+        {visibleLogs.length === 0 ? (
           <li className="activity-item muted">스캔·자동매수 단계가 여기 표시됩니다</li>
         ) : (
-          logs.slice(0, 20).map((e, i) => (
+          visibleLogs.map((e, i) => (
             <ActivityLine key={`${e.ts}-${i}`} entry={e} />
           ))
         )}
       </ul>
-      <p className="activity-hint">
-        파일 로그: run-log.bat · logs-aidi.bat · logs\aidi-server.log
-      </p>
+      {collapsed && logs.length > COLLAPSED_LINES && (
+        <p className="activity-more-hint">
+          최근 {COLLAPSED_LINES}줄 · 전체 {logs.length}줄 — 펼치기로 더 보기
+        </p>
+      )}
+      {!collapsed && (
+        <p className="activity-hint">
+          파일 로그: run-log.bat · logs-aidi.bat · logs\aidi-server.log
+        </p>
+      )}
     </section>
   );
 }

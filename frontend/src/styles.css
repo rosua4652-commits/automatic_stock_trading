@@ -1860,6 +1860,38 @@ main.layout.chart-layout {
   margin-bottom: 0.5rem;
 }
 
+.activity-toggle-btn {
+  margin-left: auto;
+  padding: 0.2rem 0.55rem;
+  font-size: 0.72rem;
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.activity-toggle-btn:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.activity-panel.is-collapsed {
+  padding-bottom: 0.55rem;
+}
+
+.activity-panel.is-collapsed .activity-list {
+  max-height: 4.6rem;
+  overflow: hidden;
+  margin-top: 0.25rem;
+}
+
+.activity-more-hint {
+  margin: 0.25rem 0 0;
+  font-size: 0.68rem;
+  color: var(--muted);
+}
+
 .activity-title {
   margin: 0;
   font-size: 0.95rem;
