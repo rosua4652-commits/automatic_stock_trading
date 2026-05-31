@@ -1518,6 +1518,26 @@ body {
   border: 1px solid rgba(56, 189, 248, 0.35);
 }
 
+.kill-switch-banner {
+  margin-top: 0.5rem;
+  padding: 0.5rem 0.65rem;
+  border-radius: 8px;
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.45);
+  color: #fecaca;
+  font-size: 0.8rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.risk-status-line {
+  margin-top: 0.35rem;
+  font-size: 0.78rem;
+  color: #a5b4c8;
+}
+
 .btn-ghost {
   background: transparent;
   border: 1px solid var(--border);

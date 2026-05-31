@@ -71,6 +71,9 @@ def status_from_accumulator(
         adjust_cycles=learn.adjust_cycles,
         blocked_count=len(learn.blocked_symbols),
         last_adjust_message=learn.last_adjust_message,
+        execution_win_rate=learn.execution_win_rate,
+        execution_feedback_count=learn.execution_feedback_count,
+        data_maturity_pct=learn.data_maturity_pct,
     )
     if learn.last_adjust_message:
         msg = f"{msg} · {learn.last_adjust_message}"
@@ -119,7 +122,6 @@ async def run_backtest_once(engine=None) -> BacktestStatus:
         symbols,
         default_sl=default_sl,
         default_tp=default_tp,
-        batch_size=20,
     )
     logger.info(
         "[백테스트 주기] 배치 %d종 분석 · %d건 갱신 · 누적 %d회 · 저장 %d종",

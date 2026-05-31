@@ -151,8 +151,12 @@ export default function AlertsHub({
           {backtest?.learning?.long_min_bt_score != null ? (
             <span className="alerts-backtest-params">
               {" "}
-              · 학습 롱≥{backtest.learning.long_min_bt_score?.toFixed(0)} 단타≥
+              · BT성숙 {backtest.learning.data_maturity_pct?.toFixed(0) ?? 0}% ·
+              롱≥{backtest.learning.long_min_bt_score?.toFixed(0)} 단타≥
               {backtest.learning.scalp_min_bt_score?.toFixed(0)}
+              {(backtest.learning.execution_feedback_count ?? 0) > 0
+                ? ` · 체결 ${backtest.learning.execution_feedback_count}건 승률 ${backtest.learning.execution_win_rate?.toFixed(0)}%`
+                : ""}
               {backtest.learning.last_adjust_message
                 ? ` (${backtest.learning.last_adjust_message})`
                 : ""}

@@ -42,6 +42,28 @@ class AppConfig(BaseModel):
         le=8,
         description="자동투자 시 스캔당 최대 매수 건수",
     )
+    paper_max_auto_buys_per_scan: int = Field(
+        default=4,
+        ge=0,
+        le=10,
+        description="모의 자동투자 스캔당 최대 매수",
+    )
+    paper_auto_deploy_pct: float = Field(
+        default=40.0,
+        ge=5.0,
+        le=90.0,
+        description="모의 자동투자 시 가용 현금 중 스캔당 배분 %",
+    )
+    daily_loss_limit_pct: float = Field(
+        default=5.0,
+        ge=1.0,
+        le=25.0,
+        description="당일 총자산 하락 % 초과 시 자동매수 중지",
+    )
+    allow_live_auto_invest: bool = Field(
+        default=False,
+        description="실거래 자동투자 허용(기본 끔)",
+    )
     exchange: str = Field(default="upbit", description="upbit | binance")
     api_access_key: str = ""
     api_secret_key: str = ""
@@ -330,6 +352,18 @@ class BacktestLearningStatus(BaseModel):
     adjust_cycles: int = 0
     blocked_count: int = 0
     last_adjust_message: str = ""
+    execution_win_rate: float = 0.0
+    execution_feedback_count: int = 0
+    data_maturity_pct: float = 0.0
+
+
+class AutoInvestRiskStatus(BaseModel):
+    kill_switch: bool = False
+    kill_reason: str = ""
+    daily_pnl_krw: float = 0.0
+    daily_pnl_pct: float = 0.0
+    day_equity_start_krw: float = 0.0
+    message: str = ""
 
 
 class BacktestStatus(BaseModel):
@@ -365,6 +399,8 @@ class BotState(BaseModel):
     auto_invest_long: bool = False
     auto_invest_scalp: bool = False
     auto_invest_message: str = ""
+    auto_risk: AutoInvestRiskStatus = Field(default_factory=AutoInvestRiskStatus)
+    paper_auto_full: bool = False
     candidates: list[CoinCandidate] = Field(default_factory=list)
     liquid_symbols: list[str] = Field(
         default_factory=list,

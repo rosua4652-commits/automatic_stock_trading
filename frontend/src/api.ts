@@ -82,6 +82,10 @@ export async function stopBot(): Promise<StatusPayload> {
   return request("/api/bot/stop", { method: "POST" });
 }
 
+export async function resetRiskKill(): Promise<StatusPayload> {
+  return request("/api/risk/reset-kill", { method: "POST" });
+}
+
 export type RecommendationApplyItem = {
   symbol: string;
   amount_krw: number;

@@ -12,6 +12,7 @@ import {
   setPositionExclude,
   setPositionExitPlan,
   setViewSymbol,
+  resetRiskKill,
   startBot,
   stopBot,
 } from "./api";
@@ -174,6 +175,10 @@ export default function App() {
 
   const startAutoInvest = async () => {
     if (botBusy || !data || running || stopping) return;
+    if (data.config.trade_mode !== "paper") {
+      showToast("완전 자동화는 모의투자 전용입니다. 설정에서 모의투자로 전환하세요.");
+      return;
+    }
     if (!autoLong && !autoScalp) {
       showToast("롱 또는 단타를 하나 이상 체크하세요");
       return;
@@ -210,7 +215,7 @@ export default function App() {
               : "단타";
         showToast(
           s.message ||
-            `자동투자(${mix}) · BT 학습 반영 · 스캔마다 조건 충족 시 매수`
+            `모의 완전자동(${mix}) · BT·체결 학습 · 스캔·매수·익절/손절`
         );
       }
     } catch (e) {
@@ -492,6 +497,29 @@ export default function App() {
             : data.account_link?.linked
               ? `실거래 · 총자산 ${fmtKrw(data.account_link.total_assets_krw ?? data.portfolio.total_value_krw)}원`
               : `실거래 — ${data.account_link?.message || "API 연동 필요"}`}
+          {data.bot.auto_risk?.kill_switch ? (
+            <div className="kill-switch-banner">
+              <strong>일손실 킬 스위치</strong> —{" "}
+              {data.bot.auto_risk.kill_reason || "자동 매수 중지"}
+              <button
+                type="button"
+                className="btn-ghost btn-xs"
+                onClick={async () => {
+                  try {
+                    const s = await resetRiskKill();
+                    applyPayload(s);
+                    showToast(s.message || "킬 스위치 해제");
+                  } catch (e) {
+                    showToast(e instanceof Error ? e.message : "해제 실패");
+                  }
+                }}
+              >
+                해제
+              </button>
+            </div>
+          ) : data.bot.auto_invest_active && data.bot.auto_risk?.message ? (
+            <div className="risk-status-line">{data.bot.auto_risk.message}</div>
+          ) : null}
         </div>
 
         <header className="topbar topbar-compact topbar-with-funds">
@@ -504,8 +532,8 @@ export default function App() {
             variant="topbar"
           />
           <div className="top-actions">
-            {!running && !stopping ? (
-              <div className="auto-invest-opts" title="자동투자 전략 선택">
+            {!running && !stopping && isPaper ? (
+              <div className="auto-invest-opts" title="모의투자 완전 자동화">
                 <label className="auto-check">
                   <input
                     type="checkbox"

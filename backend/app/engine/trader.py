@@ -19,9 +19,12 @@ from app.engine.portfolio_store import store
 from app.engine.backtest_optimizer import BacktestAccumulator
 from app.engine.backtest_runner import get_accumulator
 from app.engine.backtest_learning import load_learning_state, strategy_sl_tp
+from app.engine.risk_manager import check_auto_invest_allowed, evaluate_daily_risk
+from app.engine.trade_feedback import record_paper_execution
 from app.engine.recommendations import (
     build_recommendations,
     cap_apply_amounts,
+    deployable_cash_krw,
     filter_recommendations_for_auto,
 )
 from app.market.upbit_data import market
@@ -170,6 +173,27 @@ class TradingEngine:
         self._status_version += 1
         return self._status_version
 
+    def _refresh_auto_risk_status(self) -> str:
+        from app.models import AutoInvestRiskStatus
+
+        self.bind_portfolio()
+        snap = self.portfolio.snapshot({}, self.config)
+        state, daily_pnl, daily_pct = evaluate_daily_risk(
+            self.config,
+            snap,
+            realized_pnl_krw=self.portfolio.realized_pnl_krw,
+        )
+        self.bot.auto_risk = AutoInvestRiskStatus(
+            kill_switch=state.kill_switch,
+            kill_reason=state.kill_reason,
+            daily_pnl_krw=round(daily_pnl, 0),
+            daily_pnl_pct=round(daily_pct, 2),
+            day_equity_start_krw=round(state.equity_start_krw, 0),
+            message=state.kill_reason
+            or f"당일 {daily_pct:+.2f}% ({daily_pnl:+,.0f}원)",
+        )
+        return self.bot.auto_risk.message
+
     async def start(
         self,
         *,
@@ -179,6 +203,14 @@ class TradingEngine:
     ) -> tuple[bool, str]:
         if auto_invest and not (auto_long or auto_scalp):
             return False, "자동투자: 롱 또는 단타 중 하나 이상 체크하세요"
+
+        if auto_invest and self._is_live() and not getattr(
+            self.config, "allow_live_auto_invest", False
+        ):
+            return (
+                False,
+                "실거래 자동투자는 비활성입니다. 모의투자에서 완전 자동화를 먼저 검증하세요.",
+            )
 
         if self._is_live():
             if not has_api_keys(self.config):
@@ -212,12 +244,19 @@ class TradingEngine:
             if auto_long and auto_scalp:
                 mix += " 혼합"
             learn = load_learning_state()
+            self.bot.paper_auto_full = not self._is_live()
+            risk_msg = self._refresh_auto_risk_status()
+            limit = float(getattr(self.config, "daily_loss_limit_pct", 5.0) or 5.0)
             self.bot.auto_invest_message = (
-                f"자동투자 {mix} · BT학습 롱≥{learn.long_min_bt_score:.0f} "
-                f"단타≥{learn.scalp_min_bt_score:.0f}"
+                f"{'[모의 완전자동] ' if self.bot.paper_auto_full else ''}"
+                f"자동투자 {mix} · BT성숙 {learn.data_maturity_pct:.0f}% · "
+                f"롱≥{learn.long_min_bt_score:.0f} 단타≥{learn.scalp_min_bt_score:.0f} · "
+                f"일손실한도 {limit:.1f}%"
             )
+            if risk_msg:
+                self.bot.auto_invest_message += f" · {risk_msg}"
             self.bot.message = (
-                f"[{mode}] {self.bot.auto_invest_message} · 스캔 후 자동 매수"
+                f"[{mode}] {self.bot.auto_invest_message} · 스캔·매수·익절/손절 자동"
             )
             logger.info("[자동투자 시작] %s · %s", mode, self.bot.auto_invest_message)
         else:
@@ -257,6 +296,7 @@ class TradingEngine:
         self.bot.auto_invest_long = False
         self.bot.auto_invest_scalp = False
         self.bot.auto_invest_message = ""
+        self.bot.paper_auto_full = False
         self.bot.message = "분석 중지됨 · 제안 목록에서 승인 매수 또는 수동 매매"
         logger.info("[분석 중지] 루프 종료 · 제안·수동 매매만 가능")
         self._bump_version()
@@ -773,8 +813,28 @@ class TradingEngine:
     async def _maybe_auto_invest_after_scan(self) -> None:
         if not self.bot.auto_invest_active or not self.is_running():
             return
+
+        self.bind_portfolio()
+        snap = self.portfolio.snapshot({}, self.config)
+        allowed, risk_msg, _state = check_auto_invest_allowed(
+            self.config,
+            snap,
+            realized_pnl_krw=self.portfolio.realized_pnl_krw,
+            is_paper=not self._is_live(),
+        )
+        self._refresh_auto_risk_status()
+        if not allowed:
+            self.bot.auto_invest_message = risk_msg
+            logger.info("[자동투자] 스킵 · %s", risk_msg)
+            return
+
         acc = self._backtest_acc or get_accumulator()
-        max_n = int(getattr(self.config, "max_auto_buys_per_scan", 2) or 2)
+        if self.bot.paper_auto_full:
+            max_n = int(
+                getattr(self.config, "paper_max_auto_buys_per_scan", 4) or 4
+            )
+        else:
+            max_n = int(getattr(self.config, "max_auto_buys_per_scan", 2) or 2)
         picks = filter_recommendations_for_auto(
             self.bot.recommendations,
             auto_long=self.bot.auto_invest_long,
@@ -790,7 +850,19 @@ class TradingEngine:
 
         raw_amts = {r.symbol.upper(): float(r.amount_krw) for r in picks}
         fee_pct = float(getattr(self.config, "trading_fee_pct", 0.05))
-        capped = cap_apply_amounts(raw_amts, self.portfolio.cash_krw, fee_pct)
+        cash = self.portfolio.cash_krw
+        if self.bot.paper_auto_full:
+            deploy_pct = float(
+                getattr(self.config, "paper_auto_deploy_pct", 40.0) or 40.0
+            )
+            cap_budget = deployable_cash_krw(cash, fee_pct) * (deploy_pct / 100.0)
+            total_raw = sum(raw_amts.values())
+            if total_raw > cap_budget > 0:
+                scale = cap_budget / total_raw
+                raw_amts = {
+                    k: max(0.0, round(v * scale, -3)) for k, v in raw_amts.items()
+                }
+        capped = cap_apply_amounts(raw_amts, cash, fee_pct)
         if not capped:
             self.bot.auto_invest_message = "자동 매수 스킵 — 가용 현금 부족"
             return
@@ -1248,13 +1320,31 @@ class TradingEngine:
         if px <= 0:
             pos = self.portfolio.positions.get(sym)
             px = pos.current_price if pos else 0.0
-        if px > 0 and self.portfolio.sell(sym, px, reason, auto_only=not full):
-            self._persist()
-            self.bot.recent_trades = self.portfolio.trades[-30:]
-            self.bot.message = f"{sym} {reason} 자동 매도 완료"
-            self._bump_version()
-            self._notify()
-            return True
+        if px > 0:
+            pos = self.portfolio.positions.get(sym)
+            outlook = pos.entry_outlook if pos else ""
+            cost_basis = pos.auto_cost_basis_krw if pos else 0.0
+            if full and pos:
+                cost_basis = pos.cost_basis_krw
+            realized_before = self.portfolio.realized_pnl_krw
+            evt = self.portfolio.sell(sym, px, reason, auto_only=not full)
+            if evt:
+                pnl_delta = self.portfolio.realized_pnl_krw - realized_before
+                if cost_basis > 0 or abs(pnl_delta) > 0:
+                    fb = record_paper_execution(
+                        sym,
+                        entry_outlook=outlook,
+                        pnl_krw=pnl_delta,
+                        cost_basis_krw=max(cost_basis, 1.0),
+                        reason=reason,
+                    )
+                    logger.info("[체결 피드백] %s", fb)
+                self._persist()
+                self.bot.recent_trades = self.portfolio.trades[-30:]
+                self.bot.message = f"{sym} {reason} 자동 매도 완료"
+                self._bump_version()
+                self._notify()
+                return True
         self.bot.message = f"{sym} {reason} 자동 매도 실패 (시세 없음)"
         self._notify()
         return False

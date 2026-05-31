@@ -331,18 +331,29 @@ def _update_global_best(acc: BacktestAccumulator) -> None:
 _cycle_offset = 0
 
 
+def adaptive_batch_size(acc: BacktestAccumulator, base: int = 12) -> int:
+    """데이터가 쌓일수록 한 주기에 더 많은 종목 분석."""
+    from app.engine.backtest_learning import compute_data_maturity
+
+    maturity = compute_data_maturity(acc) / 100.0
+    return int(min(28, max(base, base + maturity * 16)))
+
+
 async def run_accumulator_cycle(
     symbols: list[str],
     *,
     default_sl: float,
     default_tp: float,
-    batch_size: int = 18,
+    batch_size: int | None = None,
 ) -> tuple[BacktestAccumulator, int, int]:
     """심볼 배치 시뮬 → 파일 누적. 반환: (accumulator, tested, new_records)."""
     global _cycle_offset
     acc = BacktestAccumulator()
     if not symbols:
         return acc, 0, 0
+
+    if batch_size is None:
+        batch_size = adaptive_batch_size(acc)
 
     n = len(symbols)
     start = _cycle_offset % n

@@ -22,6 +22,10 @@ export interface AppConfig {
   min_buy_score: number;
   min_entry_score: number;
   max_auto_buys_per_scan?: number;
+  paper_max_auto_buys_per_scan?: number;
+  paper_auto_deploy_pct?: number;
+  daily_loss_limit_pct?: number;
+  allow_live_auto_invest?: boolean;
   exchange?: string;
   api_access_key?: string;
   api_secret_key?: string;
@@ -238,6 +242,18 @@ export interface BacktestLearningStatus {
   adjust_cycles?: number;
   blocked_count?: number;
   last_adjust_message?: string;
+  execution_win_rate?: number;
+  execution_feedback_count?: number;
+  data_maturity_pct?: number;
+}
+
+export interface AutoInvestRiskStatus {
+  kill_switch?: boolean;
+  kill_reason?: string;
+  daily_pnl_krw?: number;
+  daily_pnl_pct?: number;
+  day_equity_start_krw?: number;
+  message?: string;
 }
 
 export interface BacktestStatus {
@@ -272,6 +288,8 @@ export interface BotState {
   auto_invest_long?: boolean;
   auto_invest_scalp?: boolean;
   auto_invest_message?: string;
+  auto_risk?: AutoInvestRiskStatus;
+  paper_auto_full?: boolean;
 }
 
 export interface StatusPayload {

@@ -26,6 +26,9 @@ class BacktestLearningState:
     blocked_symbols: list[str] = field(default_factory=list)
     last_adjust_message: str = ""
     updated_at: float = 0.0
+    execution_win_rate: float = 0.0
+    execution_feedback_count: int = 0
+    data_maturity_pct: float = 0.0
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -41,6 +44,9 @@ class BacktestLearningState:
             "blocked_symbols": list(self.blocked_symbols)[-80:],
             "last_adjust_message": self.last_adjust_message,
             "updated_at": self.updated_at,
+            "execution_win_rate": round(self.execution_win_rate, 2),
+            "execution_feedback_count": self.execution_feedback_count,
+            "data_maturity_pct": round(self.data_maturity_pct, 1),
         }
 
     @classmethod
@@ -63,6 +69,9 @@ class BacktestLearningState:
             blocked_symbols=[str(s).upper() for s in blocked],
             last_adjust_message=str(d.get("last_adjust_message") or ""),
             updated_at=float(d.get("updated_at") or 0.0),
+            execution_win_rate=float(d.get("execution_win_rate") or 0.0),
+            execution_feedback_count=int(d.get("execution_feedback_count") or 0),
+            data_maturity_pct=float(d.get("data_maturity_pct") or 0.0),
         )
 
 
@@ -84,6 +93,12 @@ def _side_expectancy(st: SideStats) -> float:
     return wr * st.best_tp_pct - (1 - wr) * st.best_sl_pct
 
 
+def compute_data_maturity(acc: BacktestAccumulator) -> float:
+    """누적 종목·사이클이 많을수록 0~100."""
+    depth = len(acc.symbols) * max(1, acc.cycles)
+    return min(100.0, depth / 10.0)
+
+
 def symbol_passes_learning(
     acc: BacktestAccumulator,
     learning: BacktestLearningState,
@@ -94,14 +109,23 @@ def symbol_passes_learning(
     """mode: long | scalp"""
     sym = symbol.upper()
     if sym in learning.blocked_symbols:
-        return False, "백테스트 차단 종목"
+        return False, "학습 차단 종목(BT·체결)"
+    maturity = learning.data_maturity_pct or compute_data_maturity(acc)
     rec = acc.symbols.get(sym)
+    if not rec and maturity < 15:
+        return False, "BT 데이터 부족(초기 구간)"
     if not rec:
-        return True, "BT 데이터 없음(신규)"
+        if maturity >= 25:
+            return True, "BT 신규(성숙도 충분)"
+        return False, "BT 미검증 종목"
     st = rec.long if mode == "long" else rec.short
     floor = (
         learning.long_min_bt_score if mode == "long" else learning.scalp_min_bt_score
     )
+    # 데이터 많을수록 최소 거래 수 요구
+    min_trades = 1 if maturity < 40 else (2 if maturity < 70 else 3)
+    if st.trades < min_trades and maturity >= 30:
+        return False, f"BT 거래 수 {st.trades} < 요구 {min_trades}"
     if st.trades >= 2 and st.score < floor:
         return False, f"BT점수 {st.score:.0f} < 학습기준 {floor:.0f}"
     if st.trades >= 3 and st.win_rate_pct < 38 and _side_expectancy(st) < 0:
@@ -158,6 +182,8 @@ def update_learning_from_batch(
         learning.recent_batch_win_rate = wins / trades * 100
         learning.recent_batch_trades = trades
     learning.adjust_cycles += 1
+    learning.data_maturity_pct = compute_data_maturity(acc)
+    maturity = learning.data_maturity_pct / 100.0
 
     g_sl, g_tp = acc.best_global_params(default_sl, default_tp)
     if learning.long_sl_pct <= 0:
@@ -168,10 +194,11 @@ def update_learning_from_batch(
 
     wr = learning.recent_batch_win_rate
     # 임계값 조정 — 성과 나쁘면 엄격, 좋으면 소폭 완화
+    step = 0.8 + maturity * 0.7
     if trades >= 5:
         if wr < 42:
-            learning.long_min_bt_score = min(55.0, learning.long_min_bt_score + 1.5)
-            learning.scalp_min_bt_score = min(52.0, learning.scalp_min_bt_score + 1.5)
+            learning.long_min_bt_score = min(55.0, learning.long_min_bt_score + step)
+            learning.scalp_min_bt_score = min(52.0, learning.scalp_min_bt_score + step)
             learning.last_adjust_message = (
                 f"배치 승률 {wr:.0f}% 낮음 → 진입 기준 상향 "
                 f"(롱≥{learning.long_min_bt_score:.0f} 단타≥{learning.scalp_min_bt_score:.0f})"

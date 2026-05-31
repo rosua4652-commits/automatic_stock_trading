@@ -46,7 +46,7 @@ STATIC_DIR = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
 # PC에서 run.bat 시작 시 표시 — GitHub 최신과 비교용
-AIDI_BUILD = "2026-05-31-auto-invest-learning"
+AIDI_BUILD = "2026-05-31-paper-full-auto"
 
 
 def _load_pc_path_hint() -> str:
@@ -148,7 +148,9 @@ async def _build_status() -> dict:
         except Exception:
             pass
     view = engine.build_coin_view(engine.bot.view_symbol, prices, tickers)
-    engine.bot.manual_mode = True
+    engine.bot.manual_mode = not engine.bot.auto_invest_active
+    if engine.bot.auto_invest_active or engine.config.trade_mode == TradeMode.PAPER:
+        engine._refresh_auto_risk_status()
     engine.bot.recent_trades = portfolio.trades[-40:]
     tab_quotes = await engine.tab_quotes_map()
 
@@ -173,6 +175,9 @@ async def _build_status() -> dict:
         "upbit_trade_history": True,
         "auto_invest_long_scalp": True,
         "backtest_learning": True,
+        "paper_full_auto": True,
+        "daily_loss_kill": True,
+        "execution_feedback": True,
     }
     payload["all_trades"] = [t.model_dump() for t in portfolio.trades[-500:]]
     if engine.config.trade_mode == TradeMode.LIVE:
@@ -444,6 +449,19 @@ async def bot_start(body: BotStartRequest | None = None):
     )
     status = await _build_status()
     status["ok"] = ok
+    status["message"] = msg
+    return status
+
+
+@api.post("/risk/reset-kill")
+async def risk_reset_kill():
+    """일손실 킬 스위치 수동 해제 (당일)."""
+    from app.engine.risk_manager import reset_kill_switch
+
+    msg = reset_kill_switch()
+    engine._refresh_auto_risk_status()
+    status = await _build_status()
+    status["ok"] = True
     status["message"] = msg
     return status
 
