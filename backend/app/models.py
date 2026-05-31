@@ -179,6 +179,8 @@ class Position(BaseModel):
     entry_reason: str = ""
     entry_score: float = 0.0
     entry_outlook: str = ""
+    auto_exit_sl_pct: float = 0.0
+    auto_exit_tp_pct: float = 0.0
     excluded_from_auto: bool = False
     custom_sl_tp: bool = False
     custom_stop_loss_pct: float = 0.0

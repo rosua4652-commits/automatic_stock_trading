@@ -521,6 +521,8 @@ class PortfolioManager:
                 if pos.stop_loss <= 0:
                     pos.stop_loss = price_usdt * (1 - stop_loss_pct)
                     pos.take_profit = price_usdt * (1 + take_profit_pct)
+                pos.auto_exit_sl_pct = round(stop_loss_pct * 100, 4)
+                pos.auto_exit_tp_pct = round(take_profit_pct * 100, 4)
                 pos.trailing_high = max(pos.trailing_high, price_usdt)
             else:
                 new_man = pos.manual_quantity + qty
@@ -561,6 +563,8 @@ class PortfolioManager:
             entry_reason=entry_reason,
             entry_score=entry_score,
             entry_outlook=entry_outlook or ("AI 자동투자" if auto_managed else ""),
+            auto_exit_sl_pct=round(stop_loss_pct * 100, 4) if auto_managed else 0.0,
+            auto_exit_tp_pct=round(take_profit_pct * 100, 4) if auto_managed else 0.0,
             excluded_from_auto=False,
         )
         if not auto_managed:

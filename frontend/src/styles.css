@@ -3350,6 +3350,18 @@ main.layout.chart-layout {
   margin-left: 0.35rem;
 }
 
+.badge.tier-scalp {
+  background: rgba(251, 191, 36, 0.22);
+  color: #fbbf24;
+  font-weight: 600;
+}
+
+.badge.tier-long {
+  background: rgba(56, 139, 253, 0.22);
+  color: var(--accent);
+  font-weight: 600;
+}
+
 .badge.auto {
   background: rgba(59, 158, 255, 0.2);
   color: var(--accent);

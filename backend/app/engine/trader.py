@@ -1455,13 +1455,15 @@ class TradingEngine:
         if price > pos.trailing_high:
             pos.trailing_high = price
 
-        tp_ratio = self.config.take_profit_pct / 100
-        sl_ratio = self.config.stop_loss_pct / 100
+        sl_p = float(getattr(pos, "auto_exit_sl_pct", 0) or 0) or self.config.stop_loss_pct
+        tp_p = float(getattr(pos, "auto_exit_tp_pct", 0) or 0) or self.config.take_profit_pct
+        sl_ratio = sl_p / 100
+        tp_ratio = tp_p / 100
         if entry > 0 and not pos.custom_sl_tp:
-            pos.take_profit = entry * (1 + tp_ratio)
-            base_sl = entry * (1 - sl_ratio)
+            if pos.take_profit <= 0:
+                pos.take_profit = entry * (1 + tp_ratio)
             if pos.stop_loss <= 0:
-                pos.stop_loss = base_sl
+                pos.stop_loss = entry * (1 - sl_ratio)
 
         auto_pnl = (price - entry) / entry if entry > 0 else 0.0
 

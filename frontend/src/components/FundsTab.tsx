@@ -20,6 +20,7 @@ import {
   MIN_BUY_KRW,
   pctFromAvg,
   pricesFromExitPct,
+  resolveEntryTier,
   roundPct2,
 } from "../utils";
 import BuyAmountControl, { maxBuyKrw } from "./BuyAmountControl";
@@ -142,6 +143,8 @@ function PositionCard({
   const slKrw = fxKrw > 0 ? pos.stop_loss * fxKrw : 0;
   const tpKrw = fxKrw > 0 ? pos.take_profit * fxKrw : 0;
 
+  const tier = resolveEntryTier(pos);
+
   const applyExitPlan = async (
     custom: boolean,
     slPct?: number,
@@ -160,8 +163,17 @@ function PositionCard({
         <div>
           <h4>{pos.name_ko}</h4>
           <span className="fund-pair">{pos.pair_label}</span>
+          {tier.kind === "scalp" && (
+            <span className="badge tier-scalp">단타</span>
+          )}
+          {tier.kind === "long" && (
+            <span className="badge tier-long">롱</span>
+          )}
           {pos.auto_quantity > 0 && (
-            <span className="badge auto">AI {fmtQty(pos.auto_quantity)}</span>
+            <span className="badge auto">
+              {tier.kind === "ai" ? "AI " : ""}
+              {fmtQty(pos.auto_quantity)}
+            </span>
           )}
           {pos.manual_quantity > 0 && (
             <span className="badge manual">수동 {fmtQty(pos.manual_quantity)}</span>
@@ -297,6 +309,11 @@ function PositionCard({
         )}
       </div>
 
+      {pos.entry_outlook && (
+        <p className="entry-outlook-line dim">
+          <strong>진입 유형:</strong> {pos.entry_outlook}
+        </p>
+      )}
       {pos.entry_reason && (
         <p className="entry-reason">
           <strong>진입 근거:</strong> {pos.entry_reason}

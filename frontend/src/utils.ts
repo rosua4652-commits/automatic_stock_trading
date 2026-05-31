@@ -439,6 +439,20 @@ export function pricesFromExitPct(
   };
 }
 
+/** 보유 카드 — 롱/단타/AI 구분 (entry_outlook 기준) */
+export function resolveEntryTier(pos: {
+  entry_outlook?: string;
+  auto_quantity?: number;
+  manual_quantity?: number;
+}): { kind: "scalp" | "long" | "ai" | "manual" | null; label: string } {
+  const o = (pos.entry_outlook || "").toLowerCase();
+  if (o.includes("단타")) return { kind: "scalp", label: "단타" };
+  if (o.includes("롱")) return { kind: "long", label: "롱" };
+  if ((pos.auto_quantity ?? 0) > 1e-10) return { kind: "ai", label: "AI" };
+  if ((pos.manual_quantity ?? 0) > 1e-10) return { kind: "manual", label: "수동" };
+  return { kind: null, label: "" };
+}
+
 export const DEFAULT_CONFIG = {
   trade_mode: "paper" as const,
   target_profit_krw: 2_000_000,
