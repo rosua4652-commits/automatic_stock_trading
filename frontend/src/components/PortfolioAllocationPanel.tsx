@@ -2,7 +2,10 @@ import { useMemo } from "react";
 import type { Portfolio } from "../types";
 import { fmtKrw } from "../utils";
 import { portfolioAllocationSlices } from "../utils/chartData";
+import CollapsibleSection from "./CollapsibleSection";
 import SvgPieChart from "./charts/SvgPieChart";
+
+const STORAGE_KEY = "aidi-funds-allocation-collapsed";
 
 type Props = {
   portfolio: Portfolio;
@@ -18,18 +21,39 @@ export default function PortfolioAllocationPanel({ portfolio }: Props) {
     0
   );
 
+  const collapsedHint = useMemo(() => {
+    if (slices.length === 0) {
+      return "보유 없음 · 「펼치기」로 비율 차트";
+    }
+    const parts: string[] = [`총 ${fmtKrw(portfolio.total_value_krw)}원`];
+    const cash = slices.find((s) => s.id === "cash");
+    if (cash?.pct != null) {
+      parts.push(`현금 ${cash.pct.toFixed(1)}%`);
+    }
+    for (const s of slices.filter((x) => x.id !== "cash").slice(0, 2)) {
+      if (s.pct != null) {
+        parts.push(`${s.label} ${s.pct.toFixed(1)}%`);
+      }
+    }
+    parts.push("「펼치기」로 차트");
+    return parts.join(" · ");
+  }, [slices, portfolio.total_value_krw]);
+
   return (
-    <section className="funds-allocation-panel">
-      <div className="funds-allocation-head">
-        <h3>자산 현황</h3>
-        <div className="funds-allocation-totals">
-          <span>총 {fmtKrw(portfolio.total_value_krw)}원</span>
-          <span className="dim">
-            현금 {fmtKrw(portfolio.cash_krw)} · 코인 {fmtKrw(coinVal)}
-          </span>
-        </div>
-      </div>
-      <SvgPieChart slices={slices} size={220} emptyText="보유 자산 없음" />
-    </section>
+    <CollapsibleSection
+      title="자산 현황"
+      storageKey={STORAGE_KEY}
+      defaultCollapsed
+      collapsedHint={collapsedHint}
+      className="funds-allocation-panel"
+    >
+      <p className="funds-allocation-summary">
+        <span>총 {fmtKrw(portfolio.total_value_krw)}원</span>
+        <span className="dim">
+          현금 {fmtKrw(portfolio.cash_krw)} · 코인 {fmtKrw(coinVal)}
+        </span>
+      </p>
+      <SvgPieChart slices={slices} size={132} emptyText="보유 자산 없음" />
+    </CollapsibleSection>
   );
 }

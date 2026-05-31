@@ -4090,33 +4090,38 @@ main.layout.chart-layout {
   background: #f87171;
 }
 
-.funds-allocation-panel {
-  margin: 0 1rem 1rem;
-  padding: 0.85rem 1rem;
-  background: var(--surface2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
+.funds-allocation-panel.collapsible-section {
+  margin: 0 1rem 0.4rem;
 }
 
-.funds-allocation-head {
+.funds-allocation-panel.collapsible-section.is-collapsed {
+  margin: 0 1rem 0.35rem;
+}
+
+.funds-allocation-summary {
   display: flex;
   flex-wrap: wrap;
-  justify-content: space-between;
   align-items: baseline;
+  gap: 0.35rem 0.75rem;
+  margin: 0 0.5rem 0.35rem;
+  padding: 0 0.15rem;
+  font-size: 0.8rem;
+}
+
+.funds-allocation-summary .dim {
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.funds-allocation-panel .chart-pie-body {
+  justify-content: flex-start;
   gap: 0.5rem;
-  margin-bottom: 0.5rem;
 }
 
-.funds-allocation-head h3 {
-  margin: 0;
-  font-size: 1rem;
-}
-
-.funds-allocation-totals {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  font-size: 0.85rem;
+.funds-allocation-panel .chart-legend {
+  max-height: 110px;
+  font-size: 0.72rem;
+  min-width: 100px;
 }
 
 .funds-tab-body {
