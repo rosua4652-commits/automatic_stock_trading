@@ -43,7 +43,7 @@ STATIC_DIR = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
 # PC에서 run.bat 시작 시 표시 — GitHub 최신과 비교용
-AIDI_BUILD = "2026-03-30-upbit-trades"
+AIDI_BUILD = "2026-03-30-upbit-trades-v2"
 
 
 def _load_pc_path_hint() -> str:
@@ -170,6 +170,10 @@ async def _build_status() -> dict:
         "upbit_trade_history": True,
     }
     payload["all_trades"] = [t.model_dump() for t in portfolio.trades[-200:]]
+    if engine.config.trade_mode == TradeMode.LIVE:
+        err = store._live_meta.get("trades_sync_error")
+        if err:
+            payload["trades_sync_error"] = str(err)
     outbound = await get_outbound_public_ip()
     ip4 = await outbound_ipv4_via_same_stack()
     cred = load_credentials()

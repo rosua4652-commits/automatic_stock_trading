@@ -273,7 +273,7 @@ async def _sync_upbit(
     portfolio.realized_pnl_krw = float(live_meta.get("realized_pnl_krw", 0))
 
     force_trades = bool(live_meta.pop("trades_force_sync", False)) or not (
-        live_meta.get("trades") and live_meta.get("trades_upbit_synced_at")
+        portfolio.trades or live_meta.get("trades")
     )
     portfolio.trades = await load_trades_from_upbit(
         upbit_client,

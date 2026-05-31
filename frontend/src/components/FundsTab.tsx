@@ -32,6 +32,7 @@ type Props = {
   botStatus: string;
   manualMode: boolean;
   tradeMode?: "paper" | "live";
+  tradesSyncError?: string;
   upbitSnapshot?: UpbitAccountSnapshot | null;
   onManualBuy: (symbol: string, amountKrw: number) => Promise<void>;
   onManualSell: (symbol: string, percent: number) => Promise<void>;
@@ -354,6 +355,7 @@ export default function FundsTab({
   botStatus,
   manualMode,
   tradeMode = "paper",
+  tradesSyncError,
   upbitSnapshot,
   onManualBuy,
   onManualSell,
@@ -496,7 +498,11 @@ export default function FundsTab({
               {trades.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="empty-cell">
-                    체결 내역 없음
+                    {tradesSyncError
+                      ? `체결 내역 없음 — ${tradesSyncError}`
+                      : tradeMode === "live"
+                        ? "업비트 체결 조회 중… (API 키에 주문·거래 조회 권한 필요)"
+                        : "체결 내역 없음"}
                   </td>
                 </tr>
               ) : (

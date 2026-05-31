@@ -199,6 +199,8 @@ class UpbitClient:
         st = states or ["done"]
         params["states[]"] = st
         rows = await self._auth_get("/v1/orders/closed", params)
+        if isinstance(rows, dict):
+            return [rows]
         return rows if isinstance(rows, list) else []
 
     async def orders_by_uuids(self, uuids: list[str]) -> list[dict]:
@@ -208,6 +210,8 @@ class UpbitClient:
             return []
         params: dict[str, Any] = {"uuids[]": clean}
         rows = await self._auth_get("/v1/orders/uuids", params)
+        if isinstance(rows, dict):
+            return [rows]
         return rows if isinstance(rows, list) else []
 
     async def open_orders(self, market: str | None = None) -> list[dict]:

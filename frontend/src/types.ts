@@ -240,6 +240,7 @@ export interface StatusPayload {
     saved_access_key?: string;
   };
   all_trades?: TradeEvent[];
+  trades_sync_error?: string;
   ok?: boolean;
   message?: string;
   switch_message?: string;
