@@ -7,7 +7,11 @@ class Settings(BaseSettings):
     binance_api: str = "https://api.binance.com/api/v3"
     scan_interval_sec: int = 45
     max_positions: int = 6
+    # 스캔·탭 최소 24h 거래대금 (USDT 환산)
     min_quote_volume_usdt: float = 400_000.0
+    # 자동 단타: 유동성·변동성 하한
+    scalp_min_quote_volume_usdt: float = 2_000_000.0
+    scalp_min_abs_change_24h_pct: float = 2.0
     min_candles: int = 120
     scan_kline_min: int = 50
     tab_symbol_limit: int = 200

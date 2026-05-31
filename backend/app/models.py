@@ -354,6 +354,7 @@ class InvestmentRecommendation(BaseModel):
     entry_tier: str = "watch"
     entry_detail: str = ""
     change_24h: float = 0.0
+    volume_usdt: float = 0.0
     trend: str = ""
     selected: bool = True
 

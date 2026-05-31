@@ -31,6 +31,7 @@ from app.engine.flash_crash_guard import (
     detect_flash_crash,
     is_symbol_flash_blocked,
 )
+from app.engine.scalp_filters import apply_scalp_liquidity_to_candidate
 from app.engine.recommendations import (
     build_recommendations,
     cap_apply_amounts,
@@ -456,6 +457,7 @@ class TradingEngine:
             min_market_score=self.config.min_buy_score,
             market_score=cand.score,
         )
+        apply_scalp_liquidity_to_candidate(cand)
         self._notify()
 
     def set_view_symbol(self, symbol: str) -> str:
@@ -875,7 +877,9 @@ class TradingEngine:
                 min_market_score=self.config.min_buy_score,
                 market_score=cand.score,
             )
-            return cand, signal if signal.ok else None
+            chart_scalp = signal.scalp_ok
+            apply_scalp_liquidity_to_candidate(cand)
+            return cand, signal if signal.ok or chart_scalp else None
 
         results = await asyncio.gather(*[enrich(c) for c in candidates])
         enriched = [(c, s) for c, s in results if s is not None]

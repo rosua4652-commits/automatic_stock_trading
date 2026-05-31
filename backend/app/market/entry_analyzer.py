@@ -236,8 +236,8 @@ def format_entry_detail(
     if signal.scalp_ok:
         pos = ", ".join(signal.reasons[:5]) if signal.reasons else signal.outlook
         return (
-            f"△ 단타 수동 가능 ({signal.score:.0f}점) — {signal.outlook} · {pos}"
-            " · 하단 「이 코인 매수」로 진입"
+            f"△ 차트 단타 적합 ({signal.score:.0f}점) — {signal.outlook} · {pos}"
+            " · 자동 단타는 거래량·변동성 충족 시만 · 수동은 「이 코인 매수」"
         )
 
     if signal.score >= min_entry_score - 8:

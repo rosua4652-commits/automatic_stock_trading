@@ -6,6 +6,7 @@ from app.engine.trading_fees import (
     deployable_cash_krw,
     fee_krw_round_trip,
 )
+from app.engine.scalp_filters import scalp_market_fit
 from app.engine.backtest_learning import (
     format_sl_tp_label,
     load_learning_state,
@@ -317,6 +318,7 @@ def build_recommendations(
                     default_tp=config.take_profit_pct,
                 ),
                 change_24h=c.change_24h,
+                volume_usdt=float(getattr(c, "volume_usdt", 0) or 0),
                 trend=c.trend,
                 selected=True,
             )
@@ -357,6 +359,12 @@ def filter_recommendations_for_auto(
             if ok:
                 long_pool.append(r)
         elif auto_scalp and tier == "scalp":
+            liq_ok, _ = scalp_market_fit(
+                volume_usdt=float(getattr(r, "volume_usdt", 0) or 0),
+                change_24h=float(getattr(r, "change_24h", 0) or 0),
+            )
+            if not liq_ok:
+                continue
             ok, _ = symbol_passes_learning(
                 acc, learning, r.symbol, mode="scalp", paper_relax=paper_relax_bt
             )
