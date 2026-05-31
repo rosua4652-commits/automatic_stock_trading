@@ -26,6 +26,13 @@ export interface AppConfig {
   paper_auto_deploy_pct?: number;
   daily_loss_limit_pct?: number;
   allow_live_auto_invest?: boolean;
+  flash_guard_enabled?: boolean;
+  flash_drop_from_peak_pct?: number;
+  flash_tick_drop_pct?: number;
+  flash_candle_1m_drop_pct?: number;
+  flash_window_sec?: number;
+  flash_block_minutes?: number;
+  flash_hard_stop_pct?: number;
   exchange?: string;
   api_access_key?: string;
   api_secret_key?: string;

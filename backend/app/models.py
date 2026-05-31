@@ -64,6 +64,46 @@ class AppConfig(BaseModel):
         default=False,
         description="실거래 자동투자 허용(기본 끔)",
     )
+    flash_guard_enabled: bool = Field(
+        default=True,
+        description="급락 감지·즉시 손절·종목 매수 일시 차단",
+    )
+    flash_drop_from_peak_pct: float = Field(
+        default=2.8,
+        ge=0.5,
+        le=15.0,
+        description="최근 고점 대비 % 하락 시 즉시 매도",
+    )
+    flash_tick_drop_pct: float = Field(
+        default=1.2,
+        ge=0.3,
+        le=8.0,
+        description="연속 시세 간 % 하락 (약 3초)",
+    )
+    flash_candle_1m_drop_pct: float = Field(
+        default=3.5,
+        ge=1.0,
+        le=20.0,
+        description="1분봉 최근 5봉 고점 대비 %",
+    )
+    flash_window_sec: float = Field(
+        default=90.0,
+        ge=30.0,
+        le=600.0,
+        description="단기 고점 계산 창(초)",
+    )
+    flash_block_minutes: float = Field(
+        default=45.0,
+        ge=5.0,
+        le=240.0,
+        description="급락 후 해당 종목 신규 매수 차단(분)",
+    )
+    flash_hard_stop_pct: float = Field(
+        default=0.0,
+        ge=0.0,
+        le=30.0,
+        description="0이면 손절%×1.5 자동, 평단 대비 긴급 손절 %",
+    )
     exchange: str = Field(default="upbit", description="upbit | binance")
     api_access_key: str = ""
     api_secret_key: str = ""

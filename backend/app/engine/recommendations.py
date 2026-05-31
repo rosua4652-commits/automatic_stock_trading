@@ -331,6 +331,7 @@ def filter_recommendations_for_auto(
     auto_scalp: bool,
     acc: BacktestAccumulator | None,
     max_picks: int,
+    flash_block_until: dict[str, float] | None = None,
 ) -> list[InvestmentRecommendation]:
     """롱·단타·혼합 — 학습 임계값 통과한 제안만."""
     if not recs or max_picks <= 0:
@@ -340,10 +341,13 @@ def filter_recommendations_for_auto(
 
     learning = load_learning_state()
     acc = acc or BacktestAccumulator()
+    from app.engine.flash_crash_guard import is_symbol_flash_blocked
 
     long_pool: list[InvestmentRecommendation] = []
     scalp_pool: list[InvestmentRecommendation] = []
     for r in recs:
+        if flash_block_until and is_symbol_flash_blocked(flash_block_until, r.symbol):
+            continue
         tier = (r.entry_tier or "").lower()
         if auto_long and tier == "auto":
             ok, _ = symbol_passes_learning(acc, learning, r.symbol, mode="long")

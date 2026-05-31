@@ -46,7 +46,7 @@ STATIC_DIR = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
 # PC에서 run.bat 시작 시 표시 — GitHub 최신과 비교용
-AIDI_BUILD = "2026-05-31-bt-sl-tp-per-symbol"
+AIDI_BUILD = "2026-05-31-flash-crash-guard"
 
 
 def _load_pc_path_hint() -> str:
@@ -178,6 +178,7 @@ async def _build_status() -> dict:
         "paper_full_auto": True,
         "daily_loss_kill": True,
         "execution_feedback": True,
+        "flash_crash_guard": True,
     }
     payload["all_trades"] = [t.model_dump() for t in portfolio.trades[-500:]]
     if engine.config.trade_mode == TradeMode.LIVE:

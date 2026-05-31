@@ -146,6 +146,71 @@ export default function SettingsModal({
         </section>
 
         <section className="settings-section">
+          <h3>급락 방어</h3>
+          <p className="warn subtle">
+            익절 전이라도 고점·순간·1분봉 급락이면 전량 매도합니다. 급락 후 해당 종목
+            신규 매수는 일시 차단됩니다.
+          </p>
+          <label className="field checkbox-field">
+            <input
+              type="checkbox"
+              checked={draft.flash_guard_enabled !== false}
+              onChange={(e) => set("flash_guard_enabled", e.target.checked)}
+            />
+            <span>급락 감지·즉시 손절 사용</span>
+          </label>
+          <div className="field-grid">
+            <label className="field">
+              <span>고점 대비 하락 (%)</span>
+              <input
+                type="number"
+                step={0.1}
+                min={0.5}
+                max={15}
+                value={draft.flash_drop_from_peak_pct ?? 2.8}
+                onChange={(e) =>
+                  set("flash_drop_from_peak_pct", Number(e.target.value))
+                }
+              />
+            </label>
+            <label className="field">
+              <span>순간 하락 (%)</span>
+              <input
+                type="number"
+                step={0.1}
+                min={0.3}
+                max={8}
+                value={draft.flash_tick_drop_pct ?? 1.2}
+                onChange={(e) => set("flash_tick_drop_pct", Number(e.target.value))}
+              />
+            </label>
+            <label className="field">
+              <span>1분봉 급락 (%)</span>
+              <input
+                type="number"
+                step={0.1}
+                min={1}
+                max={20}
+                value={draft.flash_candle_1m_drop_pct ?? 3.5}
+                onChange={(e) =>
+                  set("flash_candle_1m_drop_pct", Number(e.target.value))
+                }
+              />
+            </label>
+            <label className="field">
+              <span>급락 후 매수 차단 (분)</span>
+              <input
+                type="number"
+                min={5}
+                max={240}
+                value={draft.flash_block_minutes ?? 45}
+                onChange={(e) => set("flash_block_minutes", Number(e.target.value))}
+              />
+            </label>
+          </div>
+        </section>
+
+        <section className="settings-section">
           <h3>매매 전략</h3>
           <div className="field-grid">
             <label className="field">

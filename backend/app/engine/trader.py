@@ -21,6 +21,12 @@ from app.engine.backtest_runner import get_accumulator
 from app.engine.backtest_learning import load_learning_state, strategy_sl_tp
 from app.engine.risk_manager import check_auto_invest_allowed, evaluate_daily_risk
 from app.engine.trade_feedback import record_paper_execution
+from app.engine.flash_crash_guard import (
+    FlashGuardState,
+    block_symbol_after_flash,
+    detect_flash_crash,
+    is_symbol_flash_blocked,
+)
 from app.engine.recommendations import (
     build_recommendations,
     cap_apply_amounts,
@@ -68,6 +74,8 @@ class TradingEngine:
         self._status_version: int = 0
         self._link_message: str = ""
         self._backtest_acc: BacktestAccumulator | None = None
+        self._flash_guard: dict[str, FlashGuardState] = {}
+        self._flash_block_until: dict[str, float] = {}
 
     def bind_portfolio(self) -> None:
         """현재 모드에 맞는 포트폴리오만 참조 (시뮬·실거래 분리)."""
@@ -850,11 +858,22 @@ class TradingEngine:
             auto_scalp=self.bot.auto_invest_scalp,
             acc=acc,
             max_picks=max_n,
+            flash_block_until=self._flash_block_until,
         )
         if not picks:
-            self.bot.auto_invest_message = (
-                "자동 매수 대기 — BT·차트 기준 통과 종목 없음 (다음 스캔)"
-            )
+            blocked = [
+                r.base
+                for r in self.bot.recommendations[:8]
+                if is_symbol_flash_blocked(self._flash_block_until, r.symbol)
+            ]
+            if blocked:
+                self.bot.auto_invest_message = (
+                    f"급락 차단 중 — {', '.join(blocked[:4])} 신규 매수 보류"
+                )
+            else:
+                self.bot.auto_invest_message = (
+                    "자동 매수 대기 — BT·차트 기준 통과 종목 없음 (다음 스캔)"
+                )
             return
 
         raw_amts = {r.symbol.upper(): float(r.amount_krw) for r in picks}
@@ -1047,6 +1066,32 @@ class TradingEngine:
                 continue
             await self._manage_exit(sym, price)
 
+    def _flash_state(self, symbol: str) -> FlashGuardState:
+        sym = symbol.upper()
+        if sym not in self._flash_guard:
+            self._flash_guard[sym] = FlashGuardState()
+        return self._flash_guard[sym]
+
+    async def _check_flash_guard(
+        self, symbol: str, price: float, pos: Position
+    ) -> tuple[bool, str]:
+        if not getattr(self.config, "flash_guard_enabled", True):
+            return False, ""
+
+        async def _fetch_1m(sym: str, limit: int):
+            return await market.klines(sym, "1m", limit)
+
+        state = self._flash_state(symbol)
+        hit, reason = await detect_flash_crash(
+            symbol,
+            price,
+            pos,
+            self.config,
+            state,
+            fetch_1m=_fetch_1m,
+        )
+        return hit, reason
+
     async def _manage_exit(self, symbol: str, price: float) -> bool:
         """손익절 조건이면 매도 실행. True=매도 성공."""
         pos = self.portfolio.positions.get(symbol)
@@ -1059,6 +1104,14 @@ class TradingEngine:
                 pos.current_price_krw = price * rate
 
         rate = max(self.portfolio.usdt_krw, 1.0)
+
+        if pos.quantity > 1e-12:
+            hit, reason = await self._check_flash_guard(symbol, price, pos)
+            if hit:
+                sym = symbol.upper()
+                block_symbol_after_flash(self._flash_block_until, sym, self.config)
+                logger.info("[급락 차단] %s · %s", sym, reason)
+                return await self._auto_sell(symbol, reason, full=True)
 
         if pos.custom_sl_tp:
             hit, reason = custom_exit_triggered(
@@ -1308,9 +1361,6 @@ class TradingEngine:
         ):
             await self._auto_sell(symbol, "익절")
             return
-
-        if auto_pnl <= -0.12:
-            await self._auto_sell(symbol, "급락 방어")
 
     async def _auto_sell(self, symbol: str, reason: str, *, full: bool = False) -> bool:
         sym = symbol.upper()
