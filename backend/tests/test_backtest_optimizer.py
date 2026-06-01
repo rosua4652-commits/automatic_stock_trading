@@ -16,6 +16,17 @@ def test_simulate_long_has_trades_on_trend():
     assert w + l >= 0
 
 
+def test_boost_tolerates_corrupt_score():
+    acc = BacktestAccumulator({"symbols": {}, "cycles": 0})
+    from app.engine.backtest_optimizer import SideStats, SymbolBacktestRecord
+
+    rec = SymbolBacktestRecord(symbol="ETHUSDT", updated_at=1.0)
+    rec.long = SideStats(trades=3, wins=2, best_sl_pct=2.0, best_tp_pct=1.0)
+    rec.long.score = {"value": 70}  # type: ignore[assignment]
+    acc.symbols["ETHUSDT"] = rec
+    assert acc.boost("ETHUSDT", "long") >= 0.0
+
+
 def test_accumulator_merge_and_boost():
     acc = BacktestAccumulator(
         {

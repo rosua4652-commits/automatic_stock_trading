@@ -1,5 +1,7 @@
 """AI 투자 제안: 비중·금액 산출."""
 
+import math
+
 from app.engine.buy_limits import UPBIT_MIN_ORDER_KRW, effective_min_buy_krw
 from app.engine.trading_fees import (
     cash_required_for_buy,
@@ -15,6 +17,29 @@ from app.engine.backtest_learning import (
 )
 from app.engine.backtest_optimizer import BacktestAccumulator
 from app.models import AppConfig, CoinCandidate, InvestmentRecommendation
+
+
+def _volume_rank_bonus(volume_usdt: float) -> float:
+    """거래대금 큰 종목 우선 — log 스케일 0~18점."""
+    vol = max(float(volume_usdt or 0), 0.0)
+    if vol < 400_000:
+        return 0.0
+    return min(18.0, math.log10(vol / 400_000.0 + 1.0) * 8.0)
+
+
+def _long_auto_volume_ok(volume_usdt: float) -> tuple[bool, str]:
+    """자동 롱 — 최소 유동성 (단타보다 완화)."""
+    from app.config import settings
+
+    min_vol = float(getattr(settings, "min_quote_volume_usdt", 400_000.0))
+    long_floor = max(min_vol, 800_000.0)
+    vol = max(float(volume_usdt or 0), 0.0)
+    if vol < long_floor:
+        return False, (
+            f"24h 거래대금 {vol / 1_000_000:.1f}M USDT "
+            f"(롱 자동 ≥{long_floor / 1_000_000:.1f}M)"
+        )
+    return True, ""
 
 
 def _tier_to_mode(tier: str) -> str:
@@ -262,7 +287,9 @@ def build_recommendations(
             pool.append(c)
 
     def _rank(c: CoinCandidate) -> float:
-        base = c.entry_score + c.score
+        base = c.entry_score + c.score + _volume_rank_bonus(
+            float(getattr(c, "volume_usdt", 0) or 0)
+        )
         if backtest is not None:
             base += backtest.boost(c.symbol, "long")
         return base
@@ -390,6 +417,11 @@ def filter_recommendations_for_auto(
             continue
         tier = (r.entry_tier or "").lower()
         if auto_long and tier == "auto":
+            ok_vol, why_vol = _long_auto_volume_ok(
+                float(getattr(r, "volume_usdt", 0) or 0)
+            )
+            if not ok_vol:
+                continue
             ok, _ = symbol_passes_learning(
                 acc,
                 learning,
@@ -418,8 +450,15 @@ def filter_recommendations_for_auto(
             if ok:
                 scalp_pool.append(r)
 
-    long_pool.sort(key=lambda x: x.entry_score + x.market_score, reverse=True)
-    scalp_pool.sort(key=lambda x: x.entry_score + x.market_score, reverse=True)
+    def _auto_rank(r: InvestmentRecommendation) -> float:
+        return (
+            r.entry_score
+            + r.market_score
+            + _volume_rank_bonus(float(getattr(r, "volume_usdt", 0) or 0))
+        )
+
+    long_pool.sort(key=_auto_rank, reverse=True)
+    scalp_pool.sort(key=_auto_rank, reverse=True)
 
     picks: list[InvestmentRecommendation] = []
     if auto_long and auto_scalp:

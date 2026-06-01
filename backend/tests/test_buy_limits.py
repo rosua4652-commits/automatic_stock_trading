@@ -13,6 +13,11 @@ def test_effective_min_buy_at_upbit_floor():
     assert effective_min_buy_krw(cfg) == UPBIT_MIN_ORDER_KRW
 
 
+def test_effective_min_buy_user_setting_6000():
+    cfg = AppConfig(min_buy_krw=6_000)
+    assert effective_min_buy_krw(cfg) == 6_000
+
+
 def test_effective_min_buy_user_setting():
     cfg = AppConfig(min_buy_krw=20_000)
     assert effective_min_buy_krw(cfg) == 20_000

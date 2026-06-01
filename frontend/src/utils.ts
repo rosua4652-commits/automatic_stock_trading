@@ -247,7 +247,7 @@ export const MIN_BUY_KRW = UPBIT_MIN_ORDER_KRW;
 /** 자동투자·승인·제안 배분에 쓰는 건당 최소 매수 금액 */
 export function getAutoMinBuyKrw(config?: { min_buy_krw?: number } | null): number {
   const raw = Number(config?.min_buy_krw);
-  if (!Number.isFinite(raw) || raw <= 0) return 10_000;
+  if (!Number.isFinite(raw) || raw <= 0) return 6_000;
   return Math.max(UPBIT_MIN_ORDER_KRW, Math.round(raw / 1000) * 1000);
 }
 
@@ -499,11 +499,11 @@ export const DEFAULT_CONFIG: AppConfig = {
   trade_end_hour_kst: 23,
   paper_days_before_live_auto: 3,
   stop_loss_pct: 3,
-  take_profit_pct: 5,
+  take_profit_pct: 1.2,
   trading_fee_pct: 0.05,
   scan_interval_sec: 30,
   min_buy_score: 28,
-  min_buy_krw: 10_000,
+  min_buy_krw: 6_000,
   min_entry_score: 38,
   max_auto_buys_per_scan: 2,
   paper_max_auto_buys_per_scan: 4,

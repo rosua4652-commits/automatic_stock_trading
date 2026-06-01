@@ -54,7 +54,7 @@ MIN_BUY_SETTING_HTML = """<!DOCTYPE html>
       try {
         const st = await fetch("/api/status").then(r => r.json());
         const v = st.config && st.config.min_buy_krw;
-        amt.value = floorKrw(v > 0 ? v : 10000);
+        amt.value = floorKrw(v > 0 ? v : 6000);
         const b = st.aidi_build || "";
         build.textContent = "서버 빌드: " + (b || "(없음)");
         if (b && !b.includes("min-buy")) {
@@ -62,7 +62,7 @@ MIN_BUY_SETTING_HTML = """<!DOCTYPE html>
         }
       } catch (e) {
         build.textContent = "상태 조회 실패 — run.bat 실행 중인지 확인";
-        amt.value = 10000;
+        amt.value = 6000;
       }
     }
 

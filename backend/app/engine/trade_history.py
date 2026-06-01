@@ -611,11 +611,43 @@ async def _enrich_orders(
     return out
 
 
+def _hint_from_exit_log(
+    exit_log: list[Any],
+    *,
+    symbol: str,
+    side: str,
+    ts: float,
+    window_sec: float = 300.0,
+) -> dict[str, Any]:
+    """업비트 UUID 힌트 없을 때 exit_log(손/익절) 시간·종목 매칭."""
+    if str(side).upper() != "SELL" or not exit_log:
+        return {}
+    sym = symbol.upper()
+    best: dict[str, Any] | None = None
+    best_dt = window_sec + 1.0
+    for row in exit_log:
+        if not isinstance(row, dict):
+            continue
+        if str(row.get("symbol") or "").upper() != sym:
+            continue
+        if str(row.get("side") or "SELL").upper() != "SELL":
+            continue
+        row_ts = float(row.get("ts") or 0)
+        if row_ts <= 0:
+            continue
+        dt = abs(row_ts - ts)
+        if dt <= window_sec and dt < best_dt:
+            best_dt = dt
+            best = dict(row)
+    return best or {}
+
+
 def order_to_trade_dict(
     order: dict[str, Any],
     *,
     usdt_krw: float,
     reason_hints: dict[str, dict[str, Any]],
+    exit_log: list[Any] | None = None,
 ) -> dict[str, Any] | None:
     market = str(order.get("market") or "")
     if not market.startswith("KRW-"):
@@ -630,9 +662,22 @@ def order_to_trade_dict(
         hint["exit_kind"] = classify_exit_kind(str(hint.get("reason") or ""), "BUY")
     if not _hint_applies_to_side(hint, side):
         hint = {}
+
+    qty, funds, px_krw = _fill_from_order(order)
+    if qty <= 1e-12:
+        return None
+
+    symbol = upbit_to_symbol(market).upper()
+    ts = _parse_upbit_ts(order.get("created_at")) or time.time()
+
+    if not hint and side == "SELL" and exit_log:
+        hint = _hint_from_exit_log(
+            exit_log, symbol=symbol, side=side, ts=ts
+        )
+
     raw_reason = str(hint.get("reason") or "")
     is_auto = bool(hint.get("is_auto", False))
-    has_hint = bool(uid and hint)
+    has_hint = bool(hint)
     reason = normalize_trade_reason(
         side,
         raw_reason,
@@ -641,14 +686,8 @@ def order_to_trade_dict(
         exit_kind=str(hint.get("exit_kind") or ""),
     )
 
-    qty, funds, px_krw = _fill_from_order(order)
-    if qty <= 1e-12:
-        return None
-
-    symbol = upbit_to_symbol(market).upper()
     m = coin_meta(symbol)
     rate = max(usdt_krw, 1.0)
-    ts = _parse_upbit_ts(order.get("created_at")) or time.time()
 
     mode = ""
     if side == "BUY":
@@ -711,12 +750,18 @@ async def orders_to_trades(
     *,
     usdt_krw: float,
     reason_hints: dict[str, dict[str, Any]],
+    exit_log: list[Any] | None = None,
 ) -> list[TradeEvent]:
     cutoff = time.time() - UPBIT_TRADE_HISTORY_DAYS * 86400
     rows: list[dict[str, Any]] = []
 
     for order in orders:
-        d = order_to_trade_dict(order, usdt_krw=usdt_krw, reason_hints=reason_hints)
+        d = order_to_trade_dict(
+            order,
+            usdt_krw=usdt_krw,
+            reason_hints=reason_hints,
+            exit_log=exit_log,
+        )
         if not d:
             continue
         ts = _f(d.get("ts"))
@@ -848,7 +893,11 @@ async def load_trades_from_upbit(
         orders_fetched = len(orders)
         orders = await _enrich_orders(client, orders)
         api_trades = await orders_to_trades(
-            client, orders, usdt_krw=usdt_krw, reason_hints=hints
+            client,
+            orders,
+            usdt_krw=usdt_krw,
+            reason_hints=hints,
+            exit_log=live_meta.get("exit_log") or [],
         )
         live_meta["trades_orders_fetched"] = orders_fetched
         for t in api_trades:

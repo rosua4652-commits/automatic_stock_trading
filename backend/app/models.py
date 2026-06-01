@@ -44,7 +44,7 @@ class AppConfig(BaseModel):
         description="실거래 자동투자 전 모의 자동투자 검증 일수",
     )
     stop_loss_pct: float = Field(default=3.0, ge=0.01, le=25.0)
-    take_profit_pct: float = Field(default=5.0, ge=0.01, le=50.0)
+    take_profit_pct: float = Field(default=1.2, ge=0.01, le=50.0)
     trading_fee_pct: float = Field(
         default=0.05,
         ge=0.0,
@@ -54,7 +54,7 @@ class AppConfig(BaseModel):
     scan_interval_sec: int = Field(default=30, ge=15, le=300)
     min_buy_score: float = Field(default=28.0, ge=15.0, le=90.0)
     min_buy_krw: float = Field(
-        default=10_000.0,
+        default=6_000.0,
         ge=5_000.0,
         le=5_000_000.0,
         description="자동·승인 매수 건당 최소 금액(원). 업비트 하한 5,000원 이상",

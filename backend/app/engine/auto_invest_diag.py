@@ -9,6 +9,7 @@ from app.engine.backtest_learning import (
 from app.engine.backtest_optimizer import BacktestAccumulator
 from app.engine.flash_crash_guard import is_symbol_flash_blocked
 from app.engine.scalp_filters import scalp_market_fit
+from app.engine.recommendations import _long_auto_volume_ok
 from app.models import InvestmentRecommendation
 
 
@@ -64,6 +65,12 @@ def build_auto_invest_rejects(
         elif tier == "auto":
             if not auto_long:
                 continue
+            ok_vol, why_vol = _long_auto_volume_ok(
+                float(getattr(r, "volume_usdt", 0) or 0)
+            )
+            if not ok_vol:
+                out.append(f"{base} 롱: {why_vol}")
+                continue
             ok, why = symbol_passes_learning(
                 acc,
                 learning,
@@ -105,6 +112,12 @@ def diagnose_auto_invest(
         if tier == "auto":
             long_n += 1
             if auto_long:
+                ok_vol, why_vol = _long_auto_volume_ok(
+                    float(getattr(r, "volume_usdt", 0) or 0)
+                )
+                if not ok_vol and len(fail_samples) < 4:
+                    fail_samples.append(f"{r.base} 롱: {why_vol}")
+                    continue
                 ok, why = symbol_passes_learning(
                     acc,
                     learning,

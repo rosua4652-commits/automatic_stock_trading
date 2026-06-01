@@ -800,7 +800,11 @@ class TradingEngine:
         items: list[DirectionSignalItem] = []
         now = time.time()
         for sym, sig, combined, bt_boost, st in results:
-            ok = sig.ok or (st and st.score >= 48 and st.trades >= 1)
+            ok = sig.ok or (
+                st
+                and as_float(st.score) >= 48
+                and st.trades >= 1
+            )
             if not ok:
                 continue
             if combined < min_score - 5:
@@ -809,8 +813,8 @@ class TradingEngine:
             detail = sig.detail
             if bt_boost >= 8 and st and st.trades >= 1:
                 detail = (
-                    f"{detail} · BT {st.win_rate_pct:.0f}%승/{st.trades}건 "
-                    f"· 손익절 {st.best_sl_pct:.0f}/{st.best_tp_pct:.0f}%"
+                    f"{detail} · BT {as_float(st.win_rate_pct):.0f}%승/{st.trades}건 "
+                    f"· 손익절 {as_float(st.best_sl_pct):.0f}/{as_float(st.best_tp_pct):.0f}%"
                 )
             items.append(
                 DirectionSignalItem(
@@ -904,11 +908,19 @@ class TradingEngine:
         except asyncio.CancelledError:
             pass
         finally:
-            if self.bot.status != BotStatus.STOPPED:
+            if self.bot.status == BotStatus.STOPPING:
+                pass
+            elif self.bot.auto_invest_active and self.bot.status == BotStatus.RUNNING:
+                logger.warning(
+                    "[스캔 루프] 비정상 종료 — 자동투자 중 스캔 루프 재시작"
+                )
+                self._task = asyncio.create_task(self._loop())
+            elif self.bot.status != BotStatus.STOPPED:
                 self.bot.status = BotStatus.STOPPED
                 self.bot.manual_mode = True
                 self.bot.message = "분석이 중지되었습니다"
-            self._task = None
+            if self.bot.status == BotStatus.STOPPED:
+                self._task = None
             self._bump_version()
 
     async def _tick(self) -> None:

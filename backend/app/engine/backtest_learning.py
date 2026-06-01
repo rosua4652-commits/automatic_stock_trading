@@ -15,8 +15,8 @@ from app.util.numbers import as_float
 class BacktestLearningState:
     """실전·자동매수에 쓰는 학습 파라미터 (백테스트 파일에 함께 저장)."""
 
-    long_min_bt_score: float = 42.0
-    scalp_min_bt_score: float = 38.0
+    long_min_bt_score: float = 38.0
+    scalp_min_bt_score: float = 35.0
     long_sl_pct: float = 0.0
     long_tp_pct: float = 0.0
     scalp_sl_pct: float = 0.0
@@ -70,8 +70,12 @@ class BacktestLearningState:
         if not ebp and not ebl and blocked:
             ebp = list(blocked)
         return cls(
-            long_min_bt_score=as_float(d.get("long_min_bt_score"), 42.0),
-            scalp_min_bt_score=as_float(d.get("scalp_min_bt_score"), 38.0),
+            long_min_bt_score=min(
+                48.0, as_float(d.get("long_min_bt_score"), 38.0)
+            ),
+            scalp_min_bt_score=min(
+                45.0, as_float(d.get("scalp_min_bt_score"), 35.0)
+            ),
             long_sl_pct=as_float(d.get("long_sl_pct")),
             long_tp_pct=as_float(d.get("long_tp_pct")),
             scalp_sl_pct=as_float(d.get("scalp_sl_pct")),
@@ -102,10 +106,40 @@ def save_learning_state(learning: BacktestLearningState) -> None:
 
 
 def _side_expectancy(st: SideStats) -> float:
-    if st.trades < 1 or st.best_sl_pct <= 0:
+    if st.trades < 1 or as_float(st.best_sl_pct) <= 0:
         return 0.0
     wr = st.wins / st.trades
-    return wr * st.best_tp_pct - (1 - wr) * st.best_sl_pct
+    sl = as_float(st.best_sl_pct)
+    tp = as_float(st.best_tp_pct)
+    return wr * tp - (1 - wr) * sl
+
+
+def _clamp_auto_sl_tp(
+    mode: str,
+    sl_pct: float,
+    tp_pct: float,
+    *,
+    fee_pct: float = 0.05,
+) -> tuple[float, float]:
+    """
+    자동투자용 손익절 — 익절은 수수료 제외 후 소폭 이익, 손절은 익절보다 넓게.
+    """
+    sl = as_float(sl_pct, 2.5)
+    tp = as_float(tp_pct, 1.0)
+    fee_rt = max(0.0, fee_pct) * 2.0
+    min_tp = round(fee_rt + 0.35, 2)
+
+    if mode == "scalp":
+        tp = min(tp, 1.15)
+        tp = max(tp, min_tp)
+        sl = min(max(sl, 1.8), 2.8)
+        sl = max(sl, tp * 1.35)
+    else:
+        tp = min(tp, 1.8)
+        tp = max(tp, min_tp)
+        sl = min(max(sl, 2.0), 3.5)
+        sl = max(sl, tp * 1.25)
+    return round(sl, 2), round(tp, 2)
 
 
 def compute_data_maturity(acc: BacktestAccumulator) -> float:
@@ -156,10 +190,10 @@ def symbol_passes_learning(
     min_trades = 1 if maturity < 40 else (2 if maturity < 70 else 3)
     if st.trades < min_trades and maturity >= 30:
         return False, f"BT 거래 수 {st.trades} < 요구 {min_trades}"
-    if st.trades >= 2 and st.score < floor:
-        return False, f"BT점수 {st.score:.0f} < 학습기준 {floor:.0f}"
-    if st.trades >= 3 and st.win_rate_pct < 38 and _side_expectancy(st) < 0:
-        return False, f"BT 기대값 음수 · 승률 {st.win_rate_pct:.0f}%"
+    if st.trades >= 2 and as_float(st.score) < floor:
+        return False, f"BT점수 {as_float(st.score):.0f} < 학습기준 {floor:.0f}"
+    if st.trades >= 3 and as_float(st.win_rate_pct) < 38 and _side_expectancy(st) < 0:
+        return False, f"BT 기대값 음수 · 승률 {as_float(st.win_rate_pct):.0f}%"
     return True, "OK"
 
 
@@ -190,15 +224,16 @@ def resolve_sl_tp_from_backtest(
     if rec:
         st = rec.long if mode == "long" else rec.short
 
-    if st and st.trades >= 1 and st.best_sl_pct > 0 and st.score >= 32:
-        return (
-            round(st.best_sl_pct, 2),
-            round(max(st.best_tp_pct, st.best_sl_pct * 1.2), 2),
-            "BT종목",
+    if st and st.trades >= 1 and as_float(st.best_sl_pct) > 0 and as_float(st.score) >= 32:
+        sl, tp = _clamp_auto_sl_tp(
+            mode,
+            as_float(st.best_sl_pct),
+            as_float(st.best_tp_pct),
         )
+        return sl, tp, "BT종목"
 
     d_sl = as_float(default_sl, 3.0)
-    d_tp = as_float(default_tp, 5.0)
+    d_tp = as_float(default_tp, 1.2)
     g_sl, g_tp = acc.best_global_params(d_sl, d_tp)
     g_sl = as_float(g_sl, d_sl)
     g_tp = as_float(g_tp, d_tp)
@@ -209,31 +244,29 @@ def resolve_sl_tp_from_backtest(
     s_tp = as_float(learning.scalp_tp_pct)
 
     if mode == "long" and l_sl > 0:
-        return (
-            l_sl,
-            l_tp or g_tp or d_tp,
-            "BT학습·롱",
-        )
+        sl, tp = _clamp_auto_sl_tp(mode, l_sl, l_tp or g_tp or d_tp)
+        return sl, tp, "BT학습·롱"
     if mode == "scalp" and s_sl > 0:
-        return (
-            s_sl,
-            s_tp or max(s_sl * 1.8, g_tp * 0.55),
-            "BT학습·단타",
-        )
+        sl, tp = _clamp_auto_sl_tp(mode, s_sl, s_tp or g_tp or d_tp)
+        return sl, tp, "BT학습·단타"
 
     if g_sl > 0:
         if mode == "scalp":
-            tight_sl = max(2.5, round(g_sl * 0.55, 2))
-            tight_tp = max(tight_sl * 1.5, round(g_tp * 0.55, 2))
-            return tight_sl, tight_tp, "BT전역·단타"
-        return g_sl, g_tp, "BT전역"
+            sl, tp = _clamp_auto_sl_tp(
+                "scalp",
+                max(1.8, g_sl * 0.85),
+                max(0.7, g_tp * 0.85),
+            )
+            return sl, tp, "BT전역·단타"
+        sl, tp = _clamp_auto_sl_tp("long", g_sl, g_tp)
+        return sl, tp, "BT전역"
 
     if mode == "scalp":
-        tight_sl = max(2.5, round(d_sl * 0.55, 2))
-        tight_tp = max(tight_sl * 1.5, round(d_tp * 0.55, 2))
-        return tight_sl, tight_tp, "설정·단타"
+        sl, tp = _clamp_auto_sl_tp("scalp", d_sl * 0.85, d_tp * 0.9)
+        return sl, tp, "설정·단타"
 
-    return d_sl, d_tp, "설정"
+    sl, tp = _clamp_auto_sl_tp("long", d_sl, d_tp)
+    return sl, tp, "설정"
 
 
 def strategy_sl_tp(
@@ -292,30 +325,33 @@ def update_learning_from_batch(
     learning.scalp_sl_pct = as_float(learning.scalp_sl_pct)
     learning.scalp_tp_pct = as_float(learning.scalp_tp_pct)
     if learning.long_sl_pct <= 0:
-        learning.long_sl_pct, learning.long_tp_pct = g_sl, g_tp
+        learning.long_sl_pct, learning.long_tp_pct = _clamp_auto_sl_tp("long", g_sl, g_tp)
     if learning.scalp_sl_pct <= 0:
-        learning.scalp_sl_pct = max(2.5, g_sl * 0.55)
-        learning.scalp_tp_pct = max(learning.scalp_sl_pct * 1.8, g_tp * 0.55)
+        learning.scalp_sl_pct, learning.scalp_tp_pct = _clamp_auto_sl_tp(
+            "scalp", max(1.8, g_sl * 0.85), max(0.7, g_tp * 0.85)
+        )
 
     wr = learning.recent_batch_win_rate
-    # 임계값 조정 — 성과 나쁘면 엄격, 좋으면 소폭 완화
-    step = 0.8 + maturity * 0.7
+    step = 0.5 + maturity * 0.4
     if trades >= 5:
         if wr < 42:
-            learning.long_min_bt_score = min(55.0, learning.long_min_bt_score + step)
-            learning.scalp_min_bt_score = min(52.0, learning.scalp_min_bt_score + step)
+            learning.long_min_bt_score = min(48.0, learning.long_min_bt_score + step)
+            learning.scalp_min_bt_score = min(45.0, learning.scalp_min_bt_score + step)
             learning.last_adjust_message = (
                 f"배치 승률 {wr:.0f}% 낮음 → 진입 기준 상향 "
                 f"(롱≥{learning.long_min_bt_score:.0f} 단타≥{learning.scalp_min_bt_score:.0f})"
             )
-        elif wr > 58:
-            learning.long_min_bt_score = max(36.0, learning.long_min_bt_score - 0.8)
-            learning.scalp_min_bt_score = max(32.0, learning.scalp_min_bt_score - 0.8)
+        elif wr > 55:
+            learning.long_min_bt_score = max(34.0, learning.long_min_bt_score - 0.6)
+            learning.scalp_min_bt_score = max(30.0, learning.scalp_min_bt_score - 0.6)
             learning.last_adjust_message = (
                 f"배치 승률 {wr:.0f}% 양호 → 진입 기준 소폭 완화"
             )
         else:
             learning.last_adjust_message = f"배치 승률 {wr:.0f}% · 기준 유지"
+            if wr < 48 and learning.long_min_bt_score > 38:
+                learning.long_min_bt_score = max(38.0, learning.long_min_bt_score - 0.4)
+                learning.scalp_min_bt_score = max(34.0, learning.scalp_min_bt_score - 0.4)
 
     # 저성과 종목 차단 (누적 4건 이상·승률·점수 모두 낮음)
     blocked = set(learning.blocked_symbols)
@@ -326,15 +362,12 @@ def update_learning_from_batch(
     learning.blocked_symbols = sorted(blocked)[-80:]
 
     # 전역 손익절을 학습 상태에 서서히 반영 (급변 방지)
-    learning.long_sl_pct = round(learning.long_sl_pct * 0.7 + g_sl * 0.3, 2)
-    learning.long_tp_pct = round(learning.long_tp_pct * 0.7 + g_tp * 0.3, 2)
-    learning.scalp_sl_pct = round(
-        max(2.5, learning.scalp_sl_pct * 0.6 + g_sl * 0.4 * 0.55), 2
-    )
-    learning.scalp_tp_pct = round(
-        max(learning.scalp_sl_pct * 1.5, learning.scalp_tp_pct * 0.6 + g_tp * 0.4 * 0.55),
-        2,
-    )
+    l_sl, l_tp = _clamp_auto_sl_tp("long", g_sl, g_tp)
+    s_sl, s_tp = _clamp_auto_sl_tp("scalp", max(1.8, g_sl * 0.85), max(0.7, g_tp * 0.85))
+    learning.long_sl_pct = round(as_float(learning.long_sl_pct) * 0.7 + l_sl * 0.3, 2)
+    learning.long_tp_pct = round(as_float(learning.long_tp_pct) * 0.7 + l_tp * 0.3, 2)
+    learning.scalp_sl_pct = round(as_float(learning.scalp_sl_pct) * 0.6 + s_sl * 0.4, 2)
+    learning.scalp_tp_pct = round(as_float(learning.scalp_tp_pct) * 0.6 + s_tp * 0.4, 2)
     learning.updated_at = time.time()
     save_learning_state(learning)
     return learning

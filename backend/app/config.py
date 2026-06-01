@@ -2,7 +2,7 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    min_buy_krw: float = 10_000.0  # env fallback; AppConfig.min_buy_krw 우선
+    min_buy_krw: float = 6_000.0  # env fallback; AppConfig.min_buy_krw 우선
     initial_balance_krw: float = 10_000_000.0
     binance_api: str = "https://api.binance.com/api/v3"
     scan_interval_sec: int = 45
@@ -16,8 +16,8 @@ class Settings(BaseSettings):
     scan_kline_min: int = 50
     tab_symbol_limit: int = 200
     scan_candidate_limit: int = 120
-    default_stop_loss_pct: float = 0.06
-    default_take_profit_pct: float = 0.12
+    default_stop_loss_pct: float = 3.0
+    default_take_profit_pct: float = 1.2
     trailing_activate_pct: float = 0.05
     trailing_distance_pct: float = 0.03
 

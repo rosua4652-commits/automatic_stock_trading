@@ -18,14 +18,14 @@ from app.util.numbers import as_float
 
 logger = get_aidi_logger()
 
-# (손절%, 익절%) 후보 — 설정 주변 그리드
+# (손절%, 익절%) 후보 — 단타·스캘핑 중심 (수수료 제외 후 소폭 이익)
 PARAM_GRID: list[tuple[float, float]] = [
-    (3.0, 6.0),
-    (4.0, 8.0),
-    (5.0, 10.0),
-    (6.0, 12.0),
-    (7.0, 14.0),
-    (8.0, 16.0),
+    (1.5, 0.55),
+    (1.8, 0.75),
+    (2.0, 0.9),
+    (2.5, 1.0),
+    (3.0, 1.2),
+    (3.5, 1.5),
 ]
 
 
@@ -160,9 +160,9 @@ class BacktestAccumulator:
         if not rec:
             return 0.0
         st = rec.long if side == "long" else rec.short
-        if st.trades < 1 or st.score < 35:
+        if st.trades < 1 or as_float(st.score) < 35:
             return 0.0
-        return min(22.0, st.score * 0.22)
+        return min(22.0, as_float(st.score) * 0.22)
 
     def top_symbols(self, side: str, limit: int = 20) -> list[tuple[str, SideStats]]:
         rows: list[tuple[str, SideStats]] = []
@@ -170,7 +170,7 @@ class BacktestAccumulator:
             st = rec.long if side == "long" else rec.short
             if st.trades >= 1 and st.score >= 40:
                 rows.append((sym, st))
-        rows.sort(key=lambda x: (x[1].score, x[1].win_rate_pct), reverse=True)
+        rows.sort(key=lambda x: (as_float(x[1].score), as_float(x[1].win_rate_pct)), reverse=True)
         return rows[:limit]
 
 
@@ -185,16 +185,17 @@ def _merge_side(prev: SideStats, new: SideStats) -> SideStats:
     losses = prev.losses + new.losses
     avg = prev.avg_return_pct * pw + new.avg_return_pct * w
     wr = (wins / t * 100) if t else 0.0
-    # 점수는 최댓값만 쓰지 않고 EMA로 완만히 개선·악화 반영
+    prev_score = as_float(prev.score)
+    new_score = as_float(new.score)
     if new.trades > 0:
-        score = prev.score * 0.65 + new.score * 0.35
+        score = prev_score * 0.65 + new_score * 0.35
     else:
-        score = prev.score
+        score = prev_score
     score = max(0.0, min(100.0, score))
-    if new.score >= prev.score * 0.95 and new.best_sl_pct > 0:
-        sl, tp = new.best_sl_pct, new.best_tp_pct
+    if new_score >= prev_score * 0.95 and as_float(new.best_sl_pct) > 0:
+        sl, tp = as_float(new.best_sl_pct), as_float(new.best_tp_pct)
     else:
-        sl, tp = prev.best_sl_pct, prev.best_tp_pct
+        sl, tp = as_float(prev.best_sl_pct), as_float(prev.best_tp_pct)
     return SideStats(
         trades=t,
         wins=wins,
