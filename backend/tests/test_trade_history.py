@@ -245,3 +245,107 @@ def test_stale_cached_manual_sell_relabeled_from_order_reasons():
         load_trades_from_upbit(client, live_meta, usdt_krw=1350.0, force=True)
     )
     assert trades[0].reason == "익절"
+
+
+def test_relabel_sell_from_exit_log_without_order_reasons():
+    from app.engine.trade_history import _relabel_trade_rows, collect_reason_hints
+
+    sell_ts = time.time() - 30
+    live_meta: dict = {
+        "exit_log": [
+            {
+                "order_uuid": "",
+                "symbol": "XLMUSDT",
+                "reason": "손절",
+                "is_auto": True,
+                "side": "SELL",
+                "exit_kind": "sl",
+                "ts": sell_ts,
+            }
+        ],
+        "trades": [
+            {
+                "ts": sell_ts,
+                "symbol": "XLMUSDT",
+                "base": "XLM",
+                "display": "스텔라 (XLM)",
+                "side": "SELL",
+                "price": 0.26,
+                "price_krw": 382,
+                "quantity": 66.0,
+                "amount_krw": 25219,
+                "amount_usdt": 17.1,
+                "reason": "수동 매도",
+                "is_auto": False,
+                "order_uuid": "7a096090-a72b-4c88-b347-63382e92930c",
+            }
+        ],
+    }
+    hints = collect_reason_hints(live_meta)
+    rows = _relabel_trade_rows(live_meta, live_meta["trades"], hints)
+    assert rows[0]["reason"] == "손절"
+    assert rows[0]["exit_kind"] == "sl"
+
+
+def test_relabel_sell_sets_entry_mode_from_positions_meta():
+    from app.engine.trade_history import _relabel_trade_rows, collect_reason_hints
+
+    sell_ts = time.time() - 10
+    live_meta: dict = {
+        "positions_meta": {
+            "SUIUSDT": {"entry_outlook": "AI 롱 자동", "auto_quantity": 0}
+        },
+        "order_reasons": {
+            "sell-sui": {
+                "reason": "익절",
+                "is_auto": True,
+                "side": "SELL",
+                "exit_kind": "tp",
+            }
+        },
+        "trades": [
+            {
+                "ts": sell_ts,
+                "symbol": "SUIUSDT",
+                "base": "SUI",
+                "display": "SUI/KRW",
+                "side": "SELL",
+                "price": 1.0,
+                "price_krw": 1500,
+                "quantity": 10,
+                "amount_krw": 15000,
+                "amount_usdt": 11.1,
+                "reason": "수동 매도",
+                "is_auto": False,
+                "order_uuid": "sell-sui",
+            }
+        ],
+    }
+    hints = collect_reason_hints(live_meta)
+    rows = _relabel_trade_rows(live_meta, live_meta["trades"], hints)
+    assert rows[0]["reason"] == "익절"
+    assert rows[0]["entry_mode"] == "롱"
+    assert rows[0]["is_auto"] is True
+
+
+def test_daily_report_uses_entry_mode_for_auto_sells():
+    from app.engine.daily_report import _trade_mode_label
+    from app.models import TradeEvent
+
+    t = TradeEvent(
+        ts=time.time(),
+        symbol="SUIUSDT",
+        base="SUI",
+        display="SUI/KRW",
+        side="SELL",
+        price=1.0,
+        price_krw=1500,
+        quantity=10,
+        amount_krw=15000,
+        amount_usdt=11.1,
+        reason="익절",
+        is_auto=True,
+        entry_mode="롱",
+        exit_kind="tp",
+    )
+    assert _trade_mode_label(t) == "long"

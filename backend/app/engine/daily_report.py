@@ -23,9 +23,16 @@ def _day_bounds_kst() -> tuple[float, float]:
 
 
 def _trade_mode_label(t: TradeEvent) -> str:
-    if not t.is_auto:
-        return "수동"
-    return _mode_from_outlook(getattr(t, "entry_outlook", "") or t.reason or "")
+    mode = (t.entry_mode or "").strip()
+    if mode == "단타":
+        return "scalp"
+    if mode in ("롱", "AI"):
+        return "long"
+    ek = (getattr(t, "exit_kind", "") or "").lower()
+    reason = t.reason or ""
+    if t.is_auto or ek in ("tp", "sl", "auto") or "익절" in reason or "손절" in reason:
+        return _mode_from_outlook(reason)
+    return "manual"
 
 
 def build_daily_report(

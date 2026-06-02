@@ -19,6 +19,8 @@ def outlook_from_reason_text(reason: str) -> str:
     low = t.lower()
     if "단타" in t or "scalp" in low:
         return "AI 단타 자동"
+    if "급등" in t or "moonshot" in low or "뉴스급등" in t:
+        return "AI 급등 자동"
     if "롱" in t or "long" in low:
         return "AI 롱 자동"
     if "자동투자" in t or "ai 자동" in low or "승인" in t:
@@ -92,6 +94,9 @@ def patch_position_meta_for_buy(
     entry_outlook: str,
     entry_reason: str,
     as_auto: bool,
+    stop_loss_pct: float | None = None,
+    take_profit_pct: float | None = None,
+    exit_profile: str = "",
 ) -> None:
     """체결 직후·동기화 전에 positions_meta 선반영 (유실 방지)."""
     sym = symbol.upper()
@@ -113,6 +118,12 @@ def patch_position_meta_for_buy(
             pm["entry_reason"] = entry_reason
         elif not pm.get("entry_reason"):
             pm["entry_reason"] = outlook or "AIDI 자동 매수"
+        if stop_loss_pct is not None and stop_loss_pct > 0:
+            pm["auto_exit_sl_pct"] = float(stop_loss_pct)
+        if take_profit_pct is not None and take_profit_pct > 0:
+            pm["auto_exit_tp_pct"] = float(take_profit_pct)
+        if exit_profile:
+            pm["exit_profile"] = exit_profile
         if float(pm.get("entry_score") or 0) <= 0:
             pass
         pm.setdefault("opened_at", time.time())

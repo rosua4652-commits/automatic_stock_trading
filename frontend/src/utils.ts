@@ -222,6 +222,56 @@ export function entryBadge(c: CoinCandidate | undefined): {
   return { label: "—", kind: "none" };
 }
 
+/** 급등·하락 태그 라벨 (surge_tags 맵) */
+export function surgeTagLabel(
+  symbol: string,
+  surgeTags?: Record<string, string> | null
+): { tag: "surge" | "downtrend"; label: string } | null {
+  const raw = surgeTags?.[symbol.toUpperCase()];
+  if (raw === "surge") return { tag: "surge", label: "급등" };
+  if (raw === "downtrend") return { tag: "downtrend", label: "하락" };
+  return null;
+}
+
+/** 급등·하락 분류 만료 시각 */
+export function fmtExpiryTime(ts: number): { label: string; absolute: string } {
+  if (!ts || ts < 1) return { label: "—", absolute: "—" };
+  const d = new Date(ts * 1000);
+  const absolute = d.toLocaleString("ko-KR", {
+    month: "numeric",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  const diffSec = ts - Math.floor(Date.now() / 1000);
+  if (diffSec <= 0) return { label: "만료됨", absolute };
+  const h = Math.floor(diffSec / 3600);
+  const m = Math.floor((diffSec % 3600) / 60);
+  const label = h > 0 ? `${h}시간 ${m}분 후` : `${m}분 후`;
+  return { label: `만료: ${absolute}`, absolute };
+}
+
+/** 기사·이벤트 시각 — 상대 + 절대 */
+export function fmtPublishedTime(ts: number): { relative: string; absolute: string } {
+  if (!ts || ts < 1) return { relative: "—", absolute: "—" };
+  const d = new Date(ts * 1000);
+  const absolute = d.toLocaleString("ko-KR", {
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  const diffSec = Math.max(0, Math.floor(Date.now() / 1000 - ts));
+  let relative: string;
+  if (diffSec < 60) relative = "방금";
+  else if (diffSec < 3600) relative = `${Math.floor(diffSec / 60)}분 전`;
+  else if (diffSec < 86400) relative = `${Math.floor(diffSec / 3600)}시간 전`;
+  else if (diffSec < 86400 * 7) relative = `${Math.floor(diffSec / 86400)}일 전`;
+  else relative = absolute;
+  return { relative, absolute };
+}
+
 /** WebSocket으로 bot 상태가 덮어쓰이지 않도록 (시작/중지 직후) */
 export function mergeWsPayload(
   local: StatusPayload,
@@ -260,11 +310,57 @@ export function getManualMinBuyKrw(): number {
 }
 
 /** API·저장 설정에 min_buy_krw 없을 때 기본값 보정 */
+const EXIT_STRENGTHS = ["weak", "medium", "strong"] as const;
+
+function normalizeExitStrength(
+  v: AppConfig["auto_exit_strength"]
+): AppConfig["auto_exit_strength"] {
+  if (v && EXIT_STRENGTHS.includes(v)) return v;
+  return "weak";
+}
+
+function clampPct(
+  value: number | undefined,
+  min: number,
+  max: number,
+  fallback: number
+): number {
+  const n = Number(value);
+  const base = Number.isFinite(n) ? n : fallback;
+  return Math.min(max, Math.max(min, base));
+}
+
+function normalizeMoonshotSlTp(cfg: AppConfig): Pick<
+  AppConfig,
+  | "moonshot_min_stop_loss_pct"
+  | "moonshot_max_stop_loss_pct"
+  | "moonshot_min_take_profit_pct"
+  | "moonshot_max_take_profit_pct"
+> {
+  const minSl = clampPct(cfg.moonshot_min_stop_loss_pct, 3, 12, 4);
+  let maxSl = clampPct(cfg.moonshot_max_stop_loss_pct, 3, 15, 10);
+  if (maxSl < minSl) maxSl = minSl;
+
+  const minTp = clampPct(cfg.moonshot_min_take_profit_pct, 3, 50, 10);
+  let maxTp = clampPct(cfg.moonshot_max_take_profit_pct, 5, 50, 35);
+  if (maxTp < minTp) maxTp = minTp;
+
+  return {
+    moonshot_min_stop_loss_pct: minSl,
+    moonshot_max_stop_loss_pct: maxSl,
+    moonshot_min_take_profit_pct: minTp,
+    moonshot_max_take_profit_pct: maxTp,
+  };
+}
+
 export function normalizeAppConfig(cfg: AppConfig): AppConfig {
   return {
     ...DEFAULT_CONFIG,
     ...cfg,
+    ...normalizeMoonshotSlTp(cfg),
     min_buy_krw: getAutoMinBuyKrw(cfg),
+    auto_exit_strength: normalizeExitStrength(cfg.auto_exit_strength),
+    news_llm_provider: cfg.news_llm_provider || "gemini",
   };
 }
 
@@ -469,16 +565,25 @@ export function pricesFromExitPct(
   };
 }
 
-/** 보유 카드 — 롱/단타/AI 구분 (entry_outlook · 진입 근거) */
+/** 보유 카드 — 롱/단타/급등/AI 구분 (entry_outlook · 진입 근거) */
 export function resolveEntryTier(pos: {
   entry_outlook?: string;
   entry_reason?: string;
   auto_quantity?: number;
   manual_quantity?: number;
-}): { kind: "scalp" | "long" | "ai" | "manual" | null; label: string } {
+}): {
+  kind: "scalp" | "long" | "moonshot" | "ai" | "manual" | null;
+  label: string;
+} {
   const text = `${pos.entry_outlook || ""} ${pos.entry_reason || ""}`.toLowerCase();
   if (text.includes("단타") || text.includes("scalp")) {
     return { kind: "scalp", label: "단타" };
+  }
+  if (text.includes("뉴스급등")) {
+    return { kind: "moonshot", label: "뉴스급등" };
+  }
+  if (text.includes("급등") || text.includes("moonshot")) {
+    return { kind: "moonshot", label: "급등" };
   }
   if (text.includes("롱") || text.includes("long")) {
     return { kind: "long", label: "롱" };
@@ -486,6 +591,30 @@ export function resolveEntryTier(pos: {
   if ((pos.auto_quantity ?? 0) > 1e-10) return { kind: "ai", label: "AI" };
   if ((pos.manual_quantity ?? 0) > 1e-10) return { kind: "manual", label: "수동" };
   return { kind: null, label: "" };
+}
+
+/** 제안 행 — 급등·뉴스급등·단타 뱃지 라벨 */
+export function recTierBadge(r: {
+  entry_tier?: string;
+  news_surge?: boolean;
+}): { className: string; label: string } | null {
+  const tier = (r.entry_tier || "").toLowerCase();
+  if (tier === "moonshot") {
+    return {
+      className: "rec-tier-badge moonshot",
+      label: r.news_surge ? "급등·뉴스" : "급등",
+    };
+  }
+  if (tier === "auto") {
+    return { className: "rec-tier-badge auto", label: "롱" };
+  }
+  if (tier === "scalp") {
+    return { className: "rec-tier-badge scalp", label: "단타" };
+  }
+  if (r.news_surge) {
+    return { className: "rec-tier-badge news-surge", label: "뉴스급등" };
+  }
+  return null;
 }
 
 export const DEFAULT_CONFIG: AppConfig = {
@@ -498,8 +627,16 @@ export const DEFAULT_CONFIG: AppConfig = {
   trade_start_hour_kst: 8,
   trade_end_hour_kst: 23,
   paper_days_before_live_auto: 3,
-  stop_loss_pct: 3,
-  take_profit_pct: 1.2,
+  stop_loss_pct: 5,
+  take_profit_pct: 5,
+  auto_exit_strength: "weak",
+  news_enabled: true,
+  news_boost_min_score: 25,
+  news_llm_enabled: false,
+  news_llm_provider: "gemini",
+  news_llm_max_articles_per_scan: 8,
+  backtest_ai_enabled: false,
+  backtest_ai_max_symbols_per_batch: 5,
   trading_fee_pct: 0.05,
   scan_interval_sec: 30,
   min_buy_score: 28,
@@ -512,12 +649,20 @@ export const DEFAULT_CONFIG: AppConfig = {
   allow_live_auto_invest: false,
   ai_auto_settings: true,
   flash_guard_enabled: true,
-  flash_drop_from_peak_pct: 2.8,
-  flash_tick_drop_pct: 1.2,
-  flash_candle_1m_drop_pct: 3.5,
+  flash_drop_from_peak_pct: 4.5,
+  flash_tick_drop_pct: 2,
+  flash_candle_1m_drop_pct: 5.5,
   flash_window_sec: 90,
   flash_block_minutes: 45,
   flash_hard_stop_pct: 0,
+  moonshot_enabled: true,
+  moonshot_momentum_exit_enabled: true,
+  moonshot_min_stop_loss_pct: 4,
+  moonshot_max_stop_loss_pct: 10,
+  moonshot_min_take_profit_pct: 10,
+  moonshot_max_take_profit_pct: 35,
+  moonshot_stop_loss_pct: 6,
+  moonshot_take_profit_pct: 20,
   exchange: "upbit",
   api_access_key: "",
   api_secret_key: "",

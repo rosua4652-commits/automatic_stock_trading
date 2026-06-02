@@ -30,15 +30,15 @@ def apply_ai_settings(
     l_tp = as_float(learn.long_tp_pct)
 
     if l_sl > 0:
-        config.stop_loss_pct = min(3.5, l_sl)
-        config.take_profit_pct = min(1.8, l_tp or g_tp or config.take_profit_pct)
+        config.stop_loss_pct = min(8.0, l_sl)
+        config.take_profit_pct = min(8.0, l_tp or g_tp or config.take_profit_pct)
     elif g_sl > 0:
-        config.stop_loss_pct = min(3.5, g_sl)
-        config.take_profit_pct = min(1.8, g_tp)
-    config.stop_loss_pct = as_float(config.stop_loss_pct, 3.0)
-    config.take_profit_pct = as_float(config.take_profit_pct, 1.2)
-    config.take_profit_pct = min(config.take_profit_pct, 1.8)
-    config.stop_loss_pct = max(config.stop_loss_pct, config.take_profit_pct * 1.2)
+        config.stop_loss_pct = min(8.0, g_sl)
+        config.take_profit_pct = min(8.0, g_tp)
+    config.stop_loss_pct = as_float(config.stop_loss_pct, 5.0)
+    config.take_profit_pct = as_float(config.take_profit_pct, 5.0)
+    config.take_profit_pct = min(config.take_profit_pct, 8.0)
+    config.stop_loss_pct = max(config.stop_loss_pct, config.take_profit_pct * 1.1)
 
     # Scan thresholds track BT learning floors (slightly below for market pool)
     config.min_entry_score = max(

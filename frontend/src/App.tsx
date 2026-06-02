@@ -28,6 +28,8 @@ import CoinSearchTabs from "./components/CoinSearchTabs";
 import FundsSummaryStrip from "./components/FundsSummaryStrip";
 import FundsTab from "./components/FundsTab";
 import StatsTab from "./components/StatsTab";
+import NewsSurgePanel from "./components/NewsSurgePanel";
+import SurgeManagePanel from "./components/SurgeManagePanel";
 import PortfolioAllocationPanel from "./components/PortfolioAllocationPanel";
 import PortfolioPanel from "./components/PortfolioPanel";
 import SettingsModal from "./components/SettingsModal";
@@ -80,6 +82,8 @@ export default function App() {
 
   const botLockVersionRef = useRef(0);
   const activeSymbolRef = useRef(activeSymbol);
+
+  const surgeTags = data?.bot.surge_tags ?? {};
 
   const botRecs = data?.bot.recommendations ?? [];
   const appConfig = data?.config ?? DEFAULT_CONFIG;
@@ -624,6 +628,16 @@ export default function App() {
                     설정에서 허용 필요
                   </span>
                 )}
+                {autoLong && (
+                  <span className="auto-live-hint dim" title="롱 체크 시 moonshot(급등) tier 자동매수 포함">
+                    급등=롱
+                  </span>
+                )}
+                {autoScalp && !autoLong && (
+                  <span className="auto-live-hint warn" title="급등주는 롱 자동매수 필요">
+                    급등→롱 켜기
+                  </span>
+                )}
               </div>
             ) : data.bot.auto_invest_active ? (
               <>
@@ -636,6 +650,18 @@ export default function App() {
                       : " 단타"}
                   {data.bot.auto_buy_paused ? " · 매수중지" : ""}
                 </span>
+                {(data.bot.surge_candidates_count ?? 0) > 0 && (
+                  <span
+                    className="surge-count-badge"
+                    title={
+                      data.bot.auto_invest_long
+                        ? "스캔 제안 급등주 — 롱 자동매수 후보"
+                        : "급등주 있음 — 롱 켜야 자동매수"
+                    }
+                  >
+                    급등 {data.bot.surge_candidates_count}
+                  </span>
+                )}
                 <button
                   type="button"
                   className="btn-ghost btn-xs"
@@ -716,6 +742,26 @@ export default function App() {
           >
             보유 · 매매
           </button>
+          <button
+            type="button"
+            className={`nav-btn ${mainView === "news" ? "active" : ""}`}
+            onClick={() => setMainView("news")}
+          >
+            뉴스·급등
+            {(data.bot.surge_candidates_count ?? 0) > 0 && (
+              <span className="nav-badge surge">{data.bot.surge_candidates_count}</span>
+            )}
+          </button>
+          <button
+            type="button"
+            className={`nav-btn ${mainView === "surge-manage" ? "active" : ""}`}
+            onClick={() => setMainView("surge-manage")}
+          >
+            급등·하락 관리
+            {Object.keys(data.bot.surge_tags ?? {}).length > 0 && (
+              <span className="nav-badge">{Object.keys(data.bot.surge_tags ?? {}).length}</span>
+            )}
+          </button>
         </nav>
       </div>
 
@@ -729,6 +775,19 @@ export default function App() {
           {data.bot.scan_health_detail ||
             "시장 데이터 지연 — 스캔이 잠시 중지될 수 있습니다"}
         </div>
+      )}
+
+      {mainView === "news" && (
+        <NewsSurgePanel
+          onSelectSymbol={goChart}
+          surgeSymbols={data.bot.surge_candidates ?? []}
+          autoInvestActive={!!data.bot.auto_invest_active}
+          autoInvestLong={!!data.bot.auto_invest_long}
+        />
+      )}
+
+      {mainView === "surge-manage" && (
+        <SurgeManagePanel onSelectSymbol={goChart} />
       )}
 
       {mainView === "stats" && (
@@ -773,6 +832,7 @@ export default function App() {
             portfolio={data.portfolio}
             candidates={data.bot.candidates}
             tabQuotes={data.tab_quotes}
+            surgeTags={surgeTags}
             onSelect={handleSelectCoin}
           />
           <main className="layout chart-layout">
@@ -796,6 +856,7 @@ export default function App() {
                   candidates={data.bot.candidates}
                   trades={data.all_trades ?? data.bot.recent_trades}
                   selected={activeSymbol}
+                  surgeTags={surgeTags}
                   onSelect={handleSelectCoin}
                   canTrade={canTrade}
                   busy={tradeBusy}
@@ -815,6 +876,7 @@ export default function App() {
                 config={appConfig}
                 recommendation={activeRec}
                 tabQuote={data.tab_quotes?.[activeSymbol]}
+                surgeTags={surgeTags}
                 onBuy={handleManualBuy}
                 onSell={handleManualSell}
               />
@@ -856,6 +918,7 @@ export default function App() {
             botStatus={data.bot.status}
             manualMode={data.bot.manual_mode}
             tradeMode={data.config.trade_mode}
+            surgeTags={surgeTags}
             tradesSyncError={data.trades_sync_error}
             tradesDisplayCount={data.trades_display_count}
             tradesOrdersFetched={data.trades_orders_fetched}

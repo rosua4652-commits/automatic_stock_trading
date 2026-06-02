@@ -13,6 +13,7 @@ export default function BacktestReportPanel() {
   }
 
   const top = (report.top_symbols as Array<Record<string, unknown>>) || [];
+  const aiLines = (report.ai_insight_lines as string[]) || [];
   const disclaimer = String(report.disclaimer || "");
 
   return (
@@ -29,6 +30,13 @@ export default function BacktestReportPanel() {
         {Number(report.long_min_bt_score)} 단타≥
         {Number(report.scalp_min_bt_score)} · 종목 {Number(report.symbols_in_store)}
       </p>
+      {aiLines.length > 0 && (
+        <ul className="panel-hint bt-ai-insights">
+          {aiLines.map((line) => (
+            <li key={line}>AI: {line}</li>
+          ))}
+        </ul>
+      )}
       <div className="bt-report-table-wrap">
         <table className="bt-report-table">
           <thead>

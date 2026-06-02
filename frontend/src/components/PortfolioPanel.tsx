@@ -1,12 +1,14 @@
 import type { CoinCandidate, Portfolio, TradeEvent } from "../types";
-import { fmtKrw, fmtPct, fmtQty, tradeAmountKrw, tradeQuantity } from "../utils";
+import { fmtKrw, fmtPct, fmtQty, resolveEntryTier, tradeAmountKrw, tradeQuantity } from "../utils";
 import CoinCell from "./CoinCell";
+import SurgeTagBadge from "./SurgeTagBadge";
 
 type Props = {
   portfolio: Portfolio;
   candidates: CoinCandidate[];
   trades: TradeEvent[];
   selected: string;
+  surgeTags?: Record<string, string>;
   onSelect: (symbol: string) => void;
   canTrade: boolean;
   busy: boolean;
@@ -19,6 +21,7 @@ export default function PortfolioPanel({
   candidates,
   trades,
   selected,
+  surgeTags,
   onSelect,
   canTrade,
   busy,
@@ -82,7 +85,9 @@ export default function PortfolioPanel({
           <p className="empty">보유 중인 코인이 없습니다</p>
         ) : (
           <ul className="position-list">
-            {portfolio.positions.map((p) => (
+            {portfolio.positions.map((p) => {
+              const tier = resolveEntryTier(p);
+              return (
               <li key={p.symbol}>
                 <button
                   type="button"
@@ -96,6 +101,13 @@ export default function PortfolioPanel({
                     held
                     trailing={
                       <div className="pos-pnl-block">
+                        <SurgeTagBadge symbol={p.symbol} surgeTags={surgeTags} />
+                        {tier.kind === "moonshot" && (
+                          <span className="pos-tier-badge moonshot">{tier.label}</span>
+                        )}
+                        {tier.kind === "scalp" && (
+                          <span className="pos-tier-badge scalp">{tier.label}</span>
+                        )}
                         <span className="pos-principal">
                           원금 {fmtKrw(p.cost_basis_krw)}원
                         </span>
@@ -110,7 +122,8 @@ export default function PortfolioPanel({
                   />
                 </button>
               </li>
-            ))}
+            );
+            })}
           </ul>
         )}
       </section>

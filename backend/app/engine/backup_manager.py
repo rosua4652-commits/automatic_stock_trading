@@ -31,6 +31,10 @@ def _mask_config(cfg: AppConfig) -> dict[str, Any]:
         "api_secret_key",
         "binance_api_key",
         "binance_api_secret",
+        "openai_api_key",
+        "gemini_api_key",
+        "news_llm_api_key",
+        "cryptopanic_api_key",
     ):
         v = (d.get(key) or "").strip()
         if v:

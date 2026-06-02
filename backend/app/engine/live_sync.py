@@ -274,8 +274,14 @@ async def _sync_upbit(
         sl = float(pm.get("stop_loss", 0))
         tp = float(pm.get("take_profit", 0))
         if not custom_sl and total_qty > 0 and sl <= 0:
-            sl = ref_usdt * (1 - config.stop_loss_pct / 100)
-            tp = ref_usdt * (1 + config.take_profit_pct / 100)
+            auto_sl = float(pm.get("auto_exit_sl_pct", 0) or 0)
+            auto_tp = float(pm.get("auto_exit_tp_pct", 0) or 0)
+            if auto_sl > 0 and auto_tp > 0:
+                sl = ref_usdt * (1 - auto_sl / 100)
+                tp = ref_usdt * (1 + auto_tp / 100)
+            else:
+                sl = ref_usdt * (1 - config.stop_loss_pct / 100)
+                tp = ref_usdt * (1 + config.take_profit_pct / 100)
         elif custom_sl and total_qty > 0 and ref_usdt > 0:
             if sl_pct_meta > 0:
                 sl = ref_usdt * (1 - sl_pct_meta / 100)
@@ -310,6 +316,9 @@ async def _sync_upbit(
             entry_reason=default_entry_reason(pm, symbol, live_meta),
             entry_score=float(pm.get("entry_score", 0)),
             entry_outlook=str(pm.get("entry_outlook") or ""),
+            auto_exit_sl_pct=float(pm.get("auto_exit_sl_pct", 0) or 0),
+            auto_exit_tp_pct=float(pm.get("auto_exit_tp_pct", 0) or 0),
+            exit_profile=str(pm.get("exit_profile") or ""),
             excluded_from_auto=bool(pm.get("excluded_from_auto", False)),
             custom_sl_tp=custom_sl,
             custom_stop_loss_pct=sl_pct_meta if custom_sl else 0.0,
@@ -348,13 +357,11 @@ async def _sync_upbit(
             force=force_trades,
         )
     else:
-        from app.engine.trade_history import merge_trade_events
+        from app.engine.trade_history import _trades_from_cached_meta
 
-        portfolio.trades = merge_trade_events(
-            portfolio.trades,
-            live_meta.get("trades", []),
+        portfolio.trades = _trades_from_cached_meta(
+            live_meta,
             usdt_krw=max(portfolio.usdt_krw, 1.0),
-            limit=100,
         )
 
     n = len(new_positions)
@@ -519,6 +526,9 @@ def export_live_meta(portfolio, preserve: dict[str, Any] | None = None) -> dict[
             "entry_reason": pos.entry_reason,
             "entry_score": pos.entry_score,
             "entry_outlook": pos.entry_outlook,
+            "auto_exit_sl_pct": pos.auto_exit_sl_pct,
+            "auto_exit_tp_pct": pos.auto_exit_tp_pct,
+            "exit_profile": pos.exit_profile,
             "excluded_from_auto": pos.excluded_from_auto,
             "custom_sl_tp": pos.custom_sl_tp,
             "custom_stop_loss_pct": pos.custom_stop_loss_pct,
@@ -551,6 +561,9 @@ def export_live_meta(portfolio, preserve: dict[str, Any] | None = None) -> dict[
             "trades_orders_fetched",
             "trades_display_count",
             "trades_force_sync",
+            "disabled_surge_symbols",
+            "disabled_surge_reasons",
+            "surge_active",
         ):
             if key in preserve:
                 out[key] = preserve[key]

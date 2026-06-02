@@ -363,12 +363,12 @@ async def run_accumulator_cycle(
     default_tp: float,
     batch_size: int | None = None,
     fee_pct: float = 0.05,
-) -> tuple[BacktestAccumulator, int, int]:
-    """심볼 배치 시뮬 → 파일 누적. 반환: (accumulator, tested, new_records)."""
+) -> tuple[BacktestAccumulator, int, int, list[str]]:
+    """심볼 배치 시뮬 → 파일 누적. 반환: (accumulator, tested, updated, batch)."""
     global _cycle_offset
     acc = BacktestAccumulator()
     if not symbols:
-        return acc, 0, 0
+        return acc, 0, 0, []
 
     if batch_size is None:
         batch_size = adaptive_batch_size(acc)
@@ -404,4 +404,4 @@ async def run_accumulator_cycle(
     from app.engine.backtest_learning import update_learning_from_batch
 
     update_learning_from_batch(acc, batch, default_sl=default_sl, default_tp=default_tp)
-    return acc, tested, updated
+    return acc, tested, updated, batch

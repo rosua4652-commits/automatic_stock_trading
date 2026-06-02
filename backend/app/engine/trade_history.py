@@ -195,6 +195,20 @@ def _f(val: Any) -> float:
         return 0.0
 
 
+def _is_weak_manual_sell_hint(hint: dict[str, Any]) -> bool:
+    """업비트 동기화만 된 '수동 매도' — exit_log·order_reasons가 우선."""
+    if not hint:
+        return False
+    side = str(hint.get("side") or "SELL").upper()
+    if side != "SELL":
+        return False
+    ek = str(hint.get("exit_kind") or "").lower()
+    if ek in ("tp", "sl"):
+        return False
+    text = str(hint.get("reason") or "").strip()
+    return ek in ("", "manual") and text in ("", "수동 매도", "manual")
+
+
 def _hint_applies_to_side(hint: dict[str, Any], side: str) -> bool:
     """매도 전용 사유(익절/손절)가 매수 주문 UUID에 붙는 것 방지."""
     if not hint:
@@ -208,6 +222,35 @@ def _hint_applies_to_side(hint: dict[str, Any], side: str) -> bool:
     if ek in ("tp", "sl") or "익절" in text or "손절" in text or "급락" in text:
         return side_u == "SELL"
     return True
+
+
+def resolve_sell_entry_mode(
+    live_meta: dict[str, Any],
+    *,
+    symbol: str,
+    row: dict[str, Any] | None = None,
+) -> str:
+    """매도 체결 — 해당 종목 진입 유형(롱/단타) 추론."""
+    if row and str(row.get("entry_mode") or "").strip():
+        return str(row["entry_mode"]).strip()
+
+    from app.engine.live_position_meta import entry_mode_label, infer_recent_aidi_buy
+
+    sym = str(symbol or "").upper()
+    if not sym:
+        return ""
+
+    pm = (live_meta.get("positions_meta") or {}).get(sym) or {}
+    outlook = str(pm.get("entry_outlook") or "")
+    if outlook:
+        label = entry_mode_label(outlook)
+        if label:
+            return label
+
+    inferred = infer_recent_aidi_buy(live_meta, sym)
+    if inferred:
+        return entry_mode_label(str(inferred.get("entry_outlook") or ""))
+    return ""
 
 
 def classify_exit_kind(reason: str, side: str) -> str:
@@ -351,11 +394,8 @@ def collect_reason_hints(live_meta: dict[str, Any]) -> dict[str, dict[str, Any]]
             ek = str(d.get("exit_kind") or "").lower() or classify_exit_kind(
                 reason, side
             )
-            if (
-                side == "SELL"
-                and reason == "수동 매도"
-                and bool(d.get("is_auto"))
-                and ek == "manual"
+            if _is_weak_manual_sell_hint(
+                {"reason": reason, "side": side, "exit_kind": ek}
             ):
                 continue
             hints[uid] = {
@@ -402,19 +442,13 @@ def remember_order_reason(
         for key in list(bag.keys())[: len(bag) - ORDER_REASONS_KEEP]:
             del bag[key]
     if side_u == "SELL" and exit_kind in ("tp", "sl"):
-        log = live_meta.setdefault("exit_log", [])
-        log.append(
-            {
-                "order_uuid": uid,
-                "symbol": str(symbol or "").upper(),
-                "reason": reason,
-                "is_auto": bool(is_auto),
-                "side": side_u,
-                "exit_kind": exit_kind,
-                "ts": time.time(),
-            }
+        append_exit_log(
+            live_meta,
+            symbol=symbol,
+            reason=reason,
+            is_auto=is_auto,
+            order_uuid=uid,
         )
-        live_meta["exit_log"] = log[-EXIT_LOG_KEEP:]
     if persist:
         try:
             from app.storage.persistence import save_live_meta
@@ -422,6 +456,78 @@ def remember_order_reason(
             save_live_meta(live_meta)
         except Exception:
             logger.debug("save_live_meta after order reason failed", exc_info=True)
+
+
+def append_exit_log(
+    live_meta: dict[str, Any],
+    *,
+    symbol: str,
+    reason: str,
+    is_auto: bool = True,
+    order_uuid: str = "",
+) -> None:
+    """손/익절 매도 직전·직후 기록 — UUID 없어도 종목·시간으로 사후 매칭."""
+    sym = str(symbol or "").upper()
+    if not sym:
+        return
+    side_u = "SELL"
+    exit_kind = classify_exit_kind(reason, side_u)
+    if exit_kind not in ("tp", "sl"):
+        return
+    uid = str(order_uuid or "").strip()
+    log = live_meta.setdefault("exit_log", [])
+    if uid:
+        for row in reversed(log):
+            if not isinstance(row, dict):
+                continue
+            if str(row.get("order_uuid") or "") == uid:
+                row["symbol"] = sym
+                row["reason"] = reason
+                row["is_auto"] = bool(is_auto)
+                row["exit_kind"] = exit_kind
+                live_meta["exit_log"] = log[-EXIT_LOG_KEEP:]
+                return
+    log.append(
+        {
+            "order_uuid": uid,
+            "symbol": sym,
+            "reason": reason,
+            "is_auto": bool(is_auto),
+            "side": side_u,
+            "exit_kind": exit_kind,
+            "ts": time.time(),
+        }
+    )
+    live_meta["exit_log"] = log[-EXIT_LOG_KEEP:]
+
+
+def link_exit_log_uuid(
+    live_meta: dict[str, Any],
+    *,
+    symbol: str,
+    reason: str,
+    order_uuid: str,
+) -> None:
+    """매도 체결 UUID를 방금 기록한 exit_log에 연결."""
+    sym = str(symbol or "").upper()
+    uid = str(order_uuid or "").strip()
+    if not sym or not uid:
+        return
+    log = live_meta.get("exit_log") or []
+    now = time.time()
+    for row in reversed(log):
+        if not isinstance(row, dict):
+            continue
+        if str(row.get("symbol") or "").upper() != sym:
+            continue
+        if str(row.get("reason") or "") != reason:
+            continue
+        if str(row.get("order_uuid") or ""):
+            continue
+        if now - float(row.get("ts") or 0) > 900:
+            continue
+        row["order_uuid"] = uid
+        return
 
 
 def remember_order_uuid(live_meta: dict[str, Any], uuid: str) -> None:
@@ -662,6 +768,8 @@ def order_to_trade_dict(
         hint["exit_kind"] = classify_exit_kind(str(hint.get("reason") or ""), "BUY")
     if not _hint_applies_to_side(hint, side):
         hint = {}
+    if _is_weak_manual_sell_hint(hint):
+        hint = {}
 
     qty, funds, px_krw = _fill_from_order(order)
     if qty <= 1e-12:
@@ -796,6 +904,7 @@ def _relabel_trade_rows(
     rows: list[dict[str, Any]],
     hints: dict[str, dict[str, Any]],
 ) -> list[dict[str, Any]]:
+    exit_log = live_meta.get("exit_log") or []
     for row in rows:
         uid = str(row.get("order_uuid") or "")
         side_row = str(row.get("side") or "")
@@ -804,6 +913,16 @@ def _relabel_trade_rows(
         )
         if not _hint_applies_to_side(hint_row, side_row):
             hint_row = {}
+        if _is_weak_manual_sell_hint(hint_row):
+            hint_row = {}
+        if not hint_row and side_row.upper() == "SELL":
+            hint_row = _hint_from_exit_log(
+                exit_log,
+                symbol=str(row.get("symbol") or ""),
+                side="SELL",
+                ts=float(row.get("ts") or 0),
+                window_sec=900.0,
+            )
         exit_kind = str(
             hint_row.get("exit_kind")
             or row.get("exit_kind")
@@ -815,7 +934,7 @@ def _relabel_trade_rows(
         raw_reason = str(hint_row.get("reason") or row.get("reason") or "")
         if hint_row:
             row["is_auto"] = bool(hint_row.get("is_auto", row.get("is_auto")))
-        has_hint = bool(uid and hint_row)
+        has_hint = bool(hint_row)
         row["exit_kind"] = exit_kind
         row["reason"] = normalize_trade_reason(
             side_row,
@@ -824,6 +943,15 @@ def _relabel_trade_rows(
             has_aidi_hint=has_hint,
             exit_kind=exit_kind,
         )
+        if str(side_row).upper() == "SELL":
+            if exit_kind in ("tp", "sl") and has_hint:
+                row["is_auto"] = True
+            if not str(row.get("entry_mode") or "").strip():
+                row["entry_mode"] = resolve_sell_entry_mode(
+                    live_meta,
+                    symbol=str(row.get("symbol") or ""),
+                    row=row,
+                )
     return rows
 
 

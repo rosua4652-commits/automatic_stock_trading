@@ -146,6 +146,114 @@ export default function SettingsModal({
           </p>
         </section>
 
+        <section className="settings-section settings-exit-strength">
+          <h3>자동투자 청산 강도</h3>
+          <p className="warn subtle">
+            AI 자동 매수 포지션의 익절·손절 목표와 추적 방식입니다. 약은 기존 단타(~1%),
+            중·강은 목표를 넓히고 상승 시 손절·익절선을 따라 올립니다.
+            <strong> 급등주·뉴스급등은 약·중·강과 무관</strong>하게 24h 기세 기반
+            손익절이 자동 적용됩니다.
+          </p>
+          <div className="mode-toggle exit-strength-toggle">
+            <button
+              type="button"
+              className={`mode-btn ${(draft.auto_exit_strength || "weak") === "weak" ? "active" : ""}`}
+              onClick={() => set("auto_exit_strength", "weak")}
+            >
+              <strong>약</strong>
+              <span>익절 ~1.2% · 손절 ~2.5% · 고정 단타</span>
+            </button>
+            <button
+              type="button"
+              className={`mode-btn ${draft.auto_exit_strength === "medium" ? "active" : ""}`}
+              onClick={() => set("auto_exit_strength", "medium")}
+            >
+              <strong>중</strong>
+              <span>익절 ~3% · 손절 ~4.5% · 추적 조율</span>
+            </button>
+            <button
+              type="button"
+              className={`mode-btn ${draft.auto_exit_strength === "strong" ? "active" : ""}`}
+              onClick={() => set("auto_exit_strength", "strong")}
+            >
+              <strong>강</strong>
+              <span>익절 ~6% · 손절 ~7% · 넓은 추적</span>
+            </button>
+          </div>
+        </section>
+
+        <section className="settings-section">
+          <h3>급등주 손익절</h3>
+          <p className="panel-hint subtle">
+            24h 상승률·뉴스 점수로 손익절 구간을 자동 산출합니다. 약·중·강 청산 강도와
+            별도로 동작합니다.
+          </p>
+          <label className="field checkbox-field">
+            <input
+              type="checkbox"
+              checked={draft.moonshot_momentum_exit_enabled !== false}
+              onChange={(e) =>
+                set("moonshot_momentum_exit_enabled", e.target.checked)
+              }
+            />
+            <span>기세 기반 손익절 자동 (권장)</span>
+          </label>
+          <div className="field-grid">
+            <label className="field">
+              <span>손절 하한 %</span>
+              <input
+                type="number"
+                step={0.5}
+                min={3}
+                max={12}
+                value={draft.moonshot_min_stop_loss_pct ?? 4}
+                onChange={(e) =>
+                  set("moonshot_min_stop_loss_pct", Number(e.target.value))
+                }
+              />
+            </label>
+            <label className="field">
+              <span>손절 상한 %</span>
+              <input
+                type="number"
+                step={0.5}
+                min={3}
+                max={15}
+                value={draft.moonshot_max_stop_loss_pct ?? 10}
+                onChange={(e) =>
+                  set("moonshot_max_stop_loss_pct", Number(e.target.value))
+                }
+              />
+            </label>
+            <label className="field">
+              <span>익절 하한 %</span>
+              <input
+                type="number"
+                step={1}
+                min={3}
+                max={50}
+                value={draft.moonshot_min_take_profit_pct ?? 10}
+                onChange={(e) =>
+                  set("moonshot_min_take_profit_pct", Number(e.target.value))
+                }
+              />
+            </label>
+            <label className="field">
+              <span>익절 상한 %</span>
+              <input
+                type="number"
+                step={1}
+                min={5}
+                max={50}
+                value={draft.moonshot_max_take_profit_pct ?? 35}
+                onChange={(e) =>
+                  set("moonshot_max_take_profit_pct", Number(e.target.value))
+                }
+              />
+            </label>
+          </div>
+        </section>
+
         <section className="settings-section">
           <h3>목표 · 자금</h3>
           <div className="field-grid">
@@ -177,6 +285,191 @@ export default function SettingsModal({
               </div>
             )}
           </div>
+        </section>
+
+        <section className="settings-section">
+          <h3>뉴스 급등 보조</h3>
+          <p className="panel-hint subtle">
+            CoinDesk·CoinTelegraph RSS, CoinGecko 트렌딩, (선택) CryptoPanic으로
+            기사 키워드를 점수화합니다. 아래 AI 판단을 켜면 헤드라인 맥락도 반영합니다.
+          </p>
+          <label className="field checkbox-field">
+            <input
+              type="checkbox"
+              checked={draft.news_enabled !== false}
+              onChange={(e) => set("news_enabled", e.target.checked)}
+            />
+            <span>뉴스 급등 신호 사용</span>
+          </label>
+          <div className="field-grid">
+            <label className="field">
+              <span>뉴스급등 최소 점수</span>
+              <input
+                type="number"
+                step={1}
+                min={10}
+                max={80}
+                value={draft.news_boost_min_score ?? 25}
+                onChange={(e) =>
+                  set("news_boost_min_score", Number(e.target.value))
+                }
+              />
+            </label>
+            <label className="field">
+              <span>CryptoPanic API 키 (선택)</span>
+              <input
+                type="password"
+                autoComplete="off"
+                placeholder="없으면 RSS·CoinGecko만 사용"
+                value={draft.cryptopanic_api_key ?? ""}
+                onChange={(e) => set("cryptopanic_api_key", e.target.value)}
+              />
+            </label>
+          </div>
+          <label className="field checkbox-field">
+            <input
+              type="checkbox"
+              checked={draft.surge_auto_expire_enabled !== false}
+              onChange={(e) => set("surge_auto_expire_enabled", e.target.checked)}
+            />
+            <span>급등·하락 자동 만료 (기사 분류)</span>
+          </label>
+          <p className="panel-hint subtle">
+            뉴스·AI로 분류된 급등·하락 태그는 아래 시간이 지나면 해제됩니다. 같은
+            종목에 관련 기사가 다시 잡히면 만료 시각이 연장됩니다. 24h 가격 급등
+            (moonshot)은 별도 기준으로 매 스캔 판단합니다. 보유 중 포지션의 청산
+            프로필은 만료와 무관하게 유지됩니다.
+          </p>
+          <div className="field-grid">
+            <label className="field">
+              <span>급등주 유지 (시간)</span>
+              <input
+                type="number"
+                step={1}
+                min={1}
+                max={168}
+                disabled={draft.surge_auto_expire_enabled === false}
+                value={draft.surge_tag_ttl_hours ?? 48}
+                onChange={(e) =>
+                  set("surge_tag_ttl_hours", Number(e.target.value))
+                }
+              />
+            </label>
+            <label className="field">
+              <span>하락주 유지 (시간)</span>
+              <input
+                type="number"
+                step={1}
+                min={1}
+                max={168}
+                disabled={draft.surge_auto_expire_enabled === false}
+                value={draft.downtrend_tag_ttl_hours ?? 24}
+                onChange={(e) =>
+                  set("downtrend_tag_ttl_hours", Number(e.target.value))
+                }
+              />
+            </label>
+          </div>
+        </section>
+
+        <section className="settings-section">
+          <h3>뉴스 AI 판단 (Gemini)</h3>
+          <p className="panel-hint subtle">
+            Google Gemini가 헤드라인 맥락을 분석합니다. 제목에 &apos;급등&apos;이 있어도
+            AI가 하락·부정으로 보면 뉴스급등·급등(moonshot) 보조를 차단합니다.
+            스캔당 최대 {draft.news_llm_max_articles_per_scan ?? 8}건 API 호출.
+          </p>
+          <label className="field checkbox-field">
+            <input
+              type="checkbox"
+              checked={draft.news_llm_enabled === true}
+              onChange={(e) => set("news_llm_enabled", e.target.checked)}
+            />
+            <span>뉴스 AI 방향 판단 사용 (Gemini)</span>
+          </label>
+          <label className="field checkbox-field">
+            <input
+              type="checkbox"
+              checked={draft.backtest_ai_enabled === true}
+              onChange={(e) => set("backtest_ai_enabled", e.target.checked)}
+            />
+            <span>백테스트 AI 학습 (Gemini, 위 API 키 공유)</span>
+          </label>
+          <p className="panel-hint subtle">
+            백테스트 배치마다 상·하위 종목 요약을 Gemini에 보내 손절/익절·차단·롱/단타
+            방향을 제안합니다. 배치당 최대 {draft.backtest_ai_max_symbols_per_batch ?? 5}
+            종목 · 기본 꺼짐.
+          </p>
+          <div className="field-grid">
+            <label className="field">
+              <span>Gemini API 키</span>
+              <input
+                type="password"
+                autoComplete="off"
+                placeholder="AIza… (Google AI Studio에서 발급)"
+                value={draft.gemini_api_key ?? draft.news_llm_api_key ?? ""}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  onChange({
+                    ...draft,
+                    gemini_api_key: v,
+                    news_llm_api_key: v,
+                    news_llm_provider: "gemini",
+                  });
+                  setTestMsg(null);
+                }}
+              />
+              <small>
+                키 없으면 키워드 점수만 사용 ·{" "}
+                <a
+                  href="https://aistudio.google.com/apikey"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  API 키 발급
+                </a>
+              </small>
+            </label>
+            <label className="field">
+              <span>스캔당 최대 기사 수</span>
+              <input
+                type="number"
+                step={1}
+                min={1}
+                max={20}
+                value={draft.news_llm_max_articles_per_scan ?? 8}
+                onChange={(e) =>
+                  set("news_llm_max_articles_per_scan", Number(e.target.value))
+                }
+              />
+            </label>
+          </div>
+          <details className="settings-advanced">
+            <summary>고급 (OpenAI 대체)</summary>
+            <div className="field-grid" style={{ marginTop: 8 }}>
+              <label className="field">
+                <span>AI 제공자</span>
+                <select
+                  value={draft.news_llm_provider ?? "gemini"}
+                  onChange={(e) => set("news_llm_provider", e.target.value)}
+                >
+                  <option value="gemini">Google Gemini (기본)</option>
+                  <option value="openai">OpenAI (대체)</option>
+                  <option value="auto">자동 (Gemini 우선)</option>
+                </select>
+              </label>
+              <label className="field">
+                <span>OpenAI API 키 (대체)</span>
+                <input
+                  type="password"
+                  autoComplete="off"
+                  placeholder="sk-… (선택)"
+                  value={draft.openai_api_key ?? ""}
+                  onChange={(e) => set("openai_api_key", e.target.value)}
+                />
+              </label>
+            </div>
+          </details>
         </section>
 
         <section className="settings-section">

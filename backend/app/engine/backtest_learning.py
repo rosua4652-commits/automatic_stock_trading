@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from app.engine.backtest_optimizer import BacktestAccumulator, SideStats
+from app.models import AppConfig
 from app.storage.persistence import load_backtest_state, save_backtest_state
 from app.util.numbers import as_float
 
@@ -32,6 +33,8 @@ class BacktestLearningState:
     execution_win_rate: float = 0.0
     execution_feedback_count: int = 0
     data_maturity_pct: float = 0.0
+    ai_recent_insights: list[dict[str, Any]] = field(default_factory=list)
+    last_ai_message: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -52,6 +55,8 @@ class BacktestLearningState:
             "execution_win_rate": round(self.execution_win_rate, 2),
             "execution_feedback_count": self.execution_feedback_count,
             "data_maturity_pct": round(self.data_maturity_pct, 1),
+            "ai_recent_insights": list(self.ai_recent_insights)[-20:],
+            "last_ai_message": self.last_ai_message,
         }
 
     @classmethod
@@ -91,12 +96,25 @@ class BacktestLearningState:
             execution_win_rate=float(d.get("execution_win_rate") or 0.0),
             execution_feedback_count=int(d.get("execution_feedback_count") or 0),
             data_maturity_pct=float(d.get("data_maturity_pct") or 0.0),
+            ai_recent_insights=list(d.get("ai_recent_insights") or [])[-20:],
+            last_ai_message=str(d.get("last_ai_message") or ""),
         )
+
+
+def _ensure_learning_fields(learning: BacktestLearningState) -> BacktestLearningState:
+    """구버전 인메모리·저장 객체에 누락 필드 보정."""
+    if not hasattr(learning, "ai_recent_insights") or not isinstance(
+        learning.ai_recent_insights, list
+    ):
+        learning.ai_recent_insights = []
+    if not hasattr(learning, "last_ai_message"):
+        learning.last_ai_message = ""
+    return learning
 
 
 def load_learning_state() -> BacktestLearningState:
     raw = load_backtest_state()
-    return BacktestLearningState.from_dict(raw.get("learning"))
+    return _ensure_learning_fields(BacktestLearningState.from_dict(raw.get("learning")))
 
 
 def save_learning_state(learning: BacktestLearningState) -> None:
@@ -129,16 +147,21 @@ def _clamp_auto_sl_tp(
     fee_rt = max(0.0, fee_pct) * 2.0
     min_tp = round(fee_rt + 0.35, 2)
 
-    if mode == "scalp":
-        tp = min(tp, 1.15)
-        tp = max(tp, min_tp)
-        sl = min(max(sl, 1.8), 2.8)
-        sl = max(sl, tp * 1.35)
-    else:
-        tp = min(tp, 1.8)
-        tp = max(tp, min_tp)
-        sl = min(max(sl, 2.0), 3.5)
+    if mode == "moonshot":
+        m_sl, m_tp = 6.0, 20.0
+        sl = min(max(as_float(sl_pct, m_sl), 5.0), 12.0)
+        tp = min(max(as_float(tp_pct, m_tp), 12.0), 35.0)
+        sl = max(sl, tp * 0.22)
+    elif mode == "scalp":
+        tp = min(tp, 7.0)
+        tp = max(tp, max(min_tp, 2.5))
+        sl = min(max(sl, 2.5), 5.5)
         sl = max(sl, tp * 1.25)
+    else:
+        tp = min(tp, 8.0)
+        tp = max(tp, min_tp)
+        sl = min(max(sl, 3.0), 8.0)
+        sl = max(sl, tp * 1.15)
     return round(sl, 2), round(tp, 2)
 
 
@@ -165,7 +188,7 @@ def symbol_passes_learning(
     paper_relax: bool = False,
     account_mode: str = "paper",
 ) -> tuple[bool, str]:
-    """mode: long | scalp · account_mode: paper | live (체결 차단만 분리)."""
+    """mode: long | scalp | moonshot · account_mode: paper | live (체결 차단만 분리)."""
     sym = symbol.upper()
     if sym in learning.blocked_symbols:
         return False, "학습 차단 종목(BT)"
@@ -182,7 +205,22 @@ def symbol_passes_learning(
         if maturity >= 25:
             return True, "BT 신규(성숙도 충분)"
         return False, "BT 미검증 종목"
-    st = rec.long if mode == "long" else rec.short
+    st = rec.long if mode in ("long", "moonshot") else rec.short
+    if mode == "moonshot":
+        floor = max(28.0, learning.long_min_bt_score - 10.0)
+        min_trades = 0 if maturity < 50 else 1
+        if st.trades < min_trades and maturity >= 40:
+            return False, f"BT 거래 수 {st.trades} < 급등 요구 {min_trades}"
+        if st.trades >= 2 and as_float(st.score) < floor:
+            return False, f"BT점수 {as_float(st.score):.0f} < 급등기준 {floor:.0f}"
+        if (
+            st.trades >= 3
+            and as_float(st.win_rate_pct) < 30
+            and _side_expectancy(st) < -0.5
+        ):
+            return False, f"BT 기대값 음수 · 승률 {as_float(st.win_rate_pct):.0f}%"
+        return True, "OK"
+
     floor = (
         learning.long_min_bt_score if mode == "long" else learning.scalp_min_bt_score
     )
@@ -197,6 +235,21 @@ def symbol_passes_learning(
     return True, "OK"
 
 
+def _finalize_auto_sl_tp(
+    sl: float,
+    tp: float,
+    source: str,
+    *,
+    config: AppConfig | None,
+    mode: str,
+) -> tuple[float, float, str]:
+    if config and mode != "moonshot":
+        from app.engine.exit_strength import apply_strength_to_sl_tp
+
+        sl, tp = apply_strength_to_sl_tp(config, sl, tp, mode=mode)
+    return sl, tp, source
+
+
 def resolve_sl_tp_from_backtest(
     acc: BacktestAccumulator | None,
     learning: BacktestLearningState | None,
@@ -205,6 +258,9 @@ def resolve_sl_tp_from_backtest(
     mode: str,
     default_sl: float,
     default_tp: float,
+    config: AppConfig | None = None,
+    change_24h: float = 0.0,
+    news_score: float = 0.0,
 ) -> tuple[float, float, str]:
     """
     백테스트 그리드 탐색 결과로 손익절 % 선정.
@@ -212,7 +268,7 @@ def resolve_sl_tp_from_backtest(
     """
     sym = symbol.upper()
     mode = mode.lower()
-    if mode not in ("long", "scalp", "short"):
+    if mode not in ("long", "scalp", "short", "moonshot"):
         mode = "long"
     if mode == "short":
         mode = "scalp"
@@ -222,7 +278,18 @@ def resolve_sl_tp_from_backtest(
     rec = acc.symbols.get(sym)
     st = None
     if rec:
-        st = rec.long if mode == "long" else rec.short
+        st = rec.long if mode in ("long", "moonshot") else rec.short
+
+    if mode == "moonshot":
+        from app.engine.moonshot_exit import resolve_moonshot_sl_tp
+
+        m_sl, m_tp, src = resolve_moonshot_sl_tp(
+            config,
+            change_24h=change_24h,
+            news_score=news_score,
+        )
+        sl, tp = _clamp_auto_sl_tp(mode, m_sl, m_tp)
+        return sl, tp, src
 
     if st and st.trades >= 1 and as_float(st.best_sl_pct) > 0 and as_float(st.score) >= 32:
         sl, tp = _clamp_auto_sl_tp(
@@ -230,10 +297,13 @@ def resolve_sl_tp_from_backtest(
             as_float(st.best_sl_pct),
             as_float(st.best_tp_pct),
         )
-        return sl, tp, "BT종목"
+        return _finalize_auto_sl_tp(sl, tp, "BT종목", config=config, mode=mode)
 
-    d_sl = as_float(default_sl, 3.0)
-    d_tp = as_float(default_tp, 1.2)
+    from app.engine.exit_strength import strength_default_sl_tp
+
+    strength_sl, strength_tp = strength_default_sl_tp(config)
+    d_sl = as_float(strength_sl, as_float(default_sl, 3.0))
+    d_tp = as_float(strength_tp, as_float(default_tp, 1.2))
     g_sl, g_tp = acc.best_global_params(d_sl, d_tp)
     g_sl = as_float(g_sl, d_sl)
     g_tp = as_float(g_tp, d_tp)
@@ -245,10 +315,10 @@ def resolve_sl_tp_from_backtest(
 
     if mode == "long" and l_sl > 0:
         sl, tp = _clamp_auto_sl_tp(mode, l_sl, l_tp or g_tp or d_tp)
-        return sl, tp, "BT학습·롱"
+        return _finalize_auto_sl_tp(sl, tp, "BT학습·롱", config=config, mode=mode)
     if mode == "scalp" and s_sl > 0:
         sl, tp = _clamp_auto_sl_tp(mode, s_sl, s_tp or g_tp or d_tp)
-        return sl, tp, "BT학습·단타"
+        return _finalize_auto_sl_tp(sl, tp, "BT학습·단타", config=config, mode=mode)
 
     if g_sl > 0:
         if mode == "scalp":
@@ -257,16 +327,16 @@ def resolve_sl_tp_from_backtest(
                 max(1.8, g_sl * 0.85),
                 max(0.7, g_tp * 0.85),
             )
-            return sl, tp, "BT전역·단타"
+            return _finalize_auto_sl_tp(sl, tp, "BT전역·단타", config=config, mode=mode)
         sl, tp = _clamp_auto_sl_tp("long", g_sl, g_tp)
-        return sl, tp, "BT전역"
+        return _finalize_auto_sl_tp(sl, tp, "BT전역", config=config, mode=mode)
 
     if mode == "scalp":
         sl, tp = _clamp_auto_sl_tp("scalp", d_sl * 0.85, d_tp * 0.9)
-        return sl, tp, "설정·단타"
+        return _finalize_auto_sl_tp(sl, tp, "설정·단타", config=config, mode=mode)
 
     sl, tp = _clamp_auto_sl_tp("long", d_sl, d_tp)
-    return sl, tp, "설정"
+    return _finalize_auto_sl_tp(sl, tp, "설정", config=config, mode=mode)
 
 
 def strategy_sl_tp(
@@ -277,9 +347,20 @@ def strategy_sl_tp(
     mode: str,
     default_sl: float,
     default_tp: float,
+    config: AppConfig | None = None,
+    change_24h: float = 0.0,
+    news_score: float = 0.0,
 ) -> tuple[float, float]:
     sl, tp, _ = resolve_sl_tp_from_backtest(
-        acc, learning, symbol, mode=mode, default_sl=default_sl, default_tp=default_tp
+        acc,
+        learning,
+        symbol,
+        mode=mode,
+        default_sl=default_sl,
+        default_tp=default_tp,
+        config=config,
+        change_24h=change_24h,
+        news_score=news_score,
     )
     return sl, tp
 

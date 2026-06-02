@@ -19,7 +19,12 @@ from app.engine.portfolio import PortfolioManager
 from app.engine.portfolio_store import store
 from app.engine.backtest_optimizer import BacktestAccumulator
 from app.engine.backtest_runner import get_accumulator
-from app.engine.backtest_learning import load_learning_state, strategy_sl_tp
+from app.engine.backtest_learning import _clamp_auto_sl_tp, load_learning_state, strategy_sl_tp
+from app.engine.exit_strength import (
+    apply_adaptive_exit_levels,
+    get_exit_strength_profile,
+    strength_default_sl_tp,
+)
 from app.engine.risk_manager import (
     check_auto_invest_allowed,
     check_position_weight,
@@ -39,6 +44,13 @@ from app.engine.flash_crash_guard import (
     is_symbol_flash_blocked,
 )
 from app.engine.scalp_filters import apply_scalp_liquidity_to_candidate
+from app.engine.moonshot_exit import (
+    EXIT_PROFILE_MOONSHOT,
+    apply_moonshot_adaptive_exit_levels,
+    is_moonshot_position,
+    is_moonshot_recommendation,
+    resolve_moonshot_sl_tp,
+)
 from app.util.numbers import as_float
 from app.engine.buy_limits import effective_min_buy_krw, manual_min_buy_krw
 from app.engine.recommendations import (
@@ -46,7 +58,10 @@ from app.engine.recommendations import (
     cap_apply_amounts,
     deployable_cash_krw,
     filter_recommendations_for_auto,
+    sync_surge_candidates,
 )
+from app.engine.surge_manage import sync_surge_tags
+from app.engine.news_signals import refresh_news_scores
 from app.market.upbit_data import market
 from app.market.coin_registry import coin_meta
 from app.market.direction_analyzer import analyze_direction
@@ -93,6 +108,7 @@ class TradingEngine:
         self._flash_guard: dict[str, FlashGuardState] = {}
         self._flash_block_until: dict[str, float] = {}
         self._scan_wait_left: int = 0
+        self._tick_lock = asyncio.Lock()
 
     def _paper_relax_bt(self) -> bool:
         return bool(
@@ -157,8 +173,83 @@ class TradingEngine:
     def _is_live(self) -> bool:
         return self.config.trade_mode == TradeMode.LIVE
 
+    def _disabled_surge_symbols(self) -> set[str]:
+        from app.engine.surge_manage import get_disabled_symbols
+
+        return get_disabled_symbols(store._live_meta)
+
+    def _sync_news_surge_active(
+        self, news_scores: dict | None = None
+    ) -> None:
+        from app.engine.news_signals import NewsSymbolScore, _cache
+        from app.engine.surge_tag_expiry import (
+            prune_expired_surge_active,
+            sync_surge_active_from_news,
+        )
+
+        raw = _cache.get("scores")
+        scores: dict = {}
+        if isinstance(raw, dict):
+            scores = {
+                k.upper(): v
+                for k, v in raw.items()
+                if isinstance(v, NewsSymbolScore)
+            }
+        elif news_scores:
+            scores = {
+                k.upper(): v
+                for k, v in news_scores.items()
+                if isinstance(v, NewsSymbolScore)
+            }
+
+        if scores:
+            sync_surge_active_from_news(store._live_meta, scores, self.config)
+        else:
+            prune_expired_surge_active(store._live_meta, config=self.config)
+        store.save_live_meta()
+
+    def _sync_surge_board(self) -> None:
+        disabled = self._disabled_surge_symbols()
+        n_surge, syms_surge = sync_surge_candidates(
+            self.bot.recommendations,
+            disabled=disabled,
+        )
+        self.bot.surge_candidates_count = n_surge
+        self.bot.surge_candidates = syms_surge
+        self.bot.surge_tags = sync_surge_tags(
+            recommendations=self.bot.recommendations,
+            candidates=self.bot.candidates,
+            config=self.config,
+            disabled=disabled,
+            meta=store._live_meta,
+        )
+
     def is_running(self) -> bool:
         return self.bot.status == BotStatus.RUNNING
+
+    def _scan_loop_active(self) -> bool:
+        """자동투자 중에는 사용자 중지 전까지 스캔 루프 유지."""
+        if self.bot.status in (BotStatus.STOPPING, BotStatus.STOPPED):
+            return False
+        if self.bot.status == BotStatus.RUNNING:
+            return True
+        return bool(self.bot.auto_invest_active)
+
+    def _effective_scan_interval(self) -> int:
+        """자동투자(롱·단타) 시 스캔 주기 단축 — 급등·단타 진입 지연 완화."""
+        base = max(15, int(getattr(self.config, "scan_interval_sec", 30) or 30))
+        if not self.bot.auto_invest_active:
+            return base
+        if self.bot.auto_invest_long or self.bot.auto_invest_scalp:
+            return max(15, min(base, 22))
+        return base
+
+    def _ensure_scan_loop(self) -> None:
+        if not self._scan_loop_active():
+            return
+        if self._task is not None and not self._task.done():
+            return
+        self._task = asyncio.create_task(self._loop())
 
     def can_manual_trade(self) -> bool:
         return self.bot.status != BotStatus.STOPPING
@@ -204,8 +295,8 @@ class TradingEngine:
                     if not self._is_live():
                         self._persist()
                     self._notify()
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.warning("[손익절 감시] 오류: %s", e)
         except asyncio.CancelledError:
             pass
 
@@ -309,6 +400,7 @@ class TradingEngine:
             mix = "·".join(parts)
             if auto_long and auto_scalp:
                 mix += " 혼합"
+            surge_hint = " · 급등주(moonshot) 롱 자동매수 포함" if auto_long else ""
             # 모의·실거래 동일 — 스캔당 매수 건수·현금 배분(paper_* 설정) 적용
             self.bot.paper_auto_full = True
             self.bot.activity_log = []
@@ -341,7 +433,7 @@ class TradingEngine:
                 f"{auto_tag}"
                 f"자동투자 {mix} · BT성숙 {learn.data_maturity_pct:.0f}% · "
                 f"롱≥{learn.long_min_bt_score:.0f} 단타≥{learn.scalp_min_bt_score:.0f} · "
-                f"일손실한도 {limit:.1f}%{relax}"
+                f"일손실한도 {limit:.1f}%{relax}{surge_hint}"
             )
             if risk_msg:
                 self.bot.auto_invest_message += f" · {risk_msg}"
@@ -349,6 +441,7 @@ class TradingEngine:
                 f"[{mode}] {self.bot.auto_invest_message} · 스캔·매수·익절/손절 자동"
             )
             logger.info("[자동투자 시작] %s · %s", mode, self.bot.auto_invest_message)
+            self.ensure_auto_guard()
         else:
             self.bot.auto_invest_message = ""
             self.bot.message = "시장 스캔·차트 분석 중... (승인 후 매수)"
@@ -358,8 +451,7 @@ class TradingEngine:
                 self.config.scan_interval_sec,
                 self.config.min_entry_score,
             )
-        self._task = asyncio.create_task(self._loop())
-        await self._tick()
+        self._ensure_scan_loop()
         self._notify()
         return True, self.bot.message
 
@@ -417,6 +509,16 @@ class TradingEngine:
         logger.info("[분석 중지] 루프 종료 · 제안·수동 매매만 가능")
         self._bump_version()
         self._notify()
+
+    async def _halt_scan_task(self) -> None:
+        """스캔 태스크만 중단 — 자동투자 플래그·상태는 유지."""
+        if self._task and not self._task.done():
+            self._task.cancel()
+            try:
+                await asyncio.wait_for(self._task, timeout=10.0)
+            except (asyncio.CancelledError, asyncio.TimeoutError):
+                pass
+            self._task = None
 
     async def reset_paper_data(self) -> str:
         """모의 포트폴리오·손익·거래 초기화 (설정 initial_balance 기준)."""
@@ -478,14 +580,39 @@ class TradingEngine:
 
     async def update_config(self, cfg: AppConfig) -> str:
         old_mode = self.config.trade_mode
-        if self.is_running():
-            await self.stop()
+        mode_changed = old_mode != cfg.trade_mode
+
+        was_auto = self.bot.auto_invest_active
+        was_long = self.bot.auto_invest_long
+        was_scalp = self.bot.auto_invest_scalp
+        was_paused = self.bot.auto_buy_paused
+        was_scanning = self._scan_loop_active() or (
+            self._task is not None and not self._task.done()
+        )
+        was_manual_scan = self.is_running() and not was_auto
+
+        if was_scanning:
+            if mode_changed:
+                await self.stop()
+            else:
+                await self._halt_scan_task()
+
         self.config = cfg
         switch_msg = await store.on_mode_change(old_mode, cfg.trade_mode, cfg)
         self.bind_portfolio()
         from app.engine.risk_manager import on_trade_mode_switch
+        from app.util.numbers import as_float
 
-        snap = self.portfolio.snapshot({}, cfg)
+        prices: dict[str, float] = {}
+        try:
+            tickers = await market.tickers_24h()
+            prices = {
+                s: as_float(t.get("lastPrice"), 0.0)
+                for s, t in tickers.items()
+            }
+        except Exception:
+            pass
+        snap = self.portfolio.snapshot(prices, cfg)
         mode_val = cfg.trade_mode.value
         on_trade_mode_switch(mode_val, snap.total_value_krw)
         self._flash_block_until.clear()
@@ -499,7 +626,8 @@ class TradingEngine:
         self.bot.short_signals = []
         self.bot.direction_scan_message = ""
         self.bot.auto_invest_rejects = []
-        self.bot.auto_invest_message = ""
+        if not (was_auto and was_scanning and not mode_changed):
+            self.bot.auto_invest_message = ""
         self.bot.recent_trades = self.portfolio.trades[-40:]
         if cfg.trade_mode == TradeMode.PAPER:
             self.portfolio.apply_config(cfg)
@@ -513,15 +641,47 @@ class TradingEngine:
                 self._persist()
         except Exception:
             pass
+
+        resume_msg = ""
+        if was_auto and was_scanning:
+            if mode_changed:
+                ok, msg = await self.start(
+                    auto_invest=True,
+                    auto_long=was_long,
+                    auto_scalp=was_scalp,
+                )
+                if was_paused:
+                    self.set_auto_buy_paused(True)
+                resume_msg = (
+                    " · 자동투자 재개"
+                    if ok
+                    else f" · 자동투자 재시작 실패: {msg}"
+                )
+            else:
+                self.bot.status = BotStatus.RUNNING
+                self.bot.auto_invest_active = True
+                self.bot.auto_invest_long = was_long
+                self.bot.auto_invest_scalp = was_scalp
+                self.bot.auto_buy_paused = was_paused
+                self.bot.manual_mode = False
+                self._ensure_scan_loop()
+                resume_msg = " · 자동투자 스캔 유지"
+        elif was_manual_scan and not mode_changed:
+            self.bot.status = BotStatus.RUNNING
+            self.bot.manual_mode = True
+            self._ensure_scan_loop()
+            resume_msg = " · 분석 재개"
+
         self._bump_version()
         self._notify()
         logger.info(
-            "[설정 변경] 모드 %s → %s · %s",
+            "[설정 변경] 모드 %s → %s · %s%s",
             old_mode.value,
             cfg.trade_mode.value,
             switch_msg[:120],
+            resume_msg,
         )
-        return switch_msg
+        return switch_msg + resume_msg
 
     async def ensure_candidate_entry(self, symbol: str) -> None:
         """탭에서 선택한 코인 진입 분석이 없으면 보강."""
@@ -723,6 +883,11 @@ class TradingEngine:
             }
             tickers = await market.tickers_24h()
             snap = self.portfolio.snapshot(tickers, self.config)
+            news_scores = await refresh_news_scores(
+                [c.symbol for c in self.bot.candidates],
+                self.config,
+            )
+            self._sync_news_surge_active(news_scores)
             self.bot.recommendations = build_recommendations(
                 self.bot.candidates,
                 snap.cash_krw,
@@ -731,7 +896,10 @@ class TradingEngine:
                 tickers=tickers,
                 usdt_krw=self.portfolio.usdt_krw,
                 backtest=acc,
+                news_scores=news_scores,
+                live_meta=store._live_meta,
             )
+            self._sync_surge_board()
 
         n_sig = len(self.bot.long_signals) + len(self.bot.short_signals)
         self.bot.direction_scan_message = (
@@ -874,21 +1042,26 @@ class TradingEngine:
 
     async def _loop(self) -> None:
         try:
-            while self.is_running():
+            while self._scan_loop_active():
+                if (
+                    self.bot.auto_invest_active
+                    and self.bot.status != BotStatus.RUNNING
+                ):
+                    self.bot.status = BotStatus.RUNNING
                 try:
                     await self._tick()
                 except asyncio.CancelledError:
                     raise
                 except Exception as e:
-                    if self.is_running():
+                    if self._scan_loop_active():
                         self.bot.message = f"오류 복구 중: {e}"
                         logger.warning("[스캔 루프] 오류 복구: %s", e)
-                if not self.is_running():
+                if not self._scan_loop_active():
                     break
-                interval = max(15, self.config.scan_interval_sec)
+                interval = self._effective_scan_interval()
                 for tick in range(interval):
-                    if not self.is_running():
-                        return
+                    if not self._scan_loop_active():
+                        break
                     self.bot.seconds_until_scan = max(0, interval - tick)
                     if tick == 0:
                         set_phase(self.bot, "wait", f"다음 스캔 {interval}초")
@@ -910,11 +1083,13 @@ class TradingEngine:
         finally:
             if self.bot.status == BotStatus.STOPPING:
                 pass
-            elif self.bot.auto_invest_active and self.bot.status == BotStatus.RUNNING:
+            elif self.bot.auto_invest_active:
+                if self.bot.status != BotStatus.RUNNING:
+                    self.bot.status = BotStatus.RUNNING
                 logger.warning(
-                    "[스캔 루프] 비정상 종료 — 자동투자 중 스캔 루프 재시작"
+                    "[스캔 루프] 자동투자 — 스캔 루프 재시작 (중지 버튼 전까지 유지)"
                 )
-                self._task = asyncio.create_task(self._loop())
+                self._ensure_scan_loop()
             elif self.bot.status != BotStatus.STOPPED:
                 self.bot.status = BotStatus.STOPPED
                 self.bot.manual_mode = True
@@ -924,11 +1099,20 @@ class TradingEngine:
             self._bump_version()
 
     async def _tick(self) -> None:
-        if not self.is_running():
+        if not self._scan_loop_active():
             return
+        if self._tick_lock.locked():
+            logger.info("[스캔] 이미 분석 중 — 중복 스캔 스킵")
+            return
+        async with self._tick_lock:
+            if not self._scan_loop_active():
+                return
 
-        set_phase(self.bot, "scan", "시장 스캔")
-        self._log("스캔", "시장·차트·투자 제안 분석 시작")
+            set_phase(self.bot, "scan", "시장 스캔")
+            self._log("스캔", "시장·차트·투자 제안 분석 시작")
+            await self._run_tick_body()
+
+    async def _run_tick_body(self) -> None:
         self.bind_portfolio()
         acc_pre = self._backtest_acc or get_accumulator()
         if getattr(self.config, "ai_auto_settings", True):
@@ -985,6 +1169,14 @@ class TradingEngine:
         for c in quick:
             by_sym.setdefault(c.symbol, c)
         candidates = list(by_sym.values())
+        if self.bot.auto_invest_long or self.bot.auto_invest_scalp:
+            candidates.sort(
+                key=lambda c: (
+                    -max(float(getattr(c, "change_24h", 0) or 0), 0.0),
+                    -float(getattr(c, "volume_usdt", 0) or 0),
+                    -c.score,
+                )
+            )
 
         sem = asyncio.Semaphore(14)
 
@@ -1027,6 +1219,11 @@ class TradingEngine:
         }
         snap = self.portfolio.snapshot({}, self.config)
         acc = self._backtest_acc or get_accumulator()
+        news_scores = await refresh_news_scores(
+            [c.symbol for c in candidates],
+            self.config,
+        )
+        self._sync_news_surge_active(news_scores)
         self.bot.recommendations = build_recommendations(
             candidates,
             snap.cash_krw,
@@ -1035,7 +1232,10 @@ class TradingEngine:
             tickers=tickers,
             usdt_krw=self.portfolio.usdt_krw,
             backtest=acc,
+            news_scores=news_scores,
+            live_meta=store._live_meta,
         )
+        self._sync_surge_board()
         mode = "모의" if self.config.trade_mode == TradeMode.PAPER else "실거래"
         total_rec = sum(r.amount_krw for r in self.bot.recommendations)
         scalp_only = sum(
@@ -1085,8 +1285,14 @@ class TradingEngine:
         )
         self._refresh_auto_risk_status()
         if not allowed:
-            self.bot.auto_invest_message = risk_msg
+            interval = self._effective_scan_interval()
+            self.bot.auto_invest_message = f"{risk_msg} · {interval}초 후 재스캔"
             self._log("자동", risk_msg, "warn")
+            logger.info(
+                "[자동투자] 매수 보류 — %s · %ds 후 재스캔",
+                risk_msg[:80],
+                interval,
+            )
             return
 
         acc = self._backtest_acc or get_accumulator()
@@ -1107,6 +1313,7 @@ class TradingEngine:
             flash_block_until=self._flash_block_until,
             paper_relax_bt=paper_relax,
             account_mode=account_mode,
+            disabled_surge=self._disabled_surge_symbols(),
         )
         self.bot.auto_invest_rejects = build_auto_invest_rejects(
             self.bot.recommendations,
@@ -1116,6 +1323,7 @@ class TradingEngine:
             flash_block_until=self._flash_block_until,
             paper_relax_bt=paper_relax,
             account_mode=account_mode,
+            disabled_surge=self._disabled_surge_symbols(),
         )
         weight_ok: list = []
         for r in picks:
@@ -1136,7 +1344,9 @@ class TradingEngine:
             flash_block_until=self._flash_block_until,
             paper_relax_bt=paper_relax,
             account_mode=account_mode,
+            disabled_surge=self._disabled_surge_symbols(),
         )
+        interval = self._effective_scan_interval()
         if not picks:
             blocked = [
                 r.base
@@ -1145,11 +1355,18 @@ class TradingEngine:
             ]
             if blocked:
                 self.bot.auto_invest_message = (
-                    f"급락 차단 — {', '.join(blocked[:4])} 매수 보류"
+                    f"급락 차단 — {', '.join(blocked[:4])} 매수 보류 · "
+                    f"{interval}초 후 재스캔"
                 )
             else:
-                self.bot.auto_invest_message = "자동 매수 없음 - " + diag
+                self.bot.auto_invest_message = (
+                    f"자동 매수 없음 — {diag} · {interval}초 후 재스캔"
+                )
             self._log("자동", self.bot.auto_invest_message, "warn")
+            logger.info(
+                "[자동투자] 매수 없음 — 스캔 계속 · %ds 후 재시도",
+                interval,
+            )
             return
 
         raw_amts = {r.symbol.upper(): float(r.amount_krw) for r in picks}
@@ -1170,29 +1387,69 @@ class TradingEngine:
             raw_amts, cash, fee_pct, min_buy_krw=effective_min_buy_krw(self.config)
         )
         if not capped:
-            self.bot.auto_invest_message = "자동 매수 스킵 — 가용 현금 부족"
+            self.bot.auto_invest_message = (
+                f"자동 매수 스킵 — 가용 현금 부족 · {interval}초 후 재스캔"
+            )
+            logger.info(
+                "[자동투자] 현금 부족 — 스캔 계속 · %ds 후 재시도",
+                interval,
+            )
             return
 
         learn = load_learning_state()
+        strength_sl, strength_tp = strength_default_sl_tp(self.config)
         sl_tp_map: dict[str, tuple[float, float]] = {}
         for r in picks:
             sym = r.symbol.upper()
             if float(getattr(r, "stop_loss_pct", 0) or 0) > 0:
                 sl_tp_map[sym] = (float(r.stop_loss_pct), float(r.take_profit_pct))
+            elif (r.entry_tier or "").lower() == "moonshot" or is_moonshot_recommendation(r):
+                sl, tp, _ = resolve_moonshot_sl_tp(
+                    self.config,
+                    change_24h=float(getattr(r, "change_24h", 0) or 0),
+                    news_score=float(getattr(r, "news_score", 0) or 0),
+                )
+                sl_tp_map[sym] = (sl, tp)
             else:
-                mode = "scalp" if (r.entry_tier or "").lower() == "scalp" else "long"
+                mode = (r.entry_tier or "auto").lower()
+                if mode == "scalp":
+                    bt_mode = "scalp"
+                else:
+                    bt_mode = "long"
                 sl_tp_map[sym] = strategy_sl_tp(
                     learn,
                     acc,
                     sym,
-                    mode=mode,
-                    default_sl=self.config.stop_loss_pct,
-                    default_tp=self.config.take_profit_pct,
+                    mode=bt_mode,
+                    default_sl=strength_sl,
+                    default_tp=strength_tp,
+                    config=self.config,
                 )
 
+        def _tier_label(tier: str) -> str:
+            t = (tier or "").lower()
+            if t == "scalp":
+                return "단타"
+            if t == "moonshot":
+                return "급등"
+            return "롱"
+
         syms = ", ".join(
-            f"{r.base}({'단타' if r.entry_tier == 'scalp' else '롱'})" for r in picks
+            f"{r.base}({_tier_label(r.entry_tier)})" for r in picks
         )
+        moon_picks = [r for r in picks if (r.entry_tier or "").lower() == "moonshot"]
+        if moon_picks:
+            moon_syms = ", ".join(r.base for r in moon_picks)
+            self._log(
+                "자동",
+                f"급등주 매수 시도 {len(moon_picks)}건 · {moon_syms}",
+                "ok",
+            )
+            logger.info(
+                "[자동투자] 급등(moonshot) 매수 시도 %d건 · %s",
+                len(moon_picks),
+                moon_syms,
+            )
         self._log("자동", f"매수 {len(picks)}건 시도 · {syms}", "ok")
         ok_n, msg = await self._execute_recommendation_buys(
             picks,
@@ -1250,19 +1507,40 @@ class TradingEngine:
             price = float(t["lastPrice"])
             amt = round(capped_amts[sym], -3)
             tier = (rec.entry_tier or "auto").lower()
-            outlook = "AI 롱 자동" if tier != "scalp" else "AI 단타 자동"
-            sl_p, tp_p = (self.config.stop_loss_pct, self.config.take_profit_pct)
+            moonshot_buy = tier == "moonshot" or is_moonshot_recommendation(rec)
+            if tier == "scalp":
+                outlook = "AI 단타 자동"
+            elif moonshot_buy:
+                outlook = (
+                    "AI 뉴스급등 자동"
+                    if getattr(rec, "news_surge", False)
+                    else "AI 급등 자동"
+                )
+            else:
+                outlook = "AI 롱 자동"
+            sl_p, tp_p = strength_default_sl_tp(self.config)
             if float(getattr(rec, "stop_loss_pct", 0) or 0) > 0:
                 sl_p = float(rec.stop_loss_pct)
                 tp_p = float(rec.take_profit_pct)
+            elif moonshot_buy:
+                sl_p, tp_p, _ = resolve_moonshot_sl_tp(
+                    self.config,
+                    change_24h=float(getattr(rec, "change_24h", 0) or 0),
+                    news_score=float(getattr(rec, "news_score", 0) or 0),
+                )
             elif sl_tp_pct and sym in sl_tp_pct:
                 sl_p, tp_p = sl_tp_pct[sym]
+            if tier == "scalp":
+                sl_p, tp_p = _clamp_auto_sl_tp("scalp", sl_p, tp_p)
+            elif not moonshot_buy:
+                sl_p, tp_p = _clamp_auto_sl_tp("long", sl_p, tp_p)
             sl_pct = sl_p / 100
             tp_pct = tp_p / 100
+            exit_profile = EXIT_PROFILE_MOONSHOT if moonshot_buy else ""
             tp_label = f"익절{_fmt_pct_setting(tp_p)}"
             sl_label = f"손절{_fmt_pct_setting(sl_p)}"
             src = getattr(rec, "sl_tp_source", "") or ""
-            src_tag = f" · BT {src}" if src else ""
+            src_tag = f" · {src}" if src and moonshot_buy else (f" · BT {src}" if src else "")
             entry_txt = rec.entry_detail or buy_tag
             buy_reason = (
                 f"{buy_tag} · {int(amt):,}원 · {sl_label}/{tp_label}{src_tag}"
@@ -1279,6 +1557,9 @@ class TradingEngine:
                     entry_score=rec.entry_score,
                     entry_reason=f"{entry_txt} · {sl_label}/{tp_label}",
                     entry_outlook=outlook,
+                    stop_loss_pct=sl_p,
+                    take_profit_pct=tp_p,
+                    exit_profile=exit_profile,
                 )
                 if ok:
                     ok_n += 1
@@ -1301,6 +1582,7 @@ class TradingEngine:
                     entry_outlook=outlook,
                     auto_managed=True,
                     min_buy_krw=effective_min_buy_krw(self.config),
+                    exit_profile=exit_profile,
                 )
                 if pos:
                     ok_n += 1
@@ -1379,6 +1661,9 @@ class TradingEngine:
             return await market.klines(sym, "1m", limit)
 
         state = self._flash_state(symbol)
+        relax = 1.0
+        if pos and is_moonshot_position(pos):
+            relax = float(getattr(self.config, "moonshot_flash_relax_factor", 2.0) or 2.0)
         hit, reason = await detect_flash_crash(
             symbol,
             price,
@@ -1386,6 +1671,7 @@ class TradingEngine:
             self.config,
             state,
             fetch_1m=_fetch_1m,
+            relax_factor=relax,
         )
         return hit, reason
 
@@ -1415,6 +1701,12 @@ class TradingEngine:
                 pos, price, rate, self.config
             )
             if hit:
+                logger.info(
+                    "[손익절] %s · %s · custom SL/TP",
+                    symbol.upper(),
+                    reason,
+                )
+                self._log("손익절", f"{pos.display} · {reason} 매도 실행", "ok")
                 return await self._auto_sell(symbol, reason, full=True)
             return False
 
@@ -1424,6 +1716,12 @@ class TradingEngine:
 
         hit, reason = config_exit_triggered(pos, price, rate, self.config)
         if hit:
+            logger.info(
+                "[손익절] %s · %s · 설정 SL/TP",
+                symbol.upper(),
+                reason,
+            )
+            self._log("손익절", f"{pos.display} · {reason} 매도 실행", "ok")
             return await self._auto_sell(symbol, reason, full=True)
         return False
 
@@ -1630,8 +1928,45 @@ class TradingEngine:
         if price > pos.trailing_high:
             pos.trailing_high = price
 
-        sl_p = float(getattr(pos, "auto_exit_sl_pct", 0) or 0) or self.config.stop_loss_pct
-        tp_p = float(getattr(pos, "auto_exit_tp_pct", 0) or 0) or self.config.take_profit_pct
+        moonshot = is_moonshot_position(pos)
+        if moonshot:
+            sl_p = float(getattr(pos, "auto_exit_sl_pct", 0) or 0)
+            tp_p = float(getattr(pos, "auto_exit_tp_pct", 0) or 0)
+            if sl_p <= 0 or tp_p <= 0:
+                sl_p, tp_p, _ = resolve_moonshot_sl_tp(self.config)
+                pos.auto_exit_sl_pct = sl_p
+                pos.auto_exit_tp_pct = tp_p
+            sl_ratio = sl_p / 100
+            tp_ratio = tp_p / 100
+            if entry > 0 and not pos.custom_sl_tp:
+                if pos.take_profit <= 0:
+                    pos.take_profit = entry * (1 + tp_ratio)
+                if pos.stop_loss <= 0:
+                    pos.stop_loss = entry * (1 - sl_ratio)
+
+            auto_pnl = (price - entry) / entry if entry > 0 else 0.0
+            apply_moonshot_adaptive_exit_levels(pos, entry, price, sl_p, tp_p)
+
+            if entry > 0 and auto_pnl <= -sl_ratio:
+                await self._auto_sell(symbol, "손절")
+                return
+
+            if entry > 0:
+                if (
+                    pos.stop_loss > 0
+                    and price <= pos.stop_loss * 1.0001
+                    and auto_pnl > 0
+                ):
+                    await self._auto_sell(symbol, "익절")
+                    return
+                if pos.take_profit > 0 and price >= pos.take_profit * 0.9999:
+                    await self._auto_sell(symbol, "익절")
+                    return
+            return
+
+        profile = get_exit_strength_profile(self.config)
+        sl_p = float(getattr(pos, "auto_exit_sl_pct", 0) or 0) or profile.base_sl_pct
+        tp_p = float(getattr(pos, "auto_exit_tp_pct", 0) or 0) or profile.base_tp_pct
         sl_ratio = sl_p / 100
         tp_ratio = tp_p / 100
         if entry > 0 and not pos.custom_sl_tp:
@@ -1642,27 +1977,41 @@ class TradingEngine:
 
         auto_pnl = (price - entry) / entry if entry > 0 else 0.0
 
-        from app.config import settings
-
-        if auto_pnl >= settings.trailing_activate_pct:
-            trail_stop = pos.trailing_high * (1 - settings.trailing_distance_pct)
-            if pos.stop_loss > 0:
-                pos.stop_loss = max(pos.stop_loss, trail_stop)
+        apply_adaptive_exit_levels(pos, entry, price, self.config)
 
         # 설정 % 기준 (화면 수익률과 동일) + 가격선 이중 확인
         if entry > 0 and auto_pnl <= -sl_ratio:
             await self._auto_sell(symbol, "손절")
             return
 
-        if entry > 0 and (
-            auto_pnl >= tp_ratio
-            or (pos.take_profit > 0 and price >= pos.take_profit * 0.9999)
-        ):
-            await self._auto_sell(symbol, "익절")
-            return
+        trailing_live = (
+            profile.trailing_enabled
+            and auto_pnl >= profile.trailing_activate_pct
+        )
+        if entry > 0:
+            if trailing_live:
+                if (
+                    pos.stop_loss > 0
+                    and price <= pos.stop_loss * 1.0001
+                    and auto_pnl > 0
+                ):
+                    await self._auto_sell(symbol, "익절")
+                    return
+                if pos.take_profit > 0 and price >= pos.take_profit * 0.9999:
+                    await self._auto_sell(symbol, "익절")
+                    return
+            elif (
+                auto_pnl >= tp_ratio
+                or (pos.take_profit > 0 and price >= pos.take_profit * 0.9999)
+            ):
+                await self._auto_sell(symbol, "익절")
+                return
 
     async def _auto_sell(self, symbol: str, reason: str, *, full: bool = False) -> bool:
         sym = symbol.upper()
+        pos = self.portfolio.positions.get(sym)
+        label = pos.display if pos else sym
+        logger.info("[손익절 매도] %s · %s · full=%s", label, reason, full)
         if self._is_live():
             ok, msg = await live_market_sell(
                 self.config,
@@ -1676,12 +2025,13 @@ class TradingEngine:
                 self.bind_portfolio()
                 self.bot.recent_trades = self.portfolio.trades[-30:]
                 self.bot.message = msg or f"{sym} {reason} 자동 매도 완료"
+                self._log("손익절", f"{label} · {reason} 체결 · {msg}", "ok")
                 self._bump_version()
                 self._notify()
                 return True
             self.bot.message = f"{sym} {reason} 자동 매도 실패: {msg}"
-            self._notify()
-            return False
+            self._log("손익절", f"{label} · {reason} 실패 · {msg}", "warn")
+            logger.warning("[손익절 매도 실패] %s · %s", label, msg)
         tickers = await market.tickers_for_symbols([sym])
         px = await self._price_for_symbol(sym, tickers)
         if px <= 0:

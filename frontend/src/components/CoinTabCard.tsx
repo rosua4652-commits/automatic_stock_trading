@@ -1,5 +1,6 @@
 import type { CoinCandidate, Portfolio, TabQuote } from "../types";
 import { coinTabDisplay, fmtKrw, fmtPct, fmtVolumeKrw, resolveCoinMeta } from "../utils";
+import SurgeTagBadge from "./SurgeTagBadge";
 
 type Props = {
   symbol: string;
@@ -7,6 +8,7 @@ type Props = {
   candidates: CoinCandidate[];
   quote?: TabQuote;
   selected?: boolean;
+  surgeTags?: Record<string, string>;
 };
 
 export default function CoinTabCard({
@@ -15,13 +17,17 @@ export default function CoinTabCard({
   candidates,
   quote,
   selected,
+  surgeTags,
 }: Props) {
   const meta = resolveCoinMeta(symbol, portfolio, candidates);
   const info = coinTabDisplay(symbol, portfolio, quote);
 
   return (
     <div className={`coin-tab-card ${selected ? "selected" : ""} ${info.held ? "held" : ""}`}>
-      <span className="ctc-name">{meta.name_ko}</span>
+      <span className="ctc-name">
+        {meta.name_ko}
+        <SurgeTagBadge symbol={symbol} surgeTags={surgeTags} className="ctc-tag" />
+      </span>
       <span className="ctc-base">{meta.base}</span>
       {info.held && info.avgKrw != null && (
         <span className="ctc-row dim">평단가 {fmtKrw(info.avgKrw)}</span>

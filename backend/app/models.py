@@ -1,7 +1,7 @@
 from enum import Enum
 from typing import Optional
 
-from pydantic import BaseModel, Field, computed_field, field_validator
+from pydantic import BaseModel, Field, computed_field, field_validator, model_validator
 
 
 class BotStatus(str, Enum):
@@ -13,6 +13,12 @@ class BotStatus(str, Enum):
 class TradeMode(str, Enum):
     PAPER = "paper"
     LIVE = "live"
+
+
+class AutoExitStrength(str, Enum):
+    WEAK = "weak"
+    MEDIUM = "medium"
+    STRONG = "strong"
 
 
 class AppConfig(BaseModel):
@@ -43,15 +49,19 @@ class AppConfig(BaseModel):
         le=30,
         description="실거래 자동투자 전 모의 자동투자 검증 일수",
     )
-    stop_loss_pct: float = Field(default=3.0, ge=0.01, le=25.0)
-    take_profit_pct: float = Field(default=1.2, ge=0.01, le=50.0)
+    stop_loss_pct: float = Field(default=5.0, ge=0.01, le=25.0)
+    take_profit_pct: float = Field(default=5.0, ge=0.01, le=50.0)
+    auto_exit_strength: AutoExitStrength = Field(
+        default=AutoExitStrength.WEAK,
+        description="자동투자 청산 강도: weak(약)~1%익절, medium(중)~3%, strong(강)~6%",
+    )
     trading_fee_pct: float = Field(
         default=0.05,
         ge=0.0,
         le=1.0,
         description="편도 거래 수수료 % (모의·실거래 체결 반영)",
     )
-    scan_interval_sec: int = Field(default=30, ge=15, le=300)
+    scan_interval_sec: int = Field(default=22, ge=15, le=300)
     min_buy_score: float = Field(default=28.0, ge=15.0, le=90.0)
     min_buy_krw: float = Field(
         default=6_000.0,
@@ -93,19 +103,19 @@ class AppConfig(BaseModel):
         description="급락 감지·즉시 손절·종목 매수 일시 차단",
     )
     flash_drop_from_peak_pct: float = Field(
-        default=2.8,
+        default=4.5,
         ge=0.5,
         le=15.0,
         description="최근 고점 대비 % 하락 시 즉시 매도",
     )
     flash_tick_drop_pct: float = Field(
-        default=1.2,
+        default=2.0,
         ge=0.3,
         le=8.0,
         description="연속 시세 간 % 하락 (약 3초)",
     )
     flash_candle_1m_drop_pct: float = Field(
-        default=3.5,
+        default=5.5,
         ge=1.0,
         le=20.0,
         description="1분봉 최근 5봉 고점 대비 %",
@@ -128,6 +138,158 @@ class AppConfig(BaseModel):
         le=30.0,
         description="0이면 손절%×1.5 자동, 평단 대비 긴급 손절 %",
     )
+    moonshot_enabled: bool = Field(
+        default=True,
+        description="24h 급등·고유동 종목을 급등(moonshot) 티어로 분류",
+    )
+    moonshot_min_change_24h_pct: float = Field(
+        default=8.0,
+        ge=4.0,
+        le=40.0,
+        description="급등 분류 최소 24h 상승 %",
+    )
+    moonshot_max_change_24h_pct: float = Field(
+        default=85.0,
+        ge=30.0,
+        le=200.0,
+        description="이미 과열 구간(추격 위험) 상한 %",
+    )
+    moonshot_min_volume_usdt: float = Field(
+        default=1_200_000.0,
+        ge=400_000.0,
+        le=50_000_000.0,
+        description="급등 분류 최소 24h 거래대금(USDT)",
+    )
+    moonshot_min_entry_score: float = Field(
+        default=26.0,
+        ge=18.0,
+        le=70.0,
+        description="차트 진입 미충족 시 급등 최소 진입점수",
+    )
+    moonshot_momentum_exit_enabled: bool = Field(
+        default=True,
+        description="급등주 24h 기세 기반 손익절 자동 (약·중·강 무관)",
+    )
+    moonshot_min_stop_loss_pct: float = Field(
+        default=4.0,
+        ge=3.0,
+        le=12.0,
+        description="급등 기세 손절 하한 %",
+    )
+    moonshot_max_stop_loss_pct: float = Field(
+        default=10.0,
+        ge=3.0,
+        le=15.0,
+        description="급등 기세 손절 상한 %",
+    )
+    moonshot_min_take_profit_pct: float = Field(
+        default=5.0,
+        ge=3.0,
+        le=50.0,
+        description="급등 기세 익절 하한 %",
+    )
+    moonshot_max_take_profit_pct: float = Field(
+        default=22.0,
+        ge=5.0,
+        le=50.0,
+        description="급등 기세 익절 상한 %",
+    )
+    moonshot_stop_loss_pct: float = Field(
+        default=6.0,
+        ge=3.0,
+        le=15.0,
+        description="기세 자동 끔 시 급등 고정 손절 %",
+    )
+    moonshot_take_profit_pct: float = Field(
+        default=20.0,
+        ge=3.0,
+        le=50.0,
+        description="기세 자동 끔 시 급등 고정 익절 %",
+    )
+    moonshot_flash_relax_factor: float = Field(
+        default=2.0,
+        ge=1.0,
+        le=4.0,
+        description="급등 보유 시 급락 감지 임계값 배율(클수록 완화)",
+    )
+    news_enabled: bool = Field(
+        default=True,
+        description="뉴스·기사 기반 급등 보조 신호 사용",
+    )
+    news_boost_min_score: float = Field(
+        default=25.0,
+        ge=10.0,
+        le=80.0,
+        description="뉴스급등 판정·moonshot 완화 최소 점수",
+    )
+    news_cache_ttl_sec: int = Field(
+        default=420,
+        ge=300,
+        le=900,
+        description="뉴스 피드 캐시 TTL(초)",
+    )
+    surge_auto_expire_enabled: bool = Field(
+        default=True,
+        description="뉴스·기사 기반 급등·하락 분류 자동 만료",
+    )
+    surge_tag_ttl_hours: float = Field(
+        default=48.0,
+        ge=1.0,
+        le=168.0,
+        description="급등주 뉴스 분류 유지 시간(시간)",
+    )
+    downtrend_tag_ttl_hours: float = Field(
+        default=24.0,
+        ge=1.0,
+        le=168.0,
+        description="하락주 뉴스 분류 유지 시간(시간)",
+    )
+    cryptopanic_api_key: str = Field(
+        default="",
+        description="CryptoPanic API 키 (선택, 없으면 RSS·CoinGecko만)",
+    )
+    news_llm_enabled: bool = Field(
+        default=False,
+        description="뉴스 AI 방향 판단 (API 키 필요, 기본 끔)",
+    )
+    news_llm_provider: str = Field(
+        default="gemini",
+        description="gemini | openai | auto (기본 Gemini)",
+    )
+    news_llm_api_key: str = Field(
+        default="",
+        description="뉴스 AI API 키 (Gemini, gemini_api_key와 동일)",
+    )
+    openai_api_key: str = Field(
+        default="",
+        description="OpenAI API 키 (뉴스 AI 대체, 선택)",
+    )
+    gemini_api_key: str = Field(
+        default="",
+        description="Google Gemini API 키 (뉴스 AI, 기본)",
+    )
+    news_llm_bearish_block_threshold: int = Field(
+        default=60,
+        ge=40,
+        le=95,
+        description="bearish 신뢰도 ≥ 이 값이면 뉴스급등·moonshot 보조 차단",
+    )
+    news_llm_max_articles_per_scan: int = Field(
+        default=8,
+        ge=1,
+        le=20,
+        description="스캔당 LLM 분석 기사 수 상한 (비용 제어)",
+    )
+    backtest_ai_enabled: bool = Field(
+        default=False,
+        description="백테스트 배치 후 Gemini로 SL/TP·종목 패턴 제안 (gemini_api_key 필요)",
+    )
+    backtest_ai_max_symbols_per_batch: int = Field(
+        default=5,
+        ge=1,
+        le=12,
+        description="배치당 Gemini 분석 종목 수 상한",
+    )
     ai_auto_settings: bool = Field(
         default=True,
         description="True면 BT·학습이 손익절·스캔점수·자동배분을 조정",
@@ -144,6 +306,10 @@ class AppConfig(BaseModel):
         "api_secret_key",
         "binance_api_key",
         "binance_api_secret",
+        "cryptopanic_api_key",
+        "news_llm_api_key",
+        "openai_api_key",
+        "gemini_api_key",
         mode="before",
     )
     @classmethod
@@ -156,6 +322,31 @@ class AppConfig(BaseModel):
         if v is None or v == "":
             return v
         return round(float(v), 2)
+
+    @field_validator("auto_exit_strength", mode="before")
+    @classmethod
+    def coerce_auto_exit_strength(cls, v):
+        if v is None or v == "":
+            return AutoExitStrength.WEAK
+        raw = str(v).strip().lower()
+        aliases = {"약": "weak", "중": "medium", "강": "strong"}
+        raw = aliases.get(raw, raw)
+        try:
+            return AutoExitStrength(raw)
+        except ValueError:
+            return AutoExitStrength.WEAK
+
+    @model_validator(mode="after")
+    def moonshot_sl_tp_bounds(self):
+        if self.moonshot_max_stop_loss_pct < self.moonshot_min_stop_loss_pct:
+            raise ValueError(
+                "moonshot_max_stop_loss_pct must be >= moonshot_min_stop_loss_pct"
+            )
+        if self.moonshot_max_take_profit_pct < self.moonshot_min_take_profit_pct:
+            raise ValueError(
+                "moonshot_max_take_profit_pct must be >= moonshot_min_take_profit_pct"
+            )
+        return self
 
     def model_post_init(self, __context) -> None:
         if self.binance_api_key and not self.api_access_key:
@@ -205,6 +396,10 @@ class Position(BaseModel):
     entry_outlook: str = ""
     auto_exit_sl_pct: float = 0.0
     auto_exit_tp_pct: float = 0.0
+    exit_profile: str = Field(
+        default="",
+        description="moonshot | (빈값=일반 auto_exit_strength)",
+    )
     excluded_from_auto: bool = False
     custom_sl_tp: bool = False
     custom_stop_loss_pct: float = 0.0
@@ -388,6 +583,10 @@ class InvestmentRecommendation(BaseModel):
     change_24h: float = 0.0
     volume_usdt: float = 0.0
     trend: str = ""
+    news_score: float = 0.0
+    news_surge: bool = False
+    news_detail: str = ""
+    news_url: str = ""
     selected: bool = True
 
 
@@ -478,6 +677,11 @@ class BotStartRequest(BaseModel):
     auto_scalp: bool = False
 
 
+class SurgeSymbolRequest(BaseModel):
+    symbol: str
+    reason: str = ""
+
+
 class BotState(BaseModel):
     status: BotStatus = BotStatus.STOPPED
     """현재 bot.* 스캔·제안·로그가 반영하는 계정 (paper | live)."""
@@ -512,6 +716,15 @@ class BotState(BaseModel):
     scan_health: str = "ok"
     scan_health_detail: str = ""
     auto_invest_rejects: list[str] = Field(default_factory=list)
+    surge_candidates_count: int = 0
+    surge_candidates: list[str] = Field(
+        default_factory=list,
+        description="최근 스캔 moonshot(급등·뉴스급등) tier 심볼",
+    )
+    surge_tags: dict[str, str] = Field(
+        default_factory=dict,
+        description="심볼별 surge|downtrend 태그 (UI 배지)",
+    )
 
 
 class ManualBuyRequest(BaseModel):

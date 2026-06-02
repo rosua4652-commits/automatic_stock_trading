@@ -28,6 +28,7 @@ import BuyAmountControl, { maxBuyKrw } from "./BuyAmountControl";
 import MinBuyKrwPanel from "./MinBuyKrwPanel";
 import ExitPctControl from "./ExitPctControl";
 import SellPctControl from "./SellPctControl";
+import SurgeTagBadge from "./SurgeTagBadge";
 
 type Props = {
   portfolio: Portfolio;
@@ -35,6 +36,7 @@ type Props = {
   botStatus: string;
   manualMode: boolean;
   tradeMode?: "paper" | "live";
+  surgeTags?: Record<string, string>;
   tradesSyncError?: string;
   tradesDisplayCount?: number;
   tradesOrdersFetched?: number;
@@ -124,6 +126,7 @@ function PositionCard({
   onExitPlan,
   stopLossPct,
   takeProfitPct,
+  surgeTags,
 }: {
   pos: Position;
   canTrade: boolean;
@@ -140,6 +143,7 @@ function PositionCard({
   ) => Promise<void>;
   stopLossPct: number;
   takeProfitPct: number;
+  surgeTags?: Record<string, string>;
 }) {
   const [sellPct, setSellPct] = useState(100);
   const [customSlTp, setCustomSlTp] = useState(!!pos.custom_sl_tp);
@@ -211,19 +215,24 @@ function PositionCard({
     <div className="fund-card">
       <div className="fund-card-head">
         <div>
-          <h4>{pos.name_ko}</h4>
+          <h4>
+            {pos.name_ko}
+            <SurgeTagBadge symbol={pos.symbol} surgeTags={surgeTags} className="inline-tag" />
+          </h4>
           <span className="fund-pair">{pos.pair_label}</span>
           {pos.auto_quantity > 0 && (
             <span
               className={`badge auto${
                 tier.kind === "scalp"
                   ? " tier-scalp"
-                  : tier.kind === "long"
-                    ? " tier-long"
-                    : ""
+                  : tier.kind === "moonshot"
+                    ? " tier-moonshot"
+                    : tier.kind === "long"
+                      ? " tier-long"
+                      : ""
               }`}
             >
-              {tier.kind === "scalp" || tier.kind === "long"
+              {tier.kind === "scalp" || tier.kind === "long" || tier.kind === "moonshot"
                 ? `${tier.label} AI `
                 : "AI "}
               {fmtQty(pos.auto_quantity)}
@@ -375,18 +384,24 @@ function PositionCard({
 
       {(pos.entry_outlook ||
         tier.kind === "long" ||
+        tier.kind === "moonshot" ||
         tier.kind === "scalp" ||
         (pos.auto_quantity > 0 && !pos.excluded_from_auto)) && (
         <p className="entry-outlook-line dim">
           <strong>진입 유형:</strong>{" "}
+          {tier.kind === "moonshot" && (
+            <span className="entry-outlook-badge moonshot">{tier.label}</span>
+          )}{" "}
           {pos.entry_outlook ||
             (tier.kind === "scalp"
               ? "AI 단타 자동"
-              : tier.kind === "long"
-                ? "AI 롱 자동"
-                : pos.auto_quantity > 0
-                  ? "AI 자동 (롱·현물 매수)"
-                  : "")}
+              : tier.kind === "moonshot"
+                ? "AI 급등 자동"
+                : tier.kind === "long"
+                  ? "AI 롱 자동"
+                  : pos.auto_quantity > 0
+                    ? "AI 자동 (롱·현물 매수)"
+                    : "")}
         </p>
       )}
       {pos.entry_reason && (
@@ -449,6 +464,7 @@ export default function FundsTab({
   botStatus,
   manualMode,
   tradeMode = "paper",
+  surgeTags,
   tradesSyncError,
   tradesDisplayCount,
   tradesOrdersFetched,
@@ -609,6 +625,7 @@ export default function FundsTab({
               onExitPlan={(plan) => onExitPlan(p.symbol, plan)}
               stopLossPct={stopLossPct}
               takeProfitPct={takeProfitPct}
+              surgeTags={surgeTags}
             />
           ))
         )}

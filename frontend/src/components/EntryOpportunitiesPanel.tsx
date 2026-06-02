@@ -27,7 +27,10 @@ export default function EntryOpportunitiesPanel({
   onSelect,
 }: Props) {
   const actionable = list.filter(
-    (r) => r.entry_tier === "auto" || r.entry_tier === "scalp"
+    (r) =>
+      r.entry_tier === "auto" ||
+      r.entry_tier === "scalp" ||
+      r.entry_tier === "moonshot"
   );
   const rows = actionable.length > 0 ? actionable : list;
 
@@ -76,11 +79,34 @@ export default function EntryOpportunitiesPanel({
                 <span className="entry-opp-ko">{r.name_ko}</span>
                 <span className="entry-opp-base">{r.base}</span>
               </div>
-              <span
-                className={`entry-opp-tier ${r.entry_tier === "auto" ? "auto" : "scalp"}`}
-              >
-                {r.entry_tier === "auto" ? "진입 가능" : "단타 가능"}
-              </span>
+              <div className="entry-opp-badges">
+                <span
+                  className={`entry-opp-tier ${
+                    r.entry_tier === "moonshot"
+                      ? "moonshot"
+                      : r.entry_tier === "auto"
+                        ? "auto"
+                        : "scalp"
+                  }`}
+                  title={r.news_detail || undefined}
+                >
+                  {r.entry_tier === "moonshot"
+                    ? r.news_surge
+                      ? "급등·뉴스"
+                      : "급등"
+                    : r.entry_tier === "auto"
+                      ? "진입 가능"
+                      : "단타 가능"}
+                </span>
+                {r.news_surge && r.entry_tier !== "moonshot" && (
+                  <span
+                    className="entry-opp-tier news-surge"
+                    title={r.news_detail || undefined}
+                  >
+                    뉴스급등
+                  </span>
+                )}
+              </div>
             </button>
 
             <RecommendationAmountField
@@ -121,6 +147,23 @@ export default function EntryOpportunitiesPanel({
                 </span>
               </div>
             </div>
+            {r.news_detail && (
+              <p className="entry-opp-news-detail subtle" title={r.news_detail}>
+                {r.news_url ? (
+                  <a
+                    href={r.news_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="news-headline-link"
+                    title="기사 원문 (새 탭)"
+                  >
+                    {r.news_detail}
+                  </a>
+                ) : (
+                  r.news_detail
+                )}
+              </p>
+            )}
             <button
               type="button"
               className="btn-primary btn-sm entry-opp-approve"

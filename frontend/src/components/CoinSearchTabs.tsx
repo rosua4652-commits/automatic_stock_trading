@@ -3,6 +3,7 @@ import type { CoinCandidate, Portfolio, TabQuote } from "../types";
 import { matchCoinSearch, resolveCoinMeta } from "../utils";
 import CoinCell from "./CoinCell";
 import CoinTabCard from "./CoinTabCard";
+import SurgeTagBadge from "./SurgeTagBadge";
 
 type Props = {
   tabs: string[];
@@ -10,6 +11,7 @@ type Props = {
   portfolio: Portfolio;
   candidates: CoinCandidate[];
   tabQuotes?: Record<string, TabQuote>;
+  surgeTags?: Record<string, string>;
   onSelect: (symbol: string) => void;
 };
 
@@ -19,6 +21,7 @@ export default function CoinSearchTabs({
   portfolio,
   candidates,
   tabQuotes,
+  surgeTags,
   onSelect,
 }: Props) {
   const [query, setQuery] = useState("");
@@ -76,6 +79,7 @@ export default function CoinSearchTabs({
                       base={meta.base}
                       candidate={candMap.get(sym)}
                       held={!!portfolio.positions.find((p) => p.symbol === sym)}
+                      trailing={<SurgeTagBadge symbol={sym} surgeTags={surgeTags} />}
                     />
                   </button>
                 </li>
@@ -103,6 +107,7 @@ export default function CoinSearchTabs({
                 candidates={candidates}
                 quote={tabQuotes?.[sym]}
                 selected={selected === sym}
+                surgeTags={surgeTags}
               />
             </button>
         ))}

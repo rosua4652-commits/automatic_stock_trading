@@ -109,12 +109,26 @@ export function todayTradeStats(trades: TradeEvent[]) {
   let manualS = 0;
   for (const t of sells) {
     const r = t.reason || "";
-    const o = r.toLowerCase();
-    if (o.includes("단타")) scalpS++;
-    else if (o.includes("롱")) longS++;
-    else manualS++;
-    if (r.includes("익절")) wins++;
-    else if (r.includes("손절")) losses++;
+    const mode = (t.entry_mode || "").trim();
+    const ek = (t.exit_kind || "").toLowerCase();
+    if (mode === "단타" || /단타/i.test(mode)) {
+      scalpS++;
+    } else if (mode === "롱" || mode === "AI" || /롱/i.test(mode)) {
+      longS++;
+    } else if (t.is_auto || ek === "tp" || ek === "sl") {
+      longS++;
+    } else if (/단타/i.test(r)) {
+      scalpS++;
+    } else if (/롱/i.test(r)) {
+      longS++;
+    } else {
+      manualS++;
+    }
+    if (ek === "tp" || r.includes("익절")) {
+      wins++;
+    } else if (ek === "sl" || r.includes("손절") || r.includes("급락")) {
+      losses++;
+    }
   }
 
   const hourlyBuys = Array(24).fill(0);

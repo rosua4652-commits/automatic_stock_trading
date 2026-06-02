@@ -11,11 +11,15 @@ from app.engine.live_sync import export_live_meta, sync_live_portfolio
 from app.engine.portfolio import PortfolioManager
 from app.engine.portfolio_store import store
 from app.engine.trade_history import (
+    append_exit_log,
     classify_exit_kind,
+    collect_reason_hints,
+    link_exit_log_uuid,
     merge_trade_events,
     normalize_trade_reason,
     remember_order_reason,
     remember_order_uuid,
+    _relabel_trade_rows,
 )
 from app.market.coin_registry import coin_meta
 from app.market.upbit_data import market
@@ -45,10 +49,14 @@ def _persist_live(portfolio: PortfolioManager) -> None:
     store._live_meta = export_live_meta(portfolio, preserve=prev)
     store._live_meta["realized_pnl_krw"] = portfolio.realized_pnl_krw
     rate = max(portfolio.usdt_krw, 1.0)
-    store._live_meta["trades"] = [
+    rows = [
         repair_trade_dict(t.model_dump(), usdt_krw=rate)
         for t in portfolio.trades[-100:]
     ]
+    hints = collect_reason_hints(store._live_meta)
+    store._live_meta["trades"] = _relabel_trade_rows(
+        store._live_meta, rows, hints
+    )
     save_live_meta(store._live_meta)
 
 
@@ -71,6 +79,9 @@ async def live_market_buy(
     entry_score: float = 0,
     entry_reason: str = "",
     entry_outlook: str = "",
+    stop_loss_pct: float | None = None,
+    take_profit_pct: float | None = None,
+    exit_profile: str = "",
 ) -> tuple[bool, str]:
     async with store._lock:
         portfolio = store.live
@@ -155,6 +166,9 @@ async def live_market_buy(
                 entry_outlook=entry_outlook,
                 entry_reason=entry_reason or reason,
                 as_auto=as_auto,
+                stop_loss_pct=stop_loss_pct,
+                take_profit_pct=take_profit_pct,
+                exit_profile=exit_profile,
             )
 
         store._live_meta["trades_force_sync"] = True
@@ -178,6 +192,9 @@ async def live_market_buy(
                 entry_score=entry_score,
                 score=score,
                 entry_outlook=entry_outlook,
+                stop_loss_pct=stop_loss_pct,
+                take_profit_pct=take_profit_pct,
+                exit_profile=exit_profile,
             )
 
         if order_uuid and executed_qty > 0:
@@ -249,6 +266,11 @@ async def live_market_sell(
 
         if sell_qty <= 0:
             return False, "매도 수량 없음"
+
+        meta = store._live_meta
+        append_exit_log(
+            meta, symbol=sym, reason=reason, is_auto=record_auto
+        )
 
         exchange = (config.exchange or "upbit").lower()
         if exchange != "upbit":
@@ -338,9 +360,12 @@ async def live_market_sell(
             if executed_qty <= 1e-12:
                 return False, f"매도 체결 정보 없음 ({sell_mode})"
             if order_uuid:
-                remember_order_uuid(store._live_meta, order_uuid)
+                link_exit_log_uuid(
+                    meta, symbol=sym, reason=reason, order_uuid=order_uuid
+                )
+                remember_order_uuid(meta, order_uuid)
                 remember_order_reason(
-                    store._live_meta,
+                    meta,
                     order_uuid,
                     reason=reason,
                     is_auto=record_auto,
@@ -366,13 +391,15 @@ async def live_market_sell(
 
         if order_uuid and executed_qty > 0:
             m = coin_meta(sym)
+            exit_kind = classify_exit_kind(reason, "SELL")
             reason_label = normalize_trade_reason(
                 "SELL",
                 reason,
                 is_auto=record_auto,
                 has_aidi_hint=True,
-                exit_kind=classify_exit_kind(reason, "SELL"),
+                exit_kind=exit_kind,
             )
+            sell_entry_mode = entry_mode_label(pos.entry_outlook or "") if pos else ""
             portfolio.trades = merge_trade_events(
                 portfolio.trades,
                 [
@@ -390,6 +417,8 @@ async def live_market_sell(
                         reason=reason_label,
                         is_auto=record_auto,
                         order_uuid=order_uuid,
+                        entry_mode=sell_entry_mode,
+                        exit_kind=exit_kind,
                     )
                 ],
                 usdt_krw=max(portfolio.usdt_krw, 1.0),
@@ -397,7 +426,7 @@ async def live_market_sell(
 
         _persist_live(portfolio)
         label = "업비트"
-        kind = "AI" if auto_only else "수동"
+        kind = reason if reason in ("손절", "익절") else ("AI" if auto_only else "수동")
         tail = f" · {sell_mode}" if sell_mode != "시장가" else ""
         qty_txt = f"{executed_qty:.6f}".rstrip("0").rstrip(".")
         return True, (

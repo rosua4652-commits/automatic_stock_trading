@@ -9,6 +9,13 @@ from app.engine.trading_fees import (
     fee_krw_round_trip,
 )
 from app.engine.scalp_filters import scalp_market_fit
+from app.engine.surge_classifier import classify_moonshot
+from app.engine.news_signals import NewsSymbolScore, is_news_surge
+from app.engine.surge_tag_expiry import (
+    effective_is_news_surge,
+    effective_news_score_for_moonshot,
+)
+from app.engine.exit_strength import strength_default_sl_tp
 from app.engine.backtest_learning import (
     format_sl_tp_label,
     load_learning_state,
@@ -17,6 +24,29 @@ from app.engine.backtest_learning import (
 )
 from app.engine.backtest_optimizer import BacktestAccumulator
 from app.models import AppConfig, CoinCandidate, InvestmentRecommendation
+
+
+def _format_news_detail(ns: NewsSymbolScore | None) -> str:
+    if not ns:
+        return ""
+    parts: list[str] = []
+    if ns.published_ts and ns.published_ts > 0:
+        import time as _time
+
+        parts.append(
+            _time.strftime("%m/%d %H:%M", _time.localtime(ns.published_ts))
+        )
+    if ns.source:
+        parts.append(ns.source)
+    if ns.llm_reason:
+        parts.append(f"AI: {ns.llm_reason}")
+    if ns.headline:
+        parts.append(ns.headline)
+    elif ns.tag and not ns.llm_reason:
+        parts.append(ns.tag)
+    if ns.tag and ns.llm_reason and ns.tag not in parts:
+        parts.append(ns.tag)
+    return " · ".join(parts)
 
 
 def _volume_rank_bonus(volume_usdt: float) -> float:
@@ -43,7 +73,12 @@ def _long_auto_volume_ok(volume_usdt: float) -> tuple[bool, str]:
 
 
 def _tier_to_mode(tier: str) -> str:
-    return "scalp" if (tier or "").lower() == "scalp" else "long"
+    t = (tier or "").lower()
+    if t == "scalp":
+        return "scalp"
+    if t == "moonshot":
+        return "moonshot"
+    return "long"
 
 
 def _bt_line_for_symbol(
@@ -265,6 +300,8 @@ def build_recommendations(
     tickers: dict | None = None,
     usdt_krw: float = 1350.0,
     backtest=None,
+    news_scores: dict[str, NewsSymbolScore] | None = None,
+    live_meta: dict | None = None,
 ) -> list[InvestmentRecommendation]:
     """진입 가능 후보에 보유 현금 범위 내에서 점수 비중 배분."""
     fee_pct = float(getattr(config, "trading_fee_pct", 0.05))
@@ -275,10 +312,29 @@ def build_recommendations(
 
     pool: list[CoinCandidate] = []
     entry_floor = config.min_entry_score * 0.85
+    news_map = news_scores or {}
     for c in candidates:
         if c.symbol in held_symbols:
             continue
         if c.score < config.min_buy_score:
+            continue
+        ns = news_map.get(c.symbol.upper())
+        news_pts = effective_news_score_for_moonshot(
+            ns, c.symbol, live_meta, config
+        )
+        is_moon, _ = classify_moonshot(
+            change_24h=c.change_24h,
+            volume_usdt=float(getattr(c, "volume_usdt", 0) or 0),
+            entry_score=c.entry_score,
+            entry_ok=c.entry_ok,
+            news_score=news_pts,
+            config=config,
+        )
+        if is_moon:
+            pool.append(c)
+            continue
+        if ns and effective_is_news_surge(ns, c.symbol, live_meta, config):
+            pool.append(c)
             continue
         if c.entry_ok or getattr(c, "entry_scalp_ok", False):
             pool.append(c)
@@ -321,19 +377,45 @@ def build_recommendations(
         )
         price_usdt = 0.0
         qty_est = 0.0
-        tier = (
-            "auto"
-            if c.entry_ok
-            else ("scalp" if getattr(c, "entry_scalp_ok", False) else "watch")
+        ns = news_map.get(c.symbol.upper())
+        news_flag = bool(
+            ns and effective_is_news_surge(ns, c.symbol, live_meta, config)
         )
+        news_pts = effective_news_score_for_moonshot(
+            ns, c.symbol, live_meta, config
+        )
+        is_moon, moon_tag = classify_moonshot(
+            change_24h=c.change_24h,
+            volume_usdt=float(getattr(c, "volume_usdt", 0) or 0),
+            entry_score=c.entry_score,
+            entry_ok=c.entry_ok,
+            news_score=news_pts,
+            config=config,
+        )
+        if is_moon:
+            tier = "moonshot"
+        elif news_flag:
+            tier = "moonshot"
+            if not moon_tag:
+                moon_tag = ns.tag if ns else "뉴스급등"
+        elif c.entry_ok:
+            tier = "auto"
+        elif getattr(c, "entry_scalp_ok", False):
+            tier = "scalp"
+        else:
+            tier = "watch"
         mode = _tier_to_mode(tier)
+        strength_sl, strength_tp = strength_default_sl_tp(config)
         sl_use, tp_use, sl_src = resolve_sl_tp_from_backtest(
             acc,
             learning,
             c.symbol,
             mode=mode,
-            default_sl=config.stop_loss_pct,
-            default_tp=config.take_profit_pct,
+            default_sl=strength_sl,
+            default_tp=strength_tp,
+            config=config,
+            change_24h=c.change_24h if mode == "moonshot" else 0.0,
+            news_score=news_pts if mode == "moonshot" else 0.0,
         )
 
         sl_price = tp_price = sl_krw = tp_krw = 0.0
@@ -378,15 +460,43 @@ def build_recommendations(
                     sl_source=sl_src,
                     default_sl=config.stop_loss_pct,
                     default_tp=config.take_profit_pct,
-                ),
+                )
+                + (f" · {moon_tag}" if (is_moon or news_flag) and moon_tag else "")
+                + (f" · {ns.tag}" if ns and ns.tag and not moon_tag else ""),
                 bt_line=_bt_line_for_symbol(acc, c.symbol, tier=tier),
                 change_24h=c.change_24h,
                 volume_usdt=float(getattr(c, "volume_usdt", 0) or 0),
                 trend=c.trend,
+                news_score=news_pts,
+                news_surge=news_flag or (is_moon and news_pts >= float(
+                    getattr(config, "news_boost_min_score", 25.0) or 25.0
+                )),
+                news_detail=_format_news_detail(ns),
+                news_url=(ns.url if ns else "") or "",
                 selected=True,
             )
         )
     return recs
+
+
+def sync_surge_candidates(
+    recs: list[InvestmentRecommendation],
+    *,
+    disabled: set[str] | None = None,
+) -> tuple[int, list[str]]:
+    """moonshot tier 제안 — status·뉴스 탭 자동매수 표시용."""
+    disabled = disabled or set()
+    symbols: list[str] = []
+    seen: set[str] = set()
+    for r in recs:
+        if (r.entry_tier or "").lower() != "moonshot":
+            continue
+        sym = r.symbol.upper()
+        if sym in disabled or sym in seen:
+            continue
+        seen.add(sym)
+        symbols.append(sym)
+    return len(symbols), symbols
 
 
 def filter_recommendations_for_auto(
@@ -399,6 +509,7 @@ def filter_recommendations_for_auto(
     flash_block_until: dict[str, float] | None = None,
     paper_relax_bt: bool = False,
     account_mode: str = "paper",
+    disabled_surge: set[str] | None = None,
 ) -> list[InvestmentRecommendation]:
     """롱·단타·혼합 — 학습 임계값 통과한 제안만."""
     if not recs or max_picks <= 0:
@@ -410,13 +521,33 @@ def filter_recommendations_for_auto(
     acc = acc or BacktestAccumulator()
     from app.engine.flash_crash_guard import is_symbol_flash_blocked
 
+    blocked_surge = disabled_surge or set()
     long_pool: list[InvestmentRecommendation] = []
     scalp_pool: list[InvestmentRecommendation] = []
+    moon_pool: list[InvestmentRecommendation] = []
     for r in recs:
+        if r.symbol.upper() in blocked_surge and (r.entry_tier or "").lower() == "moonshot":
+            continue
         if flash_block_until and is_symbol_flash_blocked(flash_block_until, r.symbol):
             continue
         tier = (r.entry_tier or "").lower()
-        if auto_long and tier == "auto":
+        if auto_long and tier == "moonshot":
+            ok_vol, why_vol = _long_auto_volume_ok(
+                float(getattr(r, "volume_usdt", 0) or 0)
+            )
+            if not ok_vol:
+                continue
+            ok, _ = symbol_passes_learning(
+                acc,
+                learning,
+                r.symbol,
+                mode="moonshot",
+                paper_relax=paper_relax_bt,
+                account_mode=account_mode,
+            )
+            if ok:
+                moon_pool.append(r)
+        elif auto_long and tier == "auto":
             ok_vol, why_vol = _long_auto_volume_ok(
                 float(getattr(r, "volume_usdt", 0) or 0)
             )
@@ -459,21 +590,32 @@ def filter_recommendations_for_auto(
 
     long_pool.sort(key=_auto_rank, reverse=True)
     scalp_pool.sort(key=_auto_rank, reverse=True)
+    moon_pool.sort(key=_auto_rank, reverse=True)
 
     picks: list[InvestmentRecommendation] = []
     if auto_long and auto_scalp:
-        li, si = 0, 0
-        while len(picks) < max_picks and (li < len(long_pool) or si < len(scalp_pool)):
-            if li < len(long_pool) and len(picks) < max_picks:
-                picks.append(long_pool[li])
-                li += 1
-            if si < len(scalp_pool) and len(picks) < max_picks:
-                picks.append(scalp_pool[si])
-                si += 1
-            if li >= len(long_pool) and si >= len(scalp_pool):
+        li, si, mi = 0, 0, 0
+        pools = (moon_pool, long_pool, scalp_pool)
+        idx = [0, 0, 0]
+        while len(picks) < max_picks and any(i < len(p) for i, p in zip(idx, pools)):
+            for pi, pool in enumerate(pools):
+                if idx[pi] < len(pool) and len(picks) < max_picks:
+                    picks.append(pool[idx[pi]])
+                    idx[pi] += 1
+            if all(idx[pi] >= len(pools[pi]) for pi in range(3)):
                 break
     elif auto_long:
-        picks = long_pool[:max_picks]
+        merged: list[InvestmentRecommendation] = []
+        seen: set[str] = set()
+        for pool in (moon_pool, long_pool):
+            for r in pool:
+                sym = r.symbol.upper()
+                if sym in seen:
+                    continue
+                seen.add(sym)
+                merged.append(r)
+        merged.sort(key=_auto_rank, reverse=True)
+        picks = merged[:max_picks]
     else:
         picks = scalp_pool[:max_picks]
     return picks

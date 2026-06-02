@@ -111,8 +111,24 @@ export default function ActivityPanel({ bot }: Props) {
         <p className="activity-ai-summary">{bot.ai_settings_summary}</p>
       )}
       {!collapsed && bot.auto_invest_message && (
-        <p className="activity-auto-msg">{bot.auto_invest_message}</p>
+        <p
+          className={`activity-auto-msg${
+            /급등|moonshot/i.test(bot.auto_invest_message) ? " has-surge" : ""
+          }`}
+        >
+          {bot.auto_invest_message}
+        </p>
       )}
+      {!collapsed &&
+        (bot.surge_candidates_count ?? 0) > 0 &&
+        bot.auto_invest_active && (
+          <p className="activity-surge-hint">
+            급등 후보 {bot.surge_candidates_count}건
+            {bot.auto_invest_long
+              ? " — 롱 자동매수에 포함 (BT·유동성 통과 시 매수)"
+              : " — 롱 자동매수를 켜야 반영"}
+          </p>
+        )}
       {!collapsed && bot.backtest?.message && (
         <p className="activity-bt-msg">BT: {bot.backtest.message}</p>
       )}

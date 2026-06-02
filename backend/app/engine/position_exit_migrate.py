@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from app.engine.moonshot_exit import is_moonshot_position
 from app.engine.backtest_learning import load_learning_state, resolve_sl_tp_from_backtest
 from app.engine.backtest_optimizer import BacktestAccumulator
 from app.engine.backtest_runner import get_accumulator
@@ -10,6 +11,8 @@ from app.models import AppConfig, Position
 
 
 def exit_mode_for_position(pos: Position) -> str:
+    if is_moonshot_position(pos):
+        return "moonshot"
     mode = _mode_from_outlook(pos.entry_outlook or "")
     if mode in ("long", "scalp"):
         return mode

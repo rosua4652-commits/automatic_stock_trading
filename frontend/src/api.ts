@@ -2,6 +2,7 @@ import type {
   AppConfig,
   ChartResponse,
   CredentialsTestResult,
+  NewsFeedResponse,
   StatusPayload,
 } from "./types";
 
@@ -26,6 +27,39 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
 
 export async function fetchStatus(): Promise<StatusPayload> {
   return request("/api/status");
+}
+
+export async function fetchNewsFeed(): Promise<NewsFeedResponse> {
+  return request("/api/news/feed");
+}
+
+export async function refreshNews(): Promise<NewsFeedResponse> {
+  return request("/api/news/refresh", { method: "POST" });
+}
+
+export async function fetchSurgeManage(): Promise<import("./types").SurgeManageResponse> {
+  return request("/api/surge/manage");
+}
+
+export async function disableSurgeSymbol(
+  symbol: string,
+  reason?: string
+): Promise<import("./types").SurgeManageResponse> {
+  return request("/api/surge/disable", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ symbol, reason: reason || "" }),
+  });
+}
+
+export async function enableSurgeSymbol(
+  symbol: string
+): Promise<import("./types").SurgeManageResponse> {
+  return request("/api/surge/enable", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ symbol }),
+  });
 }
 
 function keysForExchange(cfg: AppConfig) {

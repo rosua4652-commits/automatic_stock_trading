@@ -10,14 +10,14 @@ class Settings(BaseSettings):
     # 스캔·탭 최소 24h 거래대금 (USDT 환산)
     min_quote_volume_usdt: float = 400_000.0
     # 자동 단타: 유동성·변동성 하한
-    scalp_min_quote_volume_usdt: float = 2_000_000.0
-    scalp_min_abs_change_24h_pct: float = 2.0
+    scalp_min_quote_volume_usdt: float = 1_500_000.0
+    scalp_min_abs_change_24h_pct: float = 1.5
     min_candles: int = 120
     scan_kline_min: int = 50
     tab_symbol_limit: int = 200
     scan_candidate_limit: int = 120
-    default_stop_loss_pct: float = 3.0
-    default_take_profit_pct: float = 1.2
+    default_stop_loss_pct: float = 5.0
+    default_take_profit_pct: float = 5.0
     trailing_activate_pct: float = 0.05
     trailing_distance_pct: float = 0.03
 

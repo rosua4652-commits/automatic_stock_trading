@@ -13,6 +13,7 @@ import {
   recommendationTpSl,
 } from "../utils";
 import CoinTradeBar from "./CoinTradeBar";
+import SurgeTagBadge from "./SurgeTagBadge";
 
 type Props = {
   view: CoinView;
@@ -24,6 +25,7 @@ type Props = {
   config: AppConfig;
   recommendation?: InvestmentRecommendation | null;
   tabQuote?: TabQuote;
+  surgeTags?: Record<string, string>;
   onBuy: (symbol: string, amountKrw: number) => Promise<void>;
   onSell: (symbol: string, percent: number) => Promise<void>;
 };
@@ -38,6 +40,7 @@ export default function CoinDetailBar({
   config,
   recommendation,
   tabQuote,
+  surgeTags,
   onBuy,
   onSell,
 }: Props) {
@@ -70,7 +73,10 @@ export default function CoinDetailBar({
       <div className="coin-detail coin-detail-compact">
         <div className="coin-detail-top">
           <div className="coin-detail-names">
-            <h2 className="coin-title">{meta.name_ko}</h2>
+            <h2 className="coin-title">
+              {meta.name_ko}
+              <SurgeTagBadge symbol={meta.symbol} surgeTags={surgeTags} className="inline-tag" />
+            </h2>
             <span className="coin-pair">{meta.base}</span>
             {entry.kind !== "none" && (
               <span className={`coin-entry-chip ${entry.kind}`}>{entry.label}</span>

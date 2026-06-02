@@ -39,9 +39,23 @@ def build_backtest_report() -> dict[str, Any]:
         for sl, tp in PARAM_GRID
     ]
 
+    ai_recent = getattr(learning, "ai_recent_insights", None) or []
+    last_ai_msg = getattr(learning, "last_ai_message", "") or ""
+
+    ai_lines = [
+        f"{row.get('symbol', '').replace('USDT', '')} "
+        f"{row.get('action')}({row.get('confidence')}%) "
+        f"{(row.get('reason_ko') or '')[:40]}"
+        for row in ai_recent[-8:]
+        if isinstance(row, dict)
+    ]
+
     return {
         "symbols_in_store": len(acc.symbols),
         "data_maturity_pct": learning.data_maturity_pct,
+        "ai_insights": list(ai_recent)[-12:],
+        "last_ai_message": last_ai_msg,
+        "ai_insight_lines": ai_lines,
         "long_min_bt_score": learning.long_min_bt_score,
         "scalp_min_bt_score": learning.scalp_min_bt_score,
         "learning_long_sl_tp": [learning.long_sl_pct, learning.long_tp_pct],

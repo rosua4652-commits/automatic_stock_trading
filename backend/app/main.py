@@ -26,6 +26,7 @@ from app.models import (
     PositionExitPlanRequest,
     SellAllRequest,
     StatusResponse,
+    SurgeSymbolRequest,
     TradeMode,
 )
 from app.storage.credentials import (
@@ -158,6 +159,7 @@ async def _build_status() -> dict:
     view = engine.build_coin_view(engine.bot.view_symbol, prices, tickers)
     engine.bot.manual_mode = not engine.bot.auto_invest_active
     engine._refresh_auto_risk_status()
+    engine._sync_surge_board()
     engine.bot.recent_trades = portfolio.trades[-40:]
     tab_quotes = await engine.tab_quotes_map()
 
@@ -720,6 +722,92 @@ async def backup_import(file: UploadFile = File(...)):
     status["message"] = f"복원 {n}개 파일 · 서버 재시작 권장"
     status["backup_notes"] = notes
     return status
+
+
+@api.get("/news/feed")
+async def news_feed():
+    """캐시된 뉴스·LLM 점수 전체 목록."""
+    from app.engine.news_feed import build_news_feed
+
+    return build_news_feed(engine.config, meta=store._live_meta)
+
+
+@api.get("/news/surge-board")
+async def news_surge_board():
+    """급등 vs 하락주 분리 보드."""
+    from app.engine.news_feed import build_news_feed
+
+    data = build_news_feed(engine.config, meta=store._live_meta)
+    return {
+        "ok": data.get("ok"),
+        "refreshed_at": data.get("refreshed_at"),
+        "llm_status": data.get("llm_status"),
+        "surge": data.get("surge", []),
+        "downtrend": data.get("downtrend", []),
+    }
+
+
+@api.post("/news/refresh")
+async def news_refresh():
+    """뉴스 캐시 강제 갱신."""
+    from app.engine.news_feed import refresh_news_feed
+
+    symbols = [c.symbol for c in engine.bot.candidates]
+    if not symbols:
+        try:
+            symbols = await top_usdt_symbols(limit=40)
+        except Exception:
+            symbols = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT"]
+    return await refresh_news_feed(engine.config, symbols, force=True)
+
+
+@api.get("/surge/manage")
+async def surge_manage():
+    """급등·하락 분류 목록 + 비활성 상태."""
+    from app.engine.surge_manage import build_surge_manage_payload
+
+    return build_surge_manage_payload(
+        config=engine.config,
+        recommendations=engine.bot.recommendations,
+        candidates=engine.bot.candidates,
+        meta=store._live_meta,
+    )
+
+
+@api.post("/surge/disable")
+async def surge_disable(body: SurgeSymbolRequest):
+    from app.engine.surge_manage import build_surge_manage_payload, disable_surge_symbol
+
+    disable_surge_symbol(store._live_meta, body.symbol, reason=body.reason)
+    store.save_live_meta()
+    engine._sync_surge_board()
+    engine._notify()
+    payload = build_surge_manage_payload(
+        config=engine.config,
+        recommendations=engine.bot.recommendations,
+        candidates=engine.bot.candidates,
+        meta=store._live_meta,
+    )
+    payload["message"] = f"{body.symbol.upper()} 급등·하락 분류 비활성"
+    return payload
+
+
+@api.post("/surge/enable")
+async def surge_enable(body: SurgeSymbolRequest):
+    from app.engine.surge_manage import build_surge_manage_payload, enable_surge_symbol
+
+    enable_surge_symbol(store._live_meta, body.symbol)
+    store.save_live_meta()
+    engine._sync_surge_board()
+    engine._notify()
+    payload = build_surge_manage_payload(
+        config=engine.config,
+        recommendations=engine.bot.recommendations,
+        candidates=engine.bot.candidates,
+        meta=store._live_meta,
+    )
+    payload["message"] = f"{body.symbol.upper()} 급등·하락 분류 재활성"
+    return payload
 
 
 @api.post("/signals/scan/{side}")

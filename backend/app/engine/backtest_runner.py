@@ -8,6 +8,7 @@ import time
 from app.config import settings
 from app.engine.backtest_optimizer import BacktestAccumulator, run_accumulator_cycle
 from app.aidi_log import get_aidi_logger
+from app.market.upbit_data import market
 from app.market.scanner import top_usdt_symbols
 from app.engine.backtest_learning import load_learning_state
 from app.models import BacktestLearningStatus, BacktestStatus
@@ -75,7 +76,9 @@ def status_from_accumulator(
         execution_feedback_count=learn.execution_feedback_count,
         data_maturity_pct=learn.data_maturity_pct,
     )
-    if learn.last_adjust_message:
+    if learn.last_ai_message:
+        msg = f"{msg} · AI: {learn.last_ai_message[:120]}"
+    elif learn.last_adjust_message:
         msg = f"{msg} · {learn.last_adjust_message}"
     return BacktestStatus(
         running=True,
@@ -122,12 +125,22 @@ async def run_backtest_once(engine=None) -> BacktestStatus:
     if engine is not None:
         fee_pct = float(getattr(engine.config, "trading_fee_pct", 0.05) or 0.05)
 
-    acc, tested, updated = await run_accumulator_cycle(
+    acc, tested, updated, batch = await run_accumulator_cycle(
         symbols,
         default_sl=default_sl,
         default_tp=default_tp,
         fee_pct=fee_pct,
     )
+    if engine is not None and batch:
+        try:
+            from app.engine.backtest_ai import apply_ai_backtest_insights
+
+            tickers = await market.tickers_24h()
+            await apply_ai_backtest_insights(
+                engine.config, acc, batch, tickers=tickers
+            )
+        except Exception as e:
+            logger.warning("[백테스트 AI] 배치 반영 실패: %s", e)
     logger.info(
         "[백테스트 주기] 배치 %d종 분석 · %d건 갱신 · 누적 %d회 · 저장 %d종",
         tested,

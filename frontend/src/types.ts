@@ -1,6 +1,92 @@
 export type BotStatus = "stopped" | "running" | "stopping";
 export type TradeMode = "paper" | "live";
-export type MainView = "alerts" | "stats" | "chart" | "funds";
+export type MainView = "alerts" | "stats" | "chart" | "funds" | "news" | "surge-manage";
+
+export type NewsFeedFilter = "all" | "surge" | "downtrend";
+
+export interface NewsLlmStatus {
+  enabled: boolean;
+  active: boolean;
+  provider: string;
+  key_configured: boolean;
+  hint?: string;
+}
+
+export interface NewsFeedItem {
+  symbol: string;
+  base: string;
+  name_ko: string;
+  score: number;
+  count?: number;
+  sentiment: string;
+  keywords: string[];
+  headline: string;
+  url?: string;
+  tag: string;
+  published_ts?: number;
+  published_at?: string;
+  article_source?: string;
+  llm_direction: string;
+  llm_direction_ko: string;
+  llm_confidence: number;
+  llm_reason: string;
+  tier: string;
+  tier_label: string;
+}
+
+export interface SurgeManageItem {
+  symbol: string;
+  base: string;
+  name_ko: string;
+  tag: "surge" | "downtrend" | string;
+  tier: string;
+  tier_label: string;
+  source: string;
+  score: number;
+  headline: string;
+  url?: string;
+  published_ts: number;
+  article_source: string;
+  llm_direction: string;
+  llm_confidence: number;
+  llm_reason: string;
+  change_24h: number;
+  disabled: boolean;
+  disabled_reason?: string;
+  classified_at?: number;
+  expires_at?: number;
+  classified_source?: string;
+  active_headline?: string;
+}
+
+export interface SurgeManageResponse {
+  ok: boolean;
+  refreshed_at: number;
+  items: SurgeManageItem[];
+  surge: SurgeManageItem[];
+  downtrend: SurgeManageItem[];
+  disabled: SurgeManageItem[];
+  surge_count: number;
+  downtrend_count: number;
+  disabled_count: number;
+  disabled_symbols: string[];
+  message?: string;
+}
+
+export interface NewsFeedResponse {
+  ok: boolean;
+  cache_ok?: boolean;
+  refreshed_at: number;
+  news_enabled: boolean;
+  llm_status: NewsLlmStatus;
+  items: NewsFeedItem[];
+  surge?: NewsFeedItem[];
+  downtrend?: NewsFeedItem[];
+  surge_count: number;
+  downtrend_count: number;
+  refreshed?: boolean;
+  symbol_count?: number;
+}
 
 export interface TabQuote {
   price_usdt: number;
@@ -22,6 +108,15 @@ export interface AppConfig {
   paper_days_before_live_auto?: number;
   stop_loss_pct: number;
   take_profit_pct: number;
+  /** 자동투자 청산 강도: weak(약) | medium(중) | strong(강) — 급등주 제외 */
+  auto_exit_strength?: "weak" | "medium" | "strong";
+  moonshot_momentum_exit_enabled?: boolean;
+  moonshot_min_stop_loss_pct?: number;
+  moonshot_max_stop_loss_pct?: number;
+  moonshot_min_take_profit_pct?: number;
+  moonshot_max_take_profit_pct?: number;
+  moonshot_stop_loss_pct?: number;
+  moonshot_take_profit_pct?: number;
   trading_fee_pct?: number;
   scan_interval_sec: number;
   min_buy_score: number;
@@ -41,6 +136,24 @@ export interface AppConfig {
   flash_window_sec?: number;
   flash_block_minutes?: number;
   flash_hard_stop_pct?: number;
+  /** 뉴스·기사 기반 급등 보조 */
+  news_enabled?: boolean;
+  news_boost_min_score?: number;
+  news_cache_ttl_sec?: number;
+  surge_auto_expire_enabled?: boolean;
+  surge_tag_ttl_hours?: number;
+  downtrend_tag_ttl_hours?: number;
+  cryptopanic_api_key?: string;
+  news_llm_enabled?: boolean;
+  news_llm_provider?: string;
+  news_llm_api_key?: string;
+  openai_api_key?: string;
+  gemini_api_key?: string;
+  news_llm_bearish_block_threshold?: number;
+  news_llm_max_articles_per_scan?: number;
+  /** 백테스트 배치 후 Gemini 패턴·SL/TP 제안 */
+  backtest_ai_enabled?: boolean;
+  backtest_ai_max_symbols_per_batch?: number;
   exchange?: string;
   api_access_key?: string;
   api_secret_key?: string;
@@ -113,6 +226,7 @@ export interface Position {
   entry_reason: string;
   entry_score: number;
   entry_outlook: string;
+  exit_profile?: string;
   excluded_from_auto: boolean;
   custom_sl_tp?: boolean;
   custom_stop_loss_pct?: number;
@@ -196,6 +310,8 @@ export interface TradeEvent {
   amount_usdt: number;
   reason: string;
   entry_mode?: string;
+  is_auto?: boolean;
+  exit_kind?: string;
 }
 
 export interface CoinView {
@@ -231,6 +347,11 @@ export interface InvestmentRecommendation {
   bt_line?: string;
   change_24h: number;
   trend: string;
+  /** 뉴스급등 보조 점수·뱃지 */
+  news_score?: number;
+  news_surge?: boolean;
+  news_detail?: string;
+  news_url?: string;
   selected?: boolean;
 }
 
@@ -331,6 +452,9 @@ export interface BotState {
   scan_health?: string;
   scan_health_detail?: string;
   auto_invest_rejects?: string[];
+  surge_candidates_count?: number;
+  surge_candidates?: string[];
+  surge_tags?: Record<string, string>;
 }
 
 export interface StatusPayload {

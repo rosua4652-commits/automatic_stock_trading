@@ -6,6 +6,19 @@ from app.market.coin_registry import coin_meta
 from app.models import AppConfig, ChartMarker, PortfolioSnapshot, Position, TradeEvent
 
 
+from app.util.numbers import as_float
+
+
+def _price_from_map(prices: dict, symbol: str, pos: Position) -> float:
+    """티커·포지션 시세 — JSON 오염(dict) 시에도 float."""
+    raw = prices.get(symbol)
+    if raw is not None:
+        px = as_float(raw, 0.0)
+        if px > 0:
+            return px
+    return as_float(pos.current_price, 0.0) or as_float(pos.avg_price, 0.0)
+
+
 class PortfolioManager:
     def __init__(self) -> None:
         self.cash_krw = settings.initial_balance_krw
@@ -77,6 +90,8 @@ class PortfolioManager:
         *,
         price_krw: float = 0.0,
         amount_krw: float | None = None,
+        entry_mode: str = "",
+        exit_kind: str = "",
     ) -> TradeEvent:
         amount_usdt = price * quantity
         amt_krw = amount_krw
@@ -100,7 +115,25 @@ class PortfolioManager:
             amount_usdt=round(amount_usdt, 4),
             reason=reason,
             is_auto=is_auto,
+            entry_mode=entry_mode,
+            exit_kind=exit_kind,
         )
+
+    @staticmethod
+    def _sell_entry_mode(pos: Position | None, is_auto: bool) -> str:
+        if not is_auto or not pos:
+            return ""
+        from app.engine.live_position_meta import entry_mode_label
+
+        return entry_mode_label(pos.entry_outlook or "")
+
+    @staticmethod
+    def _sell_exit_kind(reason: str, is_auto: bool) -> str:
+        if not is_auto:
+            return ""
+        from app.engine.trade_history import classify_exit_kind
+
+        return classify_exit_kind(reason, "SELL")
 
     def chart_markers(self, symbol: str) -> list[ChartMarker]:
         out: list[ChartMarker] = []
@@ -153,6 +186,9 @@ class PortfolioManager:
         entry_score: float = 0,
         score: float = 0,
         entry_outlook: str = "",
+        stop_loss_pct: float | None = None,
+        take_profit_pct: float | None = None,
+        exit_profile: str = "",
     ) -> None:
         """실거래 체결 후 포지션 메타 — 모의투자 buy()와 동일 규칙."""
         delta = max(0.0, delta_qty)
@@ -166,10 +202,24 @@ class PortfolioManager:
                 pos.auto_avg_price = (
                     pos.auto_cost_basis_krw / self.usdt_krw / pos.auto_quantity
                 )
-            sl = config.stop_loss_pct / 100
-            tp = config.take_profit_pct / 100
+            sl_p = (
+                float(stop_loss_pct)
+                if stop_loss_pct is not None and stop_loss_pct > 0
+                else config.stop_loss_pct
+            )
+            tp_p = (
+                float(take_profit_pct)
+                if take_profit_pct is not None and take_profit_pct > 0
+                else config.take_profit_pct
+            )
+            sl = sl_p / 100
+            tp = tp_p / 100
             pos.stop_loss = fill_price_usdt * (1 - sl)
             pos.take_profit = fill_price_usdt * (1 + tp)
+            pos.auto_exit_sl_pct = round(sl_p, 4)
+            pos.auto_exit_tp_pct = round(tp_p, 4)
+            if exit_profile:
+                pos.exit_profile = exit_profile
             pos.trailing_high = max(pos.trailing_high or 0.0, fill_price_usdt)
             pos.entry_reason = entry_reason or reason
             pos.entry_score = entry_score
@@ -367,7 +417,7 @@ class PortfolioManager:
             if upbit_truth and pos.current_price_krw > 0:
                 px = pos.current_price_krw / max(self.usdt_krw, 1.0)
             else:
-                px = prices.get(sym, pos.current_price or pos.avg_price)
+                px = _price_from_map(prices, sym, pos)
             pos.current_price = px
             self._recalc_avg(pos)
 
@@ -375,10 +425,11 @@ class PortfolioManager:
                 qty = pos.exchange_quantity
                 if pos.quantity > qty:
                     qty = pos.quantity
-                px_krw = pos.current_price_krw
-                if sym in prices and prices[sym] > 0:
-                    pos.current_price = prices[sym]
-                    px_krw = prices[sym] * max(self.usdt_krw, 1.0)
+                px_krw = as_float(pos.current_price_krw, 0.0)
+                tick_px = _price_from_map(prices, sym, pos)
+                if tick_px > 0:
+                    pos.current_price = tick_px
+                    px_krw = tick_px * max(self.usdt_krw, 1.0)
                     pos.current_price_krw = px_krw
                 cost_krw = (
                     pos.avg_buy_price_krw * qty
@@ -492,6 +543,7 @@ class PortfolioManager:
         entry_outlook: str = "",
         auto_managed: bool = True,
         min_buy_krw: float | None = None,
+        exit_profile: str = "",
     ) -> Optional[Position]:
         from app.engine.buy_limits import effective_min_buy_krw
 
@@ -531,6 +583,8 @@ class PortfolioManager:
                     pos.take_profit = price_usdt * (1 + take_profit_pct)
                 pos.auto_exit_sl_pct = round(stop_loss_pct * 100, 4)
                 pos.auto_exit_tp_pct = round(take_profit_pct * 100, 4)
+                if exit_profile:
+                    pos.exit_profile = exit_profile
                 pos.trailing_high = max(pos.trailing_high, price_usdt)
             else:
                 new_man = pos.manual_quantity + qty
@@ -573,6 +627,7 @@ class PortfolioManager:
             entry_outlook=entry_outlook or ("AI 자동투자" if auto_managed else ""),
             auto_exit_sl_pct=round(stop_loss_pct * 100, 4) if auto_managed else 0.0,
             auto_exit_tp_pct=round(take_profit_pct * 100, 4) if auto_managed else 0.0,
+            exit_profile=exit_profile if auto_managed else "",
             excluded_from_auto=False,
         )
         if not auto_managed:
@@ -646,7 +701,17 @@ class PortfolioManager:
             is_auto = False
             self._recalc_avg(pos)
 
-        evt = self._trade_event(meta, symbol, "SELL", price_usdt, sell_qty, reason, is_auto)
+        evt = self._trade_event(
+            meta,
+            symbol,
+            "SELL",
+            price_usdt,
+            sell_qty,
+            reason,
+            is_auto,
+            entry_mode=self._sell_entry_mode(pos, is_auto),
+            exit_kind=self._sell_exit_kind(reason, is_auto),
+        )
         self.trades.append(evt)
 
         if pos.quantity <= 1e-12:

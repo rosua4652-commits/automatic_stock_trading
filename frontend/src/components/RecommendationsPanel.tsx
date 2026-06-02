@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { EditableRecommendation } from "../hooks/useRecommendationAmounts";
 import type { ApplyItem } from "../hooks/useRecommendationAmounts";
-import { deployableCashKrw, fmtKrw, fmtPct, fmtUsd, isRunning } from "../utils";
+import { deployableCashKrw, fmtKrw, fmtPct, fmtUsd, isRunning, recTierBadge } from "../utils";
 import CollapsibleSection from "./CollapsibleSection";
 import RecommendationAmountField from "./RecommendationAmountField";
 
@@ -136,6 +136,12 @@ export default function RecommendationsPanel({
                     onChange={() => toggle(r.symbol)}
                   />
                   <span className="rec-row-name">{r.name_ko}</span>
+                  {(() => {
+                    const badge = recTierBadge(r);
+                    return badge ? (
+                      <span className={badge.className}>{badge.label}</span>
+                    ) : null;
+                  })()}
                   <button
                     type="button"
                     className="rec-row-amt-btn"
@@ -188,6 +194,12 @@ export default function RecommendationsPanel({
                   </td>
                   <td>
                     <strong>{r.name_ko}</strong>
+                    {(() => {
+                      const badge = recTierBadge(r);
+                      return badge ? (
+                        <span className={badge.className}>{badge.label}</span>
+                      ) : null;
+                    })()}
                     <span className="dim">{r.base}</span>
                   </td>
                   <td className="amount">

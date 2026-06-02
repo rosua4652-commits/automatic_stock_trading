@@ -184,9 +184,9 @@ async def analyze_entry(symbol: str, min_score: float = 45.0) -> EntrySignal:
     rsi = (rsi15 + rsi1h) / 2
 
     # 자동 추천(엄격) vs 단타 수동(완화) — 보류여도 단타는 가능하게 분리
-    scalp_floor = max(28.0, min_score - 12.0)
-    auto_ok = combined >= min_score and rsi < 82
-    scalp_ok = combined >= scalp_floor and rsi < 88
+    scalp_floor = max(26.0, min_score - 14.0)
+    auto_ok = combined >= min_score and rsi < 84
+    scalp_ok = combined >= scalp_floor and rsi < 90
     if trend == "하락":
         if combined < min_score + 2:
             auto_ok = False

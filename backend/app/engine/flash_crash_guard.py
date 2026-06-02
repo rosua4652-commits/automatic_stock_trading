@@ -53,6 +53,7 @@ async def detect_flash_crash(
     state: FlashGuardState,
     *,
     fetch_1m=None,
+    relax_factor: float = 1.0,
 ) -> tuple[bool, str]:
     """급락 신호. True면 즉시 매도 권장."""
     if not _cfg_bool(config, "flash_guard_enabled", True):
@@ -62,9 +63,10 @@ async def detect_flash_crash(
 
     record_price_sample(state, price)
 
-    peak_drop_pct = _cfg_float(config, "flash_drop_from_peak_pct", 2.8)
-    tick_drop_pct = _cfg_float(config, "flash_tick_drop_pct", 1.2)
-    candle_drop_pct = _cfg_float(config, "flash_candle_1m_drop_pct", 3.5)
+    relax = max(1.0, float(relax_factor or 1.0))
+    peak_drop_pct = _cfg_float(config, "flash_drop_from_peak_pct", 4.5) * relax
+    tick_drop_pct = _cfg_float(config, "flash_tick_drop_pct", 2.0) * relax
+    candle_drop_pct = _cfg_float(config, "flash_candle_1m_drop_pct", 5.5) * relax
     window_sec = _cfg_float(config, "flash_window_sec", 90.0)
 
     peak = state.peak_price
@@ -120,12 +122,15 @@ async def detect_flash_crash(
         entry = pos.auto_avg_price or pos.avg_price
         if entry > 0:
             pnl_pct = (price - entry) / entry * 100
-            hard_pct = _cfg_float(
-                config,
-                "flash_hard_stop_pct",
-                app_settings.default_stop_loss_pct * 100 * 1.5,
-            )
-            if pnl_pct <= -abs(hard_pct):
+            hard_raw = _cfg_float(config, "flash_hard_stop_pct", 0.0)
+            if hard_raw <= 0:
+                sl_cfg = _cfg_float(
+                    config, "stop_loss_pct", app_settings.default_stop_loss_pct
+                )
+                hard_pct = abs(sl_cfg) * 1.5 * relax
+            else:
+                hard_pct = abs(hard_raw) * relax
+            if pnl_pct <= -hard_pct:
                 return (
                     True,
                     f"급락 손절 · 평단 대비 {pnl_pct:.1f}% (긴급)",

@@ -149,6 +149,22 @@ export default function StatsTab({ portfolio, trades, bot, configMode }: Props) 
         「선택 중」 모드)
       </p>
 
+      <section className="stats-nav-hint panel-hint">
+        <strong>백테스트 · 활동 로그 위치</strong>
+        <ul>
+          <li>
+            <strong>백테스트 리포트 · AI 한 줄 요약</strong> — 상단 「알림」 탭 →
+            아래로 스크롤 → 「백테스트 리포트」 펼치기 (기본 접힘). AI 요약은
+            표 위 목록, 하단 백테스트 푸터에도 요약이 표시됩니다.
+          </li>
+          <li>
+            <strong>활동 패널 · BT 메시지</strong> — 자동투자/분석 실행 중일 때
+            상단 네비 바로 아래 「진행 · 로그」 줄. 펼치면 BT: … 백테스트
+            메시지와 스캔 로그가 보입니다 (중지 시 숨김).
+          </li>
+        </ul>
+      </section>
+
       <div className="kpi-grid kpi-grid-compact">
         <KpiCard
           label="당일 매매"
