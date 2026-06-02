@@ -237,11 +237,11 @@ class TradingEngine:
 
     def _effective_scan_interval(self) -> int:
         """자동투자(롱·단타) 시 스캔 주기 단축 — 급등·단타 진입 지연 완화."""
-        base = max(15, int(getattr(self.config, "scan_interval_sec", 30) or 30))
+        base = max(10, int(getattr(self.config, "scan_interval_sec", 30) or 30))
         if not self.bot.auto_invest_active:
             return base
         if self.bot.auto_invest_long or self.bot.auto_invest_scalp:
-            return max(15, min(base, 22))
+            return max(10, min(base, 22))
         return base
 
     def _ensure_scan_loop(self) -> None:

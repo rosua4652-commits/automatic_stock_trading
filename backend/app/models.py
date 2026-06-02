@@ -61,7 +61,7 @@ class AppConfig(BaseModel):
         le=1.0,
         description="편도 거래 수수료 % (모의·실거래 체결 반영)",
     )
-    scan_interval_sec: int = Field(default=22, ge=15, le=300)
+    scan_interval_sec: int = Field(default=22, ge=10, le=300)
     min_buy_score: float = Field(default=28.0, ge=15.0, le=90.0)
     min_buy_krw: float = Field(
         default=6_000.0,

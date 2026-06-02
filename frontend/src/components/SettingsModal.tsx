@@ -635,11 +635,12 @@ export default function SettingsModal({
               <span>시장 스캔 주기 (초)</span>
               <input
                 type="number"
-                min={15}
+                min={10}
                 max={300}
                 value={draft.scan_interval_sec}
                 onChange={(e) => set("scan_interval_sec", Number(e.target.value))}
               />
+              <small>자동투자 시 10~22초 적용 · 너무 낮으면 API 부하</small>
             </label>
             <label className="field">
               <span>최대 보유 종목 (0=무제한)</span>
