@@ -37,7 +37,11 @@ def is_moonshot_position(pos) -> bool:
         return False
     if str(getattr(pos, "exit_profile", "") or "").lower() == EXIT_PROFILE_MOONSHOT:
         return True
-    hint = f"{getattr(pos, 'entry_outlook', '')} {getattr(pos, 'entry_reason', '')}"
+    outlook = str(getattr(pos, "entry_outlook", "") or "")
+    # 단타 포지션은 사유에 '급등'이 있어도 moonshot 청산 경로 사용 안 함
+    if "단타" in outlook:
+        return False
+    hint = f"{outlook} {getattr(pos, 'entry_reason', '')}"
     return is_moonshot_outlook(hint)
 
 
@@ -45,6 +49,9 @@ def is_moonshot_recommendation(rec) -> bool:
     tier = (getattr(rec, "entry_tier", "") or "").lower()
     if tier == "moonshot":
         return True
+    # 단타 tier는 news_surge·급등 태그와 무관하게 moonshot TP/청산 제외
+    if tier == "scalp":
+        return False
     if bool(getattr(rec, "news_surge", False)):
         return True
     outlook = str(getattr(rec, "entry_detail", "") or "")

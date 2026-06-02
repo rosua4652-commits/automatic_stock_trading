@@ -17,6 +17,26 @@ def test_apply_strength_scalp_never_exceeds_seven():
     assert 2.5 <= tp
 
 
+def test_scalp_tier_not_moonshot_despite_news_surge():
+    from types import SimpleNamespace
+
+    from app.engine.moonshot_exit import is_moonshot_position, is_moonshot_recommendation
+
+    rec = SimpleNamespace(
+        entry_tier="scalp",
+        news_surge=True,
+        entry_detail="급등 +12% · 거래대금 2.0M",
+    )
+    assert is_moonshot_recommendation(rec) is False
+
+    pos = SimpleNamespace(
+        exit_profile="",
+        entry_outlook="AI 단타 자동",
+        entry_reason="차트 · 급등 +12% · 익절7%",
+    )
+    assert is_moonshot_position(pos) is False
+
+
 def test_resolve_scalp_from_bt_symbol_capped():
     from app.engine.backtest_optimizer import SymbolBacktestRecord
 

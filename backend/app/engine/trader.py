@@ -1403,7 +1403,7 @@ class TradingEngine:
             sym = r.symbol.upper()
             if float(getattr(r, "stop_loss_pct", 0) or 0) > 0:
                 sl_tp_map[sym] = (float(r.stop_loss_pct), float(r.take_profit_pct))
-            elif (r.entry_tier or "").lower() == "moonshot" or is_moonshot_recommendation(r):
+            elif (r.entry_tier or "").lower() == "moonshot":
                 sl, tp, _ = resolve_moonshot_sl_tp(
                     self.config,
                     change_24h=float(getattr(r, "change_24h", 0) or 0),
@@ -1507,7 +1507,7 @@ class TradingEngine:
             price = float(t["lastPrice"])
             amt = round(capped_amts[sym], -3)
             tier = (rec.entry_tier or "auto").lower()
-            moonshot_buy = tier == "moonshot" or is_moonshot_recommendation(rec)
+            moonshot_buy = tier == "moonshot"
             if tier == "scalp":
                 outlook = "AI 단타 자동"
             elif moonshot_buy:
