@@ -11,22 +11,22 @@ from app.models import AppConfig, InvestmentRecommendation, Position
 
 def test_momentum_weak_tier():
     sl, tp, src = resolve_moonshot_sl_tp(AppConfig(), change_24h=15)
-    assert sl == 5.5
-    assert tp == 12.0
+    assert sl == 4.5
+    assert tp == 7.2
     assert "중기세" in src
 
 
 def test_momentum_medium_tier():
     sl, tp, src = resolve_moonshot_sl_tp(AppConfig(), change_24h=25)
-    assert sl == 6.0
-    assert tp == 10.0
+    assert sl == 4.8
+    assert tp == 6.2
     assert "중기세" in src
 
 
 def test_momentum_strong_tier():
     sl, tp, src = resolve_moonshot_sl_tp(AppConfig(), change_24h=45)
-    assert sl == 7.0
-    assert tp == 8.0
+    assert sl == 5.0
+    assert tp == 5.5
     assert "강기세" in src
 
 
@@ -140,8 +140,8 @@ def test_moonshot_buy_sl_tp_not_from_weak_strength():
     sl, tp, _ = resolve_moonshot_sl_tp(cfg, change_24h=28.0, news_score=0)
     weak_sl, weak_tp = strength_default_sl_tp(cfg)
     assert (sl, tp) != (weak_sl, weak_tp)
-    assert sl >= 5.0
-    assert tp <= 14.0
+    assert sl >= 4.5
+    assert tp <= 8.0
 
 
 def test_config_accepts_wide_moonshot_tp_caps():
@@ -150,7 +150,7 @@ def test_config_accepts_wide_moonshot_tp_caps():
         moonshot_max_take_profit_pct=10.0,
     )
     _, tp, _ = resolve_moonshot_sl_tp(cfg, change_24h=15)
-    assert tp == 10.0
+    assert tp == 7.2
 
 
 def test_moonshot_tp_max_must_be_gte_min():

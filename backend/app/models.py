@@ -149,7 +149,7 @@ class AppConfig(BaseModel):
         description="급등 분류 최소 24h 상승 %",
     )
     moonshot_max_change_24h_pct: float = Field(
-        default=85.0,
+        default=60.0,
         ge=30.0,
         le=200.0,
         description="이미 과열 구간(추격 위험) 상한 %",
@@ -161,7 +161,7 @@ class AppConfig(BaseModel):
         description="급등 분류 최소 24h 거래대금(USDT)",
     )
     moonshot_min_entry_score: float = Field(
-        default=26.0,
+        default=32.0,
         ge=18.0,
         le=70.0,
         description="차트 진입 미충족 시 급등 최소 진입점수",
@@ -177,7 +177,7 @@ class AppConfig(BaseModel):
         description="급등 기세 손절 하한 %",
     )
     moonshot_max_stop_loss_pct: float = Field(
-        default=10.0,
+        default=8.0,
         ge=3.0,
         le=15.0,
         description="급등 기세 손절 상한 %",
@@ -189,7 +189,7 @@ class AppConfig(BaseModel):
         description="급등 기세 익절 하한 %",
     )
     moonshot_max_take_profit_pct: float = Field(
-        default=22.0,
+        default=12.0,
         ge=5.0,
         le=50.0,
         description="급등 기세 익절 상한 %",

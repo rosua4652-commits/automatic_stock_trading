@@ -56,7 +56,7 @@ def status_from_accumulator(
 
     msg = (
         f"누적 {acc.cycles}회 · {len(acc.symbols)}종 저장 · "
-        f"이번 {batch_tested}종 분석({batch_updated}건 갱신) · "
+        f"15분봉 우선·1시간봉 보조 · 이번 {batch_tested}종 분석({batch_updated}건 갱신) · "
         f"손익절 {sl:.1f}%/{tp:.1f}% · 승률 {win_rate:.1f}% · "
         f"{long_hint} · {short_hint}"
     )

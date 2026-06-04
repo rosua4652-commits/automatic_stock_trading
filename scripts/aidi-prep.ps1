@@ -200,13 +200,14 @@ function Build-Frontend([string]$Root, [string]$BuildId, [string]$UiBuildId) {
     Set-Content -LiteralPath $stamp -Value $stampId -Encoding ascii -NoNewline
 }
 
-function Test-FastReady(
-    [string]$LocalBuild,
-    [string]$UiSrc,
-    [string]$DistStamp,
-    [bool]$VenvOk,
-    [bool]$DistOk
-) {
+function Test-FastReady {
+    param(
+        [string]$LocalBuild,
+        [string]$UiSrc,
+        [string]$DistStamp,
+        [bool]$VenvOk,
+        [bool]$DistOk
+    )
     if (-not $LocalBuild -or -not $VenvOk -or -not $DistOk) { return $false }
     if (-not $UiSrc) { return $false }
     if ($UiSrc -ne $LocalBuild) { return $false }
@@ -269,43 +270,13 @@ if (-not (Test-GitInstalled)) {
     Write-Info "    Git           : (not installed — use update-zip.bat for updates)"
 }
 
-# Git pull when origin/main build differs (prefer git over raw.githubusercontent cache)
+# GitHub 빌드가 달라도 로컬 소스가 한 세트면 실행을 우선 살린다.
 if ($remoteBuild -and $localBuild -ne $remoteBuild) {
-    $gitDir = Join-Path $RepoRoot ".git"
-    $canGitPull = (Test-Path -LiteralPath $gitDir) -and (Test-GitInstalled)
-    if ($canGitPull) {
-        Write-Info "  Updating code from GitHub (git pull)..."
-        Push-Location $RepoRoot
-        $pullOut = @(
-            (git fetch origin 2>&1),
-            (git pull --ff-only origin main 2>&1)
-        ) | ForEach-Object { "$_" }
-        if ($LASTEXITCODE -ne 0) {
-            $pullOut += (git pull --ff-only 2>&1 | ForEach-Object { "$_" })
-        }
-        $pullOut | ForEach-Object { Write-Info "    $_" }
-        Pop-Location
-        $localBuild = Read-BuildId $mainPy 'AIDI_BUILD\s*=\s*"([^"]+)"'
-        $uiSrc = Read-BuildId (Join-Path $RepoRoot "frontend\src\uiBuild.ts") 'UI_BUILD\s*=\s*"([^"]+)"'
-        $remoteBuild = Get-RemoteBuildFromGit $RepoRoot
-        if (-not $remoteBuild) { $remoteBuild = Get-RemoteBuildId $RepoRoot }
-        Write-Info "    After pull    : $localBuild"
-        if ($remoteBuild -and $remoteBuild -ne $localBuild) {
-            # 로컬이 origin보다 앞선 경우(수동 복사 등) — dist만 다시 빌드하면 됨
-            if ($localBuild -eq $uiSrc) {
-                Write-Info "    Note: local source != GitHub tag — continuing with local npm build."
-            } else {
-                Show-ZipUpdateHelp $remoteBuild $localBuild
-                exit 3
-            }
-        }
+    if ($localBuild -eq $uiSrc) {
+        Write-Info "    Note: local source != GitHub tag — building frontend from local source."
     } else {
-        if ($localBuild -eq $uiSrc) {
-            Write-Info "    Note: no Git — building frontend from local source."
-        } else {
-            Show-ZipUpdateHelp $remoteBuild $localBuild
-            exit 3
-        }
+        Show-ZipUpdateHelp $remoteBuild $localBuild
+        exit 3
     }
 }
 

@@ -124,6 +124,31 @@ def _analyze_closes(closes: np.ndarray, volumes: np.ndarray) -> tuple[float, str
             score -= 8
             reasons.append("모멘텀 약세")
 
+        dist_ema12 = (closes[-1] - ema12[-1]) / max(ema12[-1], 1e-9) * 100
+        last3 = (closes[-1] - closes[-4]) / max(closes[-4], 1e-9) * 100 if len(closes) >= 28 else 0.0
+        last8 = (closes[-1] - closes[-9]) / max(closes[-9], 1e-9) * 100 if len(closes) >= 32 else 0.0
+
+        if dist_ema12 > 4.0:
+            score -= 18
+            reasons.append(f"단기 이격 +{dist_ema12:.1f}%")
+        elif dist_ema12 > 2.8 and rsi >= 68:
+            score -= 10
+            reasons.append("고점 추격 위험")
+
+        if mom >= 12 and last3 <= -1.2:
+            score -= 24
+            reasons.append("급등 후 반락")
+        elif last8 >= 8 and rsi >= 72:
+            score -= 14
+            reasons.append("초단기 과열")
+
+        if len(volumes) >= 30:
+            recent_vol = float(volumes[-3:].mean())
+            base_vol = float(volumes[-24:-6].mean()) + 1e-9
+            if mom >= 8 and recent_vol < base_vol * 0.75:
+                score -= 14
+                reasons.append("급등 거래량 둔화")
+
     if score >= 58:
         outlook = "단타·상승 우세"
         pattern = "돌파·추세형"
@@ -187,6 +212,14 @@ async def analyze_entry(symbol: str, min_score: float = 45.0) -> EntrySignal:
     scalp_floor = max(26.0, min_score - 14.0)
     auto_ok = combined >= min_score and rsi < 84
     scalp_ok = combined >= scalp_floor and rsi < 90
+    hard_risk = any(
+        key in reason
+        for reason in reasons
+        for key in ("급등 후 반락", "단기 이격", "고점 추격", "급등 거래량 둔화")
+    )
+    if hard_risk:
+        auto_ok = combined >= min_score + 8 and rsi < 74
+        scalp_ok = combined >= scalp_floor + 6 and rsi < 78
     if trend == "하락":
         if combined < min_score + 2:
             auto_ok = False

@@ -21,9 +21,9 @@ class MoonshotExitProfile:
     label_ko: str
     base_sl_pct: float
     base_tp_pct: float
-    trailing_activate_pct: float = 0.025
-    trailing_distance_pct: float = 0.018
-    tp_pullback_pct: float = 0.012
+    trailing_activate_pct: float = 0.015
+    trailing_distance_pct: float = 0.012
+    tp_pullback_pct: float = 0.008
 
 
 def _cfg_float(config: AppConfig | None, name: str, default: float) -> float:
@@ -65,23 +65,23 @@ def _momentum_tier(change_24h: float, news_score: float) -> tuple[str, float, fl
     """
     chg = float(change_24h or 0.0)
     if chg >= 40.0:
-        tier, sl, tp = MOMENTUM_STRONG, 7.0, 8.0
+        tier, sl, tp = MOMENTUM_STRONG, 5.0, 5.5
     elif chg >= 25.0:
-        tier, sl, tp = MOMENTUM_MEDIUM, 6.0, 10.0
+        tier, sl, tp = MOMENTUM_MEDIUM, 4.8, 6.2
     elif chg >= 15.0:
-        tier, sl, tp = MOMENTUM_MEDIUM, 5.5, 12.0
+        tier, sl, tp = MOMENTUM_MEDIUM, 4.5, 7.2
     elif chg >= 8.0:
-        tier, sl, tp = MOMENTUM_WEAK, 5.0, 14.0
+        tier, sl, tp = MOMENTUM_WEAK, 4.2, 8.5
     else:
-        tier, sl, tp = MOMENTUM_WEAK, 5.0, 12.0
+        tier, sl, tp = MOMENTUM_WEAK, 4.0, 7.0
 
     ns = float(news_score or 0.0)
     if ns >= 50.0:
-        tp += 1.5
-        sl += 0.5
+        tp += 0.8
+        sl += 0.3
     elif ns >= 30.0:
-        tp += 0.75
-        sl += 0.25
+        tp += 0.4
+        sl += 0.15
     return tier, sl, tp
 
 
@@ -103,9 +103,9 @@ def resolve_moonshot_sl_tp(
     tier, sl, tp = _momentum_tier(change_24h, news_score)
     conf = float(llm_confidence or 0.0)
     if conf >= 70.0:
-        tp += 2.0
+        tp += 0.8
     elif conf >= 55.0:
-        tp += 1.0
+        tp += 0.4
 
     min_sl = _cfg_float(config, "moonshot_min_stop_loss_pct", 4.0)
     max_sl = _cfg_float(

@@ -48,6 +48,10 @@ def classify_moonshot(
         return False, ""
     if chg > max_chg:
         return False, f"24h +{chg:.0f}% (급등 구간 상단 · 추격 제외)"
+    if chg >= 25.0 and not entry_ok and score < min_score + 8.0:
+        return False, f"늦은 급등 추격 제외 · 진입점수 {score:.0f} < {min_score + 8:.0f}"
+    if chg >= 40.0 and float(news_score or 0.0) < 30.0:
+        return False, f"24h +{chg:.0f}% 과열 · 뉴스/수급 보조 부족"
     if vol < min_vol:
         return False, (
             f"24h 거래대금 {vol / 1_000_000:.1f}M USDT "

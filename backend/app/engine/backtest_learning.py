@@ -148,10 +148,10 @@ def _clamp_auto_sl_tp(
     min_tp = round(fee_rt + 0.35, 2)
 
     if mode == "moonshot":
-        m_sl, m_tp = 6.0, 20.0
-        sl = min(max(as_float(sl_pct, m_sl), 5.0), 12.0)
-        tp = min(max(as_float(tp_pct, m_tp), 12.0), 35.0)
-        sl = max(sl, tp * 0.22)
+        m_sl, m_tp = 4.8, 7.2
+        sl = min(max(as_float(sl_pct, m_sl), 3.8), 8.0)
+        tp = min(max(as_float(tp_pct, m_tp), 4.5), 12.0)
+        sl = max(sl, tp * 0.55)
     elif mode == "scalp":
         tp = min(tp, 7.0)
         tp = max(tp, max(min_tp, 2.5))
